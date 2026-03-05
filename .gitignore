@@ -1,0 +1,186 @@
+# AI Live Commerce Platform - Git Ignore
+
+## ========================================
+## UV Package Manager (bukan conda!)
+## ========================================
+# UV virtual environment (JANGAN di-commit!)
+.venv/
+uv.lock
+
+# UV cache
+.uv/
+
+## ========================================
+## Python
+## ========================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+## ========================================
+## Environment & Secrets
+## ========================================
+# JANGAN commit API keys!
+.env
+
+# Keep example file
+!.env.example
+
+## ========================================
+## Models & Weights (BESAR, download terpisah)
+## ========================================
+models/
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.bin
+*.onnx
+*.tflite
+
+# Keep folder structure
+!models/.gitkeep
+
+## ========================================
+## Data & Cache (Runtime generated)
+## ========================================
+data/*.db
+data/*.sqlite
+data/*.sqlite3
+data/cache/
+data/logs/
+*.log
+
+# Keep folder structure
+!data/.gitkeep
+!data/logs/.gitkeep
+
+## ========================================
+## Assets (User-provided, bisa besar)
+## ========================================
+# Avatar reference files (video 5 menit bisa 500MB+)
+assets/avatar/*.mp4
+assets/avatar/*.avi
+assets/avatar/*.mov
+assets/avatar/*.jpg
+assets/avatar/*.png
+assets/avatar/*.jpeg
+
+# Voice samples
+assets/voice/*.wav
+assets/voice/*.mp3
+assets/voice/*.flac
+
+# Product images (banyak, bisa ratusan MB)
+assets/products/*.jpg
+assets/products/*.png
+assets/products/*.jpeg
+
+# Background videos
+assets/backgrounds/*.mp4
+assets/backgrounds/*.avi
+
+# Keep folder structure
+!assets/avatar/.gitkeep
+!assets/voice/.gitkeep
+!assets/backgrounds/.gitkeep
+!assets/products/.gitkeep
+
+## ========================================
+## External Dependencies (Git Submodules)
+## ========================================
+# LiveTalking akan di-add sebagai submodule
+# Jadi tidak perlu ignore, tapi jangan commit isinya
+
+## ========================================
+## Testing & Coverage
+## ========================================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+*.cover
+.cache
+
+## ========================================
+## IDE & Editors
+## ========================================
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# Kiro IDE
+.kiro/
+
+## ========================================
+## OS Generated
+## ========================================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+## ========================================
+## Ruff (Linter/Formatter)
+## ========================================
+.ruff_cache/
+
+## ========================================
+## Docker
+## ========================================
+# Keep Dockerfile & docker-compose
+# Ignore runtime files
+*.pid
+*.seed
+*.pid.lock
+
+## ========================================
+## Monitoring & Metrics
+## ========================================
+# Prometheus data
+prometheus_data/
+
+## ========================================
+## Temporary Files
+## ========================================
+*.tmp
+*.temp
+*.bak
+*.swp
+*~.nib
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+## ========================================
+## Jupyter Notebooks (jika ada)
+## ========================================
+.ipynb_checkpoints/
+*.ipynb
+
+## ========================================
+## Agent Workflows (Optional - bisa di-commit)
+## ========================================
+# Uncomment jika tidak mau commit agent workflows
+# .agent/
+
+## ========================================
+## GitHub Actions Artifacts
+## ========================================
+.github/workflows/artifacts/

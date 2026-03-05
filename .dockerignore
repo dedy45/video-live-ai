@@ -1,0 +1,19 @@
+# Docker
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.git/
+.github/
+.agent/
+.kiro/
+docs/
+tests/
+*.md
+!README.md
+data/logs/
+data/commerce.db
+data/cache/
+.env

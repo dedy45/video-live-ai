@@ -1,0 +1,28 @@
+[Unit]
+Description=AI Live Commerce Platform
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/workspace/videoliveai
+
+# Environment variables
+Environment="MOCK_MODE=false"
+Environment="PATH=/root/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+
+# Startup using UV
+ExecStart=/root/.cargo/bin/uv run python -m src.main
+
+# Restart policy for 24/7 resilience
+Restart=always
+RestartSec=5
+StartLimitIntervalSec=0
+
+# Logging
+StandardOutput=append:/workspace/videoliveai/data/logs/systemd.log
+StandardError=append:/workspace/videoliveai/data/logs/systemd.err
+
+[Install]
+WantedBy=multi-user.target

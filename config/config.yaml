@@ -1,0 +1,175 @@
+# AI Live Commerce Platform Configuration
+# Version: 0.1.0
+
+app:
+  name: "AI Live Commerce"
+  version: "0.1.0"
+  env: "development" # development | staging | production
+
+# === Layer 1: Intelligence ===
+llm_providers:
+  gemini:
+    model: "gemini-2.0-flash"
+    max_tokens: 500
+    timeout_ms: 10000      # Raised: 500ms was impossibly tight
+    tasks: ["chat_reply"]
+
+  claude:
+    model: "claude-sonnet-4-20250514"
+    max_tokens: 2000
+    timeout_ms: 15000
+    tasks: ["selling_script"]
+
+  gpt4o:
+    model: "gpt-4o-mini"
+    max_tokens: 500
+    timeout_ms: 10000
+    tasks: ["emotion_detect"]
+
+  qwen:
+    model: "qwen2.5:7b"           # Ollama model name
+    max_tokens: 300
+    timeout_ms: 15000             # Local can be slow on first call
+    tasks: ["filler"]
+
+  fallback_order: ["gemini", "gpt4o", "qwen"]
+  daily_budget_usd: 5.0
+
+# === Layer 2: Voice ===
+voice:
+  primary: "fish_speech"
+  backup: "edge_tts"
+  sample_rate: 24000
+  bitrate: 128000
+  cache_max_mb: 1024
+  emotion_mapping:
+    happy: { pitch: 1.05, speed: 1.10, energy: 1.15 }
+    excited: { pitch: 1.10, speed: 1.15, energy: 1.25 }
+    calm: { pitch: 0.95, speed: 0.90, energy: 0.90 }
+    urgent: { pitch: 1.05, speed: 1.20, energy: 1.20 }
+
+# === Layer 3: Face ===
+avatar:
+  engine: "musetalk"
+  reference_image: "assets/avatar/face.png"
+  resolution: [512, 512]
+  fps: 30
+  identity_reset_minutes: 15
+  temporal_smoother:
+    window_size: 3
+    blend_weight: 0.7
+  gfpgan:
+    enabled: true
+    upscale_factor: 2
+
+# === Layer 4: Composition ===
+composition:
+  resolution: [720, 1280] # Portrait 9:16
+  fps: 30
+  layout:
+    avatar:
+      position: "bottom_right"
+      size_percent: 0.30
+      x_offset: 480
+      y_offset: 800
+      border_radius: 20
+    product:
+      position: "center_left"
+      size_percent: 0.60
+      x_offset: 24
+      y_offset: 200
+    overlays:
+      price: { x: 24, y: 650, font_size: 36 }
+      cta: { x: 180, y: 1100, font_size: 28 }
+      urgency: { x: 180, y: 50, font_size: 24 }
+
+# === Layer 5: Streaming ===
+streaming:
+  video_codec: "h264"
+  video_bitrate: "2500k"
+  audio_codec: "aac"
+  audio_bitrate: "128k"
+  keyframe_interval: 60
+  preset: "veryfast"
+  tune: "zerolatency"
+  buffer_size_sec: 3
+  reconnect:
+    max_attempts: 5
+    backoff_base_sec: 1
+    backoff_max_sec: 30
+
+# === Layer 6: Interaction ===
+chat:
+  priority_levels: 5
+  spam_filter: true
+  heartbeat_interval_sec: 30
+  reconnect_timeout_sec: 3
+  purchase_keywords:
+    - "beli"
+    - "order"
+    - "checkout"
+    - "keranjang"
+    - "bayar"
+    - "mau"
+    - "pengen"
+    - "ambil"
+    - "pesan"
+    - "cod"
+
+# === Layer 7: Commerce ===
+commerce:
+  rotation_interval_sec: 240 # 4 minutes per product
+  min_display_cycle_min: 15
+  script_phases: 7
+  script_cache_hours: 24
+  golden_trio:
+    hook_ratio: 0.2
+    hero_ratio: 0.5
+    money_ratio: 0.3
+  affiliate:
+    tiktok_rate_range: [0.05, 0.20]
+    shopee_rate_range: [0.02, 0.10]
+    shopee_cap_idr: 10000
+
+# === GPU Management ===
+gpu:
+  device: "cuda:0"
+  vram_budget_mb: 20000
+  degradation_threshold: 0.90
+  temp_max_celsius: 80
+  priority_allocation:
+    avatar_rendering: 0.60
+    video_encoding: 0.20
+    llm_inference: 0.20
+
+# === Performance Targets ===
+performance:
+  e2e_latency_target_ms: 2000
+  latency_budget:
+    chat_processing_ms: 50
+    llm_response_ms: 200
+    tts_ms: 500
+    avatar_rendering_ms: 800
+    composition_ms: 100
+    streaming_buffer_ms: 350
+
+# === Logging ===
+logging:
+  level: "DEBUG"
+  format: "json"
+  file: "data/logs/app.log"
+  rotate_days: 30
+  components:
+    brain: "DEBUG"
+    voice: "INFO"
+    face: "INFO"
+    composition: "INFO"
+    stream: "WARNING"
+    chat: "INFO"
+    commerce: "INFO"
+
+# === Dashboard ===
+dashboard:
+  host: "0.0.0.0"
+  port: 8000
+  cors_origins: ["http://localhost:3000"]

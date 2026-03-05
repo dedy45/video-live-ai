@@ -1,0 +1,1276 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>AI Live Commerce — Command Center</title>
+  <style>
+    :root{--bg:#0a0a14;--surface:#12122a;--card:#161636;--card-hover:#1c1c44;--accent:#e94560;--accent-glow:rgba(233,69,96,.3);--blue:#4361ee;--blue-glow:rgba(67,97,238,.3);--cyan:#00d4ff;--cyan-glow:rgba(0,212,255,.2);--green:#00e676;--green-glow:rgba(0,230,118,.2);--yellow:#ffd600;--yellow-glow:rgba(255,214,0,.15);--orange:#ff9100;--purple:#b388ff;--text:#eaeaf0;--muted:#7a7a9e;--border:rgba(255,255,255,.06);--radius:14px;--rsm:8px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+    ::-webkit-scrollbar{width:5px;height:5px}
+    ::-webkit-scrollbar-track{background:transparent}
+    ::-webkit-scrollbar-thumb{background:var(--muted);border-radius:3px}
+    .header{background:linear-gradient(135deg,var(--surface) 0%,rgba(67,97,238,.15) 100%);padding:12px 20px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100;backdrop-filter:blur(12px)}
+    .header h1{font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px}
+    .badge{padding:3px 10px;border-radius:20px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+    .badge-live{background:var(--accent);color:#fff;animation:glow-pulse 2s infinite}
+    .badge-mock{background:var(--yellow);color:#000}
+    .badge-idle{background:rgba(255,255,255,.1);color:var(--muted)}
+    .badge-stopped{background:#555;color:#fff}
+    .badge-selling{background:var(--green);color:#000}
+    .badge-reacting{background:var(--orange);color:#000}
+    .badge-engaging{background:var(--blue);color:#fff}
+    @keyframes glow-pulse{0%,100%{box-shadow:0 0 12px var(--accent-glow)}50%{box-shadow:0 0 24px var(--accent-glow)}}
+    .tabs{display:flex;gap:0;background:var(--surface);border-bottom:1px solid var(--border);overflow-x:auto}
+    .tab{padding:11px 18px;cursor:pointer;font-size:13px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;transition:all .2s;white-space:nowrap;user-select:none}
+    .tab:hover{color:var(--text);background:rgba(255,255,255,.03)}
+    .tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+    .tab-content{display:none;padding:16px}
+    .tab-content.active{display:block}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px}
+    .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+    .grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+    .col-span-2{grid-column:span 2}
+    .col-span-3{grid-column:span 3}
+    .card{background:var(--card);border-radius:var(--radius);padding:18px;border:1px solid var(--border);transition:all .25s}
+    .card:hover{background:var(--card-hover)}
+    .card-title{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:1.2px;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+    .metric{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+    .metric-value{font-size:26px;font-weight:800}
+    .metric-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
+    .metric-sm{font-size:13px;font-weight:600}
+    .green{color:var(--green)}.yellow{color:var(--yellow)}.red{color:var(--accent)}.cyan{color:var(--cyan)}.purple{color:var(--purple)}.orange{color:var(--orange)}.muted{color:var(--muted)}
+    .status-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px}
+    .dot-green{background:var(--green);box-shadow:0 0 6px var(--green-glow);animation:dot-pulse 2s infinite}
+    .dot-red{background:var(--accent);box-shadow:0 0 6px var(--accent-glow)}
+    .dot-yellow{background:var(--yellow)}
+    .dot-gray{background:var(--muted)}
+    @keyframes dot-pulse{0%,100%{opacity:1}50%{opacity:.4}}
+    .btn-row{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+    .btn{padding:8px 16px;border:none;border-radius:var(--rsm);cursor:pointer;font-size:12px;font-weight:700;font-family:inherit;transition:all .2s;display:inline-flex;align-items:center;gap:5px}
+    .btn:hover{transform:translateY(-1px)}
+    .btn:active{transform:translateY(0)}
+    .btn:disabled{opacity:.4;cursor:not-allowed;transform:none}
+    .btn-primary{background:var(--blue);color:#fff;box-shadow:0 3px 10px var(--blue-glow)}
+    .btn-start{background:var(--green);color:#000}
+    .btn-stop{background:var(--yellow);color:#000}
+    .btn-emergency{background:var(--accent);color:#fff;box-shadow:0 3px 10px var(--accent-glow)}
+    .btn-ghost{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border)}
+    .btn-ghost:hover{background:rgba(255,255,255,.1)}
+    .btn-sm{padding:5px 10px;font-size:11px}
+    .btn-cyan{background:rgba(0,212,255,.15);color:var(--cyan);border:1px solid rgba(0,212,255,.3)}
+    .state-machine{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:14px 0}
+    .state-node{padding:9px 18px;border-radius:var(--rsm);font-size:12px;font-weight:700;border:2px solid var(--border);cursor:pointer;transition:all .25s;text-transform:uppercase}
+    .state-node.current{border-color:var(--cyan);background:rgba(0,212,255,.1);color:var(--cyan);box-shadow:0 0 16px var(--cyan-glow)}
+    .state-node.available{border-color:var(--green);color:var(--green)}
+    .state-node.available:hover{background:rgba(0,230,118,.1)}
+    .state-node.disabled{opacity:.3;cursor:not-allowed}
+    .provider-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:9px}
+    .provider-card{padding:12px;border-radius:var(--rsm);background:rgba(255,255,255,.02);border:1px solid var(--border);transition:all .2s;position:relative}
+    .provider-card:hover{background:rgba(255,255,255,.04)}
+    .provider-card .pname{font-size:13px;font-weight:700;margin-bottom:3px}
+    .provider-card .pmodel{font-size:10px;color:var(--muted);word-break:break-all}
+    .provider-card .pstat{font-size:11px;margin-top:5px}
+    .provider-card .pavail{position:absolute;top:10px;right:10px;font-size:10px;padding:2px 7px;border-radius:4px;font-weight:700}
+    .pavail-ok{background:rgba(0,230,118,.2);color:var(--green)}
+    .pavail-fail{background:rgba(233,69,96,.2);color:var(--accent)}
+    .pavail-mock{background:rgba(255,214,0,.2);color:var(--yellow)}
+    .prompt-area,.input-field,.select-field{width:100%;padding:10px 12px;border-radius:var(--rsm);border:1px solid var(--border);background:var(--surface);color:var(--text);font-family:inherit;font-size:13px}
+    .prompt-area{min-height:70px;resize:vertical}
+    .prompt-area:focus,.input-field:focus,.select-field:focus{outline:none;border-color:var(--cyan);box-shadow:0 0 8px var(--cyan-glow)}
+    .result-box{margin-top:10px;padding:14px;border-radius:var(--rsm);background:rgba(0,212,255,.05);border:1px solid rgba(0,212,255,.15);font-size:13px;line-height:1.6;white-space:pre-wrap;max-height:280px;overflow-y:auto}
+    .result-meta{display:flex;gap:14px;flex-wrap:wrap;margin-top:7px;font-size:11px;color:var(--muted)}
+    .chat-list{max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:4px}
+    .chat-item{padding:8px 12px;border-radius:var(--rsm);background:rgba(255,255,255,.02);font-size:12px;line-height:1.5;border-left:3px solid transparent}
+    .chat-item.purchase{border-left-color:var(--green)}
+    .chat-item.question{border-left-color:var(--yellow)}
+    .chat-item.reaction{border-left-color:var(--purple)}
+    .chat-username{color:var(--accent);font-weight:600}
+    .chat-platform{font-size:10px;color:var(--muted);margin-left:4px}
+    .chat-intent-badge{float:right;font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700}
+    .intent-purchase{background:var(--green);color:#000}
+    .intent-question{background:var(--yellow);color:#000}
+    .intent-general{background:rgba(255,255,255,.08);color:var(--muted)}
+    .intent-reaction{background:rgba(179,136,255,.2);color:var(--purple)}
+    .product-item{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;margin:3px 0;border-radius:var(--rsm);background:rgba(255,255,255,.02);border-left:3px solid transparent;transition:all .2s}
+    .product-item.current-product{border-left-color:var(--green);background:rgba(0,230,118,.05)}
+    .product-item:hover{background:rgba(255,255,255,.04)}
+    .health-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:7px}
+    .health-item{text-align:center;padding:12px;border-radius:var(--rsm);background:rgba(255,255,255,.02)}
+    .health-item .hname{font-size:10px;color:var(--muted);margin-top:5px;text-transform:uppercase}
+    .routing-table{width:100%;border-collapse:collapse;font-size:12px}
+    .routing-table th{text-align:left;padding:7px 10px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border);text-transform:uppercase;font-size:10px}
+    .routing-table td{padding:7px 10px;border-bottom:1px solid rgba(255,255,255,.03)}
+    .routing-table tr:hover td{background:rgba(255,255,255,.02)}
+    .ptag{display:inline-block;padding:2px 7px;margin:2px;border-radius:3px;font-size:10px;font-weight:600}
+    .ptag-primary{background:var(--blue);color:#fff}
+    .ptag-local{background:rgba(0,230,118,.2);color:var(--green)}
+    .ptag-fallback{background:rgba(255,255,255,.07);color:var(--muted)}
+    .progress-bar{height:6px;border-radius:3px;background:rgba(255,255,255,.05);overflow:hidden;margin-top:6px}
+    .progress-fill{height:100%;border-radius:3px;transition:width .5s}
+    .log-box{background:rgba(0,0,0,.3);border-radius:var(--rsm);padding:12px;font-family:monospace;font-size:11px;max-height:200px;overflow-y:auto;border:1px solid var(--border)}
+    .log-line{padding:2px 0;border-bottom:1px solid rgba(255,255,255,.03)}
+    .log-line.ok{color:var(--green)}
+    .log-line.err{color:var(--accent)}
+    .log-line.warn{color:var(--yellow)}
+    .log-line.info{color:var(--cyan)}
+    .diag-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px}
+    .diag-item:last-child{border-bottom:none}
+    .diag-name{flex:1;font-weight:600}
+    .diag-status{font-size:11px;padding:2px 8px;border-radius:4px;font-weight:700}
+    .ds-ok{background:rgba(0,230,118,.2);color:var(--green)}
+    .ds-fail{background:rgba(233,69,96,.2);color:var(--accent)}
+    .ds-warn{background:rgba(255,214,0,.2);color:var(--yellow)}
+    .ds-mock{background:rgba(255,214,0,.15);color:var(--yellow)}
+    .diag-msg{font-size:11px;color:var(--muted);max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .diag-ms{font-size:11px;color:var(--muted)}
+    .sep{color:var(--muted);font-size:18px;margin:0 2px}
+    .latency-row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:12px}
+    .latency-row:last-child{border-bottom:none}
+    .latency-op{color:var(--text)}
+    .latency-vals{display:flex;gap:12px;font-size:11px}
+    .lv-p50{color:var(--cyan)}
+    .lv-p95{color:var(--yellow)}
+    .counter-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.03);font-size:12px}
+    .counter-row:last-child{border-bottom:none}
+    .gauge-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-size:12px}
+    .ws-indicator{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:var(--muted)}
+    .ws-dot{width:7px;height:7px;border-radius:50%;background:var(--muted)}
+    .ws-dot.connected{background:var(--green);animation:dot-pulse 2s infinite}
+    .ws-dot.error{background:var(--accent)}
+    .empty-state{text-align:center;padding:40px 20px;color:var(--muted);font-size:13px}
+    .toast-container{position:fixed;bottom:20px;right:20px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+    .toast{padding:10px 16px;border-radius:var(--rsm);font-size:13px;font-weight:600;animation:toast-in .3s ease;max-width:320px}
+    .toast-ok{background:rgba(0,230,118,.9);color:#000}
+    .toast-err{background:rgba(233,69,96,.9);color:#fff}
+    .toast-info{background:rgba(0,212,255,.9);color:#000}
+    @keyframes toast-in{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+    .loading-spin{display:inline-block;width:14px;height:14px;border:2px solid var(--muted);border-top-color:var(--cyan);border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media(max-width:768px){.grid{grid-template-columns:1fr}.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}.col-span-2,.col-span-3{grid-column:span 1}.header h1{font-size:14px}}
+  </style>
+</head>
+<body>
+<!-- TOAST -->
+<div class="toast-container" id="toastContainer"></div>
+
+<!-- HEADER -->
+<div class="header">
+  <h1>🎯 AI Live Commerce — Command Center</h1>
+  <div style="display:flex;gap:8px;align-items:center">
+    <div class="ws-indicator"><div class="ws-dot" id="wsDot"></div><span id="wsLabel">Disconnected</span></div>
+    <span class="badge badge-mock" id="stateBadge">—</span>
+    <span class="badge" id="mockBadge" style="background:rgba(255,255,255,.1);color:var(--muted)">—</span>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="tabs">
+  <div class="tab active" onclick="switchTab('overview')">📊 Overview</div>
+  <div class="tab" onclick="switchTab('brain')">🧠 LLM Brain</div>
+  <div class="tab" onclick="switchTab('pipeline')">⚙️ Pipeline</div>
+  <div class="tab" onclick="switchTab('commerce')">🛍️ Commerce</div>
+  <div class="tab" onclick="switchTab('monitor')">💬 Monitor</div>
+  <div class="tab" onclick="switchTab('diagnostic')">🔬 Diagnostic</div>
+</div>
+
+<!-- ═══ TAB: OVERVIEW ═══ -->
+<div class="tab-content active" id="tab-overview">
+  <div class="grid">
+
+    <!-- System Status -->
+    <div class="card">
+      <div class="card-title">⚡ System Status</div>
+      <div class="metric">
+        <div>
+          <div class="metric-value cyan" id="ovStateValue">—</div>
+          <div class="metric-label">Pipeline State</div>
+        </div>
+        <div style="text-align:right">
+          <div class="metric-sm" id="ovUptime">—</div>
+          <div class="metric-label">Uptime</div>
+        </div>
+      </div>
+      <div class="metric">
+        <div><div class="metric-sm green" id="ovViewers">0</div><div class="metric-label">Viewers</div></div>
+        <div style="text-align:right"><div class="metric-sm yellow" id="ovBudget">$5.00</div><div class="metric-label">LLM Budget Left</div></div>
+      </div>
+      <div class="metric">
+        <div><div class="metric-sm" id="ovProduct" style="color:var(--purple)">—</div><div class="metric-label">Current Product</div></div>
+        <div style="text-align:right"><div class="metric-sm red" id="ovSafety">0</div><div class="metric-label">Safety Incidents</div></div>
+      </div>
+    </div>
+
+    <!-- Stream Control -->
+    <div class="card">
+      <div class="card-title">📡 Stream Control</div>
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+        <span class="status-dot" id="streamDot" style="width:10px;height:10px"></span>
+        <span id="streamStatus" style="font-weight:600;font-size:14px">—</span>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-start" onclick="apiPost('/api/stream/start','▶ Starting...')">▶ Start Stream</button>
+        <button class="btn btn-stop" onclick="apiPost('/api/stream/stop','⏸ Stopping...')">⏸ Stop</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-emergency" onclick="confirmEmergencyStop()">🛑 Emergency Stop</button>
+        <button class="btn btn-ghost btn-sm" onclick="apiPost('/api/emergency-reset','🔄 Resetting...')">🔄 Reset</button>
+      </div>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--border)">
+        <div class="card-title" style="margin-bottom:8px">🔀 State Control</div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-sm btn-cyan" onclick="transitionState('SELLING')">📦 SELLING</button>
+          <button class="btn btn-sm btn-cyan" onclick="transitionState('REACTING')">💬 REACTING</button>
+          <button class="btn btn-sm btn-cyan" onclick="transitionState('ENGAGING')">🎭 ENGAGING</button>
+          <button class="btn btn-sm btn-ghost" onclick="transitionState('IDLE')">⏸ IDLE</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Health Checks -->
+    <div class="card">
+      <div class="card-title">🏥 Health Checks
+        <button class="btn btn-ghost btn-sm" onclick="refreshHealth()" style="margin-left:auto">🔄</button>
+      </div>
+      <div class="health-grid" id="healthGrid"><div class="metric-label">Loading...</div></div>
+    </div>
+
+    <!-- Latency (60s) -->
+    <div class="card">
+      <div class="card-title">⏱️ Latency — P50 / P95 (60s window)</div>
+      <div id="latencyList"><div class="metric-label">Waiting for data...</div></div>
+    </div>
+
+    <!-- Revenue -->
+    <div class="card">
+      <div class="card-title">💰 Revenue (1 hour)</div>
+      <div class="metric">
+        <div><div class="metric-value green" id="ovRevTotal">Rp 0</div><div class="metric-label">Total</div></div>
+      </div>
+      <div id="ovRevBreakdown"></div>
+    </div>
+
+    <!-- Event Counters -->
+    <div class="card">
+      <div class="card-title">📊 Event Counters & Gauges</div>
+      <div id="counterGaugeList"><div class="metric-label">No data yet</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TAB: LLM BRAIN ═══ -->
+<div class="tab-content" id="tab-brain">
+  <div class="grid">
+
+    <!-- Provider Stats -->
+    <div class="card col-span-2">
+      <div class="card-title">🧠 LLM Providers
+        <button class="btn btn-ghost btn-sm" onclick="refreshBrainStats()" style="margin-left:auto">🔄 Refresh</button>
+      </div>
+      <div class="provider-grid" id="providerGrid"><div class="metric-label">Loading...</div></div>
+    </div>
+
+    <!-- Routing Table -->
+    <div class="card col-span-2">
+      <div class="card-title">🗺️ Task Routing Table</div>
+      <div style="overflow-x:auto">
+        <table class="routing-table">
+          <thead><tr><th>Task</th><th>Priority Chain</th></tr></thead>
+          <tbody id="routingBody"><tr><td colspan="2" class="metric-label">Loading...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Test Prompt -->
+    <div class="card col-span-2">
+      <div class="card-title">🧪 Test LLM Brain</div>
+      <div class="grid-2" style="margin-bottom:10px">
+        <div>
+          <div class="metric-label" style="margin-bottom:4px">Task Type</div>
+          <select class="select-field" id="testTaskType">
+            <option value="chat_reply">💬 Chat Reply</option>
+            <option value="selling_script">📝 Selling Script</option>
+            <option value="humor">😂 Humor</option>
+            <option value="product_qa">❓ Product QA</option>
+            <option value="emotion_detect">🎭 Emotion Detect</option>
+            <option value="filler">💭 Filler</option>
+            <option value="safety_check">🛡️ Safety Check</option>
+          </select>
+        </div>
+        <div>
+          <div class="metric-label" style="margin-bottom:4px">Provider Override</div>
+          <select class="select-field" id="testProvider">
+            <option value="">🤖 Auto (best route)</option>
+            <optgroup label="⚡ Fast (Cloud)">
+              <option value="groq">⚡ Groq — Llama 3.3 70B (~700ms)</option>
+              <option value="chutes">🌊 Chutes — MiniMax M2.5-TEE (~4s)</option>
+              <option value="gemini">✨ Gemini — 2.0 Flash (quota habis)</option>
+            </optgroup>
+            <optgroup label="🏠 Local — Cherry Studio (8091) FREE">
+              <option value="gemini_local_flash">🟢 Gemini 3 Flash (~5s)</option>
+              <option value="gemini_25_flash">🟢 Gemini 2.5 Flash (~2s)</option>
+              <option value="gemini_local_pro">🔵 Gemini 3.1 Pro High (~20s)</option>
+              <option value="claude_local">🟣 Claude Sonnet 4.5 (~3s)</option>
+              <option value="gpt4o_local">🟡 GPT-4o (~3s)</option>
+              <option value="local">⚪ Local Fallback</option>
+            </optgroup>
+          </select>
+        </div>
+      </div>
+      <div class="metric-label" style="margin-bottom:4px">System Prompt</div>
+      <textarea class="prompt-area" id="testSystemPrompt" style="min-height:50px">Kamu adalah AI host live commerce Indonesia yang ramah dan energik. Kamu sedang live di TikTok menjual produk.</textarea>
+      <div class="metric-label" style="margin:8px 0 4px">User Prompt</div>
+      <textarea class="prompt-area" id="testUserPrompt">Perkenalkan produk skincare terbaru kita, harganya Rp 49.000!</textarea>
+      <div class="btn-row">
+        <button class="btn btn-primary" onclick="sendTestPrompt()" id="testSendBtn">🚀 Send to Brain</button>
+        <button class="btn btn-ghost btn-sm" onclick="clearTestResult()">🗑️ Clear</button>
+      </div>
+      <div id="testResult" style="display:none">
+        <div class="result-box" id="testResultText"></div>
+        <div class="result-meta" id="testResultMeta"></div>
+      </div>
+    </div>
+
+    <!-- Cost Tracker -->
+    <div class="card">
+      <div class="card-title">💵 Cost Tracker (Today)</div>
+      <div class="metric">
+        <div><div class="metric-value green" id="costToday">$0.00</div><div class="metric-label">Spent</div></div>
+        <div style="text-align:right"><div class="metric-sm yellow" id="costBudget">$5.00</div><div class="metric-label">Daily Budget</div></div>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="costBar" style="background:var(--green);width:0%"></div></div>
+      <div id="costByProvider" style="margin-top:12px"></div>
+    </div>
+
+    <!-- Provider Health -->
+    <div class="card">
+      <div class="card-title">🫀 Provider Health
+        <button class="btn btn-ghost btn-sm" onclick="checkBrainHealth()" style="margin-left:auto">🔄 Check</button>
+      </div>
+      <div id="providerHealthList"><div class="metric-label">Click Check to run health checks</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TAB: PIPELINE ═══ -->
+<div class="tab-content" id="tab-pipeline">
+  <div class="grid">
+
+    <!-- State Machine -->
+    <div class="card col-span-2">
+      <div class="card-title">🔄 State Machine</div>
+      <div class="state-machine" id="stateMachine">
+        <div class="state-node disabled" id="sn-IDLE" onclick="transitionState('IDLE')">IDLE</div>
+        <div class="sep">→</div>
+        <div class="state-node disabled" id="sn-SELLING" onclick="transitionState('SELLING')">SELLING</div>
+        <div class="sep">⇄</div>
+        <div class="state-node disabled" id="sn-REACTING" onclick="transitionState('REACTING')">REACTING</div>
+        <div class="sep">⇄</div>
+        <div class="state-node disabled" id="sn-ENGAGING" onclick="transitionState('ENGAGING')">ENGAGING</div>
+      </div>
+      <div id="pipelineInfo" style="font-size:12px;color:var(--muted)">Loading pipeline state...</div>
+    </div>
+
+    <!-- Transition History -->
+    <div class="card">
+      <div class="card-title">📜 Transition History</div>
+      <div id="transitionHistory"><div class="metric-label">No transitions yet</div></div>
+    </div>
+
+    <!-- Pipeline Status -->
+    <div class="card">
+      <div class="card-title">📡 Stream & Pipeline Info</div>
+      <div id="pipelineDetails"><div class="metric-label">Loading...</div></div>
+    </div>
+
+    <!-- Performance Budget -->
+    <div class="card col-span-2">
+      <div class="card-title">🎯 Performance Budget (End-to-End target: 2000ms)</div>
+      <div id="perfBudget">
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-top:8px">
+          <div class="health-item"><div class="metric-value cyan" id="pb-chat">50</div><div class="hname">Chat (ms)</div></div>
+          <div class="health-item"><div class="metric-value cyan" id="pb-llm">200</div><div class="hname">LLM (ms)</div></div>
+          <div class="health-item"><div class="metric-value cyan" id="pb-tts">500</div><div class="hname">TTS (ms)</div></div>
+          <div class="health-item"><div class="metric-value cyan" id="pb-avatar">800</div><div class="hname">Avatar (ms)</div></div>
+          <div class="health-item"><div class="metric-value cyan" id="pb-comp">100</div><div class="hname">Compose (ms)</div></div>
+          <div class="health-item"><div class="metric-value cyan" id="pb-stream">350</div><div class="hname">Stream (ms)</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TAB: COMMERCE ═══ -->
+<div class="tab-content" id="tab-commerce">
+  <div class="grid">
+
+    <!-- Current Product -->
+    <div class="card">
+      <div class="card-title">📦 Current Product</div>
+      <div id="currentProductCard"><div class="metric-label">Loading...</div></div>
+    </div>
+
+    <!-- Product Catalog -->
+    <div class="card col-span-2">
+      <div class="card-title">🛒 Product Catalog
+        <button class="btn btn-ghost btn-sm" onclick="refreshProducts()" style="margin-left:auto">🔄 Refresh</button>
+      </div>
+      <div id="productList"><div class="metric-label">Loading products...</div></div>
+    </div>
+
+    <!-- Revenue Analytics -->
+    <div class="card">
+      <div class="card-title">💰 Revenue Analytics</div>
+      <div class="metric">
+        <div><div class="metric-value green" id="commRevTotal">Rp 0</div><div class="metric-label">Total (1h)</div></div>
+      </div>
+      <div id="commRevBreakdown" style="margin-top:8px"></div>
+      <div class="btn-row">
+        <button class="btn btn-ghost btn-sm" onclick="refreshRevenue(1)">1h</button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshRevenue(6)">6h</button>
+        <button class="btn btn-ghost btn-sm" onclick="refreshRevenue(24)">24h</button>
+      </div>
+    </div>
+
+    <!-- Commerce Metrics -->
+    <div class="card">
+      <div class="card-title">📊 Commerce KPIs</div>
+      <div id="commerceKPIs"><div class="metric-label">Loading...</div></div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TAB: MONITOR ═══ -->
+<div class="tab-content" id="tab-monitor">
+  <div class="grid">
+
+    <!-- Live Chat Feed -->
+    <div class="card col-span-2">
+      <div class="card-title">💬 Live Chat Feed
+        <div class="ws-indicator" style="margin-left:auto">
+          <div class="ws-dot" id="chatWsDot"></div>
+          <span id="chatWsLabel">Disconnected</span>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="clearChat()" style="margin-left:8px">🗑️ Clear</button>
+      </div>
+      <div class="chat-list" id="chatList"><div class="empty-state">Waiting for chat events...</div></div>
+    </div>
+
+    <!-- Chat Stats -->
+    <div class="card">
+      <div class="card-title">📊 Chat Statistics</div>
+      <div id="chatStats">
+        <div class="counter-row"><span>Total Messages</span><span class="cyan" id="csTotalMsg">0</span></div>
+        <div class="counter-row"><span>🛒 Purchase Intent</span><span class="green" id="csPurchase">0</span></div>
+        <div class="counter-row"><span>❓ Questions</span><span class="yellow" id="csQuestion">0</span></div>
+        <div class="counter-row"><span>🎭 Reactions</span><span class="purple" id="csReaction">0</span></div>
+        <div class="counter-row"><span>💬 General</span><span class="muted" id="csGeneral">0</span></div>
+      </div>
+    </div>
+
+    <!-- Safety Monitor -->
+    <div class="card">
+      <div class="card-title">🛡️ Safety Monitor</div>
+      <div id="safetyMonitor">
+        <div class="counter-row"><span>Incidents (session)</span><span class="red" id="smIncidents">0</span></div>
+        <div class="counter-row"><span>Status</span><span class="green" id="smStatus">Clean</span></div>
+      </div>
+      <div style="margin-top:12px">
+        <div class="metric-label" style="margin-bottom:6px">Recent Incidents</div>
+        <div id="safetyLog"><div class="metric-label">No incidents</div></div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ═══ TAB: DIAGNOSTIC ═══ -->
+<div class="tab-content" id="tab-diagnostic">
+  <div class="grid">
+
+    <!-- Full Diagnostic -->
+    <div class="card col-span-2">
+      <div class="card-title">🔬 Full System Diagnostic
+        <button class="btn btn-ghost btn-sm" onclick="runDiagnostic()" style="margin-left:auto">▶ Run Diagnostic</button>
+      </div>
+      <div id="diagReport"><div class="empty-state">Click "Run Diagnostic" to check all components</div></div>
+    </div>
+
+    <!-- System Info -->
+    <div class="card">
+      <div class="card-title">💻 System Info</div>
+      <div id="sysInfo"><div class="metric-label">Loading...</div></div>
+    </div>
+
+    <!-- API Log -->
+    <div class="card">
+      <div class="card-title">📋 API Activity Log
+        <button class="btn btn-ghost btn-sm" onclick="clearApiLog()" style="margin-left:auto">🗑️</button>
+      </div>
+      <div class="log-box" id="apiLog"></div>
+    </div>
+
+  </div>
+</div>
+<script>
+// ═══════════════════════════════════════════════
+// AI LIVE COMMERCE — DASHBOARD JS
+// ═══════════════════════════════════════════════
+
+const API = '';  // same origin
+let wsMain = null;
+let wsChat = null;
+let wsRetryTimer = null;
+let wsMainRetries = 0;
+let wsChatRetries = 0;
+const WS_MAX_RETRIES = 20;
+let chatMsgCount = 0;
+let chatStats = {purchase:0, question:0, reaction:0, general:0};
+let apiLogLines = [];
+
+// ── Error Logger ── (log ke console + UI log box)
+function logErr(ctx, err) {
+  const msg = typeof err === 'string' ? err : (err?.message || JSON.stringify(err));
+  console.error('[DASHBOARD ERROR]', ctx, msg, err);
+  logApi('ERR', ctx, 0, 0);
+}
+
+// ── Tab switching ──
+function switchTab(name) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  const content = document.getElementById('tab-' + name);
+  if (content) content.classList.add('active');
+  // Find the tab button by matching its onclick attribute
+  document.querySelectorAll('.tab').forEach(el => {
+    if (el.getAttribute('onclick') && el.getAttribute('onclick').includes("'" + name + "'")) {
+      el.classList.add('active');
+    }
+  });
+  if (name === 'brain') refreshBrainStats();
+  if (name === 'pipeline') refreshPipeline();
+  if (name === 'commerce') { refreshProducts(); refreshRevenue(1); refreshCommerceKPIs(); }
+  if (name === 'diagnostic') refreshSysInfo();
+}
+
+// ── Toast notifications ──
+function toast(msg, type='info') {
+  const c = document.getElementById('toastContainer');
+  const t = document.createElement('div');
+  t.className = 'toast toast-' + (type==='ok'?'ok':type==='err'?'err':'info');
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ── API log ──
+function logApi(method, url, status, ms) {
+  const cls = status >= 400 ? 'err' : status >= 300 ? 'warn' : 'ok';
+  const line = `[${new Date().toLocaleTimeString()}] ${method} ${url} → ${status} (${ms}ms)`;
+  apiLogLines.unshift(line);
+  if (apiLogLines.length > 80) apiLogLines.pop();
+  const box = document.getElementById('apiLog');
+  if (box) box.innerHTML = apiLogLines.map(l =>
+    `<div class="log-line ${l.includes('→ 2')? 'ok' : l.includes('→ 3')? 'warn' : 'err'}">${l}</div>`
+  ).join('');
+}
+
+// ── Generic fetch helpers ──
+async function apiFetch(url, opts={}) {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(API + url, opts);
+    logApi(opts.method||'GET', url, r.status, Date.now()-t0);
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      console.error('[API ERROR]', opts.method||'GET', url, r.status, errText.slice(0,200));
+    }
+    return r;
+  } catch(e) {
+    logApi(opts.method||'GET', url, 0, Date.now()-t0);
+    console.error('[API NETWORK ERROR]', opts.method||'GET', url, e.message);
+    throw e;
+  }
+}
+
+async function apiGet(url) {
+  try {
+    const r = await apiFetch(url);
+    if (!r.ok) {
+      const errText = await r.text().catch(() => r.statusText);
+      throw new Error('HTTP ' + r.status + ': ' + errText.slice(0,100));
+    }
+    return r.json();
+  } catch(e) {
+    console.error('[apiGet FAILED]', url, e.message);
+    throw e;
+  }
+}
+
+async function apiPost(url, loadingMsg='') {
+  if (loadingMsg) toast(loadingMsg, 'info');
+  try {
+    const r = await apiFetch(url, {method:'POST', headers:{'Content-Type':'application/json'}});
+    const data = await r.json().catch(()=>({}));
+    if (r.ok) toast(data.status || data.message || 'Done ✓', 'ok');
+    else {
+      const errMsg = data.detail || data.error || 'Error ' + r.status;
+      toast(errMsg, 'err');
+      console.error('[apiPost FAILED]', url, r.status, errMsg);
+    }
+    refreshStatus();
+    return data;
+  } catch(e) {
+    toast('Network error: ' + e.message, 'err');
+    console.error('[apiPost NETWORK ERROR]', url, e.message);
+  }
+}
+
+async function apiPostBody(url, body) {
+  const r = await apiFetch(url, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+// ── Format helpers ──
+function fmtMs(ms) { return ms == null ? '—' : ms.toFixed(0) + 'ms'; }
+function fmtSec(s) {
+  if (s == null) return '—';
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${sec}s`;
+  return `${sec}s`;
+}
+function fmtRp(v) {
+  if (v == null) return 'Rp 0';
+  return 'Rp ' + Math.round(v).toLocaleString('id-ID');
+}
+function fmtUsd(v) { return v == null ? '$0.00' : '$' + v.toFixed(4); }
+function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : '—'; }
+
+// ── WebSocket — Main Dashboard ──
+function connectWsMain() {
+  const wsUrl = 'ws://' + location.host + '/api/ws/dashboard';
+  const dot = document.getElementById('wsDot');
+  const lbl = document.getElementById('wsLabel');
+  if (wsMainRetries >= WS_MAX_RETRIES) {
+    lbl.textContent = 'WS Disabled (max retries)';
+    console.warn('[WS] Main dashboard WS disabled after', WS_MAX_RETRIES, 'retries — polling only');
+    return;
+  }
+  try {
+    wsMain = new WebSocket(wsUrl);
+    wsMain.onopen = () => {
+      wsMainRetries = 0;
+      dot.classList.add('connected'); dot.classList.remove('error');
+      lbl.textContent = 'Live';
+      console.info('[WS] Dashboard connected');
+    };
+    wsMain.onmessage = (ev) => {
+      try {
+        handleWsDashboard(JSON.parse(ev.data));
+      } catch(e) {
+        logErr('ws_main_parse', e);
+      }
+    };
+    wsMain.onclose = (ev) => {
+      wsMainRetries++;
+      dot.classList.remove('connected'); dot.classList.add('error');
+      const delay = Math.min(1000 * wsMainRetries, 15000);
+      lbl.textContent = 'Reconnecting (' + wsMainRetries + ')...';
+      console.warn('[WS] Dashboard closed, retry', wsMainRetries, 'in', delay + 'ms', 'code:', ev.code);
+      clearTimeout(wsRetryTimer);
+      wsRetryTimer = setTimeout(connectWsMain, delay);
+    };
+    wsMain.onerror = (ev) => {
+      console.error('[WS] Dashboard error:', ev);
+      logErr('ws_main_error', 'WebSocket error');
+      wsMain.close();
+    };
+  } catch(e) {
+    logErr('ws_main_connect', e);
+  }
+}
+
+function connectWsChat() {
+  const wsUrl = 'ws://' + location.host + '/api/ws/chat';
+  const dot = document.getElementById('chatWsDot');
+  const lbl = document.getElementById('chatWsLabel');
+  if (wsChatRetries >= WS_MAX_RETRIES) {
+    lbl.textContent = 'WS Disabled (max retries)';
+    return;
+  }
+  try {
+    wsChat = new WebSocket(wsUrl);
+    wsChat.onopen = () => {
+      wsChatRetries = 0;
+      dot.classList.add('connected');
+      lbl.textContent = 'Connected';
+      console.info('[WS] Chat connected');
+    };
+    wsChat.onmessage = (ev) => {
+      try { addChatEvent(JSON.parse(ev.data)); } catch(e) { logErr('ws_chat_parse', e); }
+    };
+    wsChat.onclose = (ev) => {
+      wsChatRetries++;
+      dot.classList.remove('connected');
+      const delay = Math.min(1000 * wsChatRetries, 15000);
+      lbl.textContent = 'Reconnecting (' + wsChatRetries + ')...';
+      console.warn('[WS] Chat closed, retry', wsChatRetries, 'in', delay + 'ms');
+      setTimeout(connectWsChat, delay);
+    };
+    wsChat.onerror = (ev) => {
+      console.error('[WS] Chat error:', ev);
+      logErr('ws_chat_error', 'WebSocket chat error');
+      wsChat.close();
+    };
+  } catch(e) {
+    logErr('ws_chat_connect', e);
+  }
+}
+
+// ── Handle WS dashboard snapshot ──
+function handleWsDashboard(d) {
+  // Header badges
+  const sb = document.getElementById('stateBadge');
+  const state = (d.pipeline_state || '—').toUpperCase();
+  sb.textContent = state;
+  sb.className = 'badge badge-' + state.toLowerCase();
+  const mb = document.getElementById('mockBadge');
+  mb.textContent = d.mock_mode ? 'MOCK' : 'LIVE';
+  mb.className = 'badge badge-' + (d.mock_mode ? 'mock' : 'live');
+
+  // Overview
+  const ov = document.getElementById('ovStateValue');
+  if (ov) { ov.textContent = state; ov.className = 'metric-value ' + stateColor(state); }
+  setText('ovUptime', fmtSec(d.uptime_sec));
+  setText('ovViewers', (d.gauges?.viewer_count ?? 0).toLocaleString());
+  const budget = d.llm_stats?._summary?.budget_remaining ?? 5;
+  setText('ovBudget', fmtUsd(budget));
+  const prod = d.current_product;
+  setText('ovProduct', prod ? prod.name + ' • ' + prod.price : '—');
+  setText('ovSafety', d.gauges?.safety_incidents ?? 0);
+
+  // Stream status
+  updateStreamStatus(d.stream_running, d.emergency_stopped);
+
+  // Latency
+  if (d.latency) renderLatency(d.latency);
+
+  // Revenue
+  if (d.revenue) renderRevenue(d.revenue);
+
+  // Counters + gauges
+  if (d.counters || d.gauges) renderCountersGauges(d.counters||{}, d.gauges||{});
+
+  // Brain cost (from ws)
+  if (d.llm_stats) renderCostTracker(d.llm_stats);
+
+  // Pipeline tab update
+  if (d.pipeline_state) updateStateMachineUI(d.pipeline_state);
+}
+
+function stateColor(s) {
+  return {SELLING:'green', REACTING:'orange', ENGAGING:'purple', IDLE:'muted'}[s] || 'cyan';
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+
+function updateStreamStatus(running, emergency) {
+  const dot = document.getElementById('streamDot');
+  const lbl = document.getElementById('streamStatus');
+  if (!dot || !lbl) return;
+  if (emergency) {
+    dot.className = 'status-dot dot-red';
+    lbl.textContent = '🛑 Emergency Stopped';
+    lbl.style.color = 'var(--accent)';
+  } else if (running) {
+    dot.className = 'status-dot dot-green';
+    lbl.textContent = '🔴 LIVE — Streaming';
+    lbl.style.color = 'var(--green)';
+  } else {
+    dot.className = 'status-dot dot-gray';
+    lbl.textContent = '⏸ Stopped';
+    lbl.style.color = 'var(--muted)';
+  }
+}
+
+// ── Latency renderer ──
+function renderLatency(lat) {
+  const el = document.getElementById('latencyList');
+  if (!el) return;
+  const entries = Object.entries(lat);
+  if (!entries.length) { el.innerHTML = '<div class="metric-label">No data yet</div>'; return; }
+  el.innerHTML = entries.map(([op, v]) => `
+    <div class="latency-row">
+      <span class="latency-op">${op.replace(/_/g,' ')}</span>
+      <div class="latency-vals">
+        <span class="lv-p50">p50: ${fmtMs(v.p50_ms)}</span>
+        <span class="lv-p95">p95: ${fmtMs(v.p95_ms)}</span>
+        <span class="muted">cnt: ${v.count||0}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ── Revenue renderer ──
+function renderRevenue(rev, prefix='ov') {
+  const total = rev.total ?? rev.tiktok ?? 0;
+  const el = document.getElementById(prefix+'RevTotal');
+  if (el) el.textContent = fmtRp(total);
+  const bd = document.getElementById(prefix+'RevBreakdown');
+  if (!bd) return;
+  const platforms = Object.entries(rev).filter(([k])=>k!=='total');
+  bd.innerHTML = platforms.map(([p,v]) => `
+    <div class="counter-row">
+      <span>${cap(p)}</span>
+      <span class="green">${fmtRp(v)}</span>
+    </div>`).join('') || '<div class="metric-label">No revenue data</div>';
+}
+
+// ── Counters & Gauges ──
+function renderCountersGauges(counters, gauges) {
+  const el = document.getElementById('counterGaugeList');
+  if (!el) return;
+  let html = '';
+  const cEntries = Object.entries(counters);
+  const gEntries = Object.entries(gauges).filter(([k])=>k!=='viewer_count'&&k!=='safety_incidents');
+  if (cEntries.length) {
+    html += '<div class="metric-label" style="margin-bottom:4px">Counters</div>';
+    html += cEntries.map(([k,v]) => `<div class="counter-row"><span>${k.replace(/_/g,' ')}</span><span class="cyan">${v}</span></div>`).join('');
+  }
+  if (gEntries.length) {
+    html += '<div class="metric-label" style="margin-top:10px;margin-bottom:4px">Gauges</div>';
+    html += gEntries.map(([k,v]) => `<div class="gauge-row"><span>${k.replace(/_/g,' ')}</span><span class="yellow">${typeof v==='number'?v.toFixed(2):v}</span></div>`).join('');
+  }
+  el.innerHTML = html || '<div class="metric-label">No data yet</div>';
+}
+
+// ── Refresh status (REST fallback) ──
+async function refreshStatus() {
+  try {
+    const d = await apiGet('/api/status');
+    updateStreamStatus(d.stream_status==='running'||d.stream_status==='live', false);
+    const ov = document.getElementById('ovStateValue');
+    if (ov) { ov.textContent = d.state||'—'; ov.className='metric-value '+stateColor((d.state||'').toUpperCase()); }
+    setText('ovUptime', fmtSec(d.uptime_sec));
+    setText('ovViewers', d.viewer_count||0);
+    setText('ovBudget', fmtUsd(d.llm_budget_remaining));
+    setText('ovSafety', d.safety_incidents||0);
+    if (d.current_product) setText('ovProduct', d.current_product.name);
+    updateStateMachineUI(d.state);
+  } catch(e) {}
+}
+
+// ── Health Checks ──
+async function refreshHealth() {
+  const el = document.getElementById('healthGrid');
+  if (el) el.innerHTML = '<span class="loading-spin"></span>';
+  try {
+    const d = await apiGet('/api/health/summary');
+    const comps = d.components || {};
+    const html = Object.entries(comps).map(([name,status]) => {
+      const cls = status==='healthy'?'dot-green':status==='degraded'?'dot-yellow':'dot-red';
+      const icon = status==='healthy'?'✅':status==='degraded'?'⚠️':'❌';
+      return `<div class="health-item">
+        <div style="font-size:22px">${icon}</div>
+        <div class="status-dot ${cls}" style="margin:0 auto 2px"></div>
+        <div class="hname">${name}</div>
+      </div>`;
+    }).join('');
+    if (el) el.innerHTML = html || '<div class="metric-label">No health data</div>';
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="metric-label red">Health check failed</div>';
+  }
+}
+
+// ── LLM Brain ──
+async function refreshBrainStats() {
+  const grid = document.getElementById('providerGrid');
+  const tbody = document.getElementById('routingBody');
+  if (grid) grid.innerHTML = '<span class="loading-spin"></span>';
+  try {
+    const [stats, config] = await Promise.all([
+      apiGet('/api/brain/stats'),
+      apiGet('/api/brain/config')
+    ]);
+    
+    // Check for initialization error
+    if (stats.error) {
+      if (grid) {
+        grid.innerHTML = `<div class="metric-label red" style="grid-column: 1/-1; padding: 20px; text-align: center;">
+          <div style="font-size: 18px; margin-bottom: 10px;">❌ ${stats.error}</div>
+          ${stats.hint ? `<div style="font-size: 12px; color: var(--muted);">${stats.hint}</div>` : ''}
+          <div style="margin-top: 10px; font-size: 11px; color: var(--muted);">Check server logs for details</div>
+        </div>`;
+      }
+      if (tbody) {
+        tbody.innerHTML = '<tr><td colspan="2" class="metric-label red">Router not initialized</td></tr>';
+      }
+      return;
+    }
+    
+    // Provider cards
+    if (grid && stats.adapters) {
+      const usage = stats.providers || {};
+      grid.innerHTML = Object.entries(stats.adapters).map(([name, a]) => {
+        const u = usage[name] || {};
+        const mock = document.getElementById('mockBadge')?.textContent === 'MOCK';
+        const avail = a.available;
+        const availCls = mock ? 'pavail-mock' : avail ? 'pavail-ok' : 'pavail-fail';
+        const availTxt = mock ? 'MOCK' : avail ? 'OK' : 'DOWN';
+        return `<div class="provider-card">
+          <span class="pavail ${availCls}">${availTxt}</span>
+          <div class="pname">${name}</div>
+          <div class="pmodel">${a.model||'—'}</div>
+          <div class="pstat muted">calls: <b>${u.total_calls||0}</b></div>
+          <div class="pstat muted">cost: <b>${fmtUsd(u.total_cost_usd)}</b></div>
+          <div class="pstat muted">avg: <b>${fmtMs(u.avg_latency_ms)}</b> | err: <b>${((u.error_rate||0)*100).toFixed(1)}%</b></div>
+        </div>`;
+      }).join('');
+    }
+    // Routing table
+    if (tbody && config.routing_table) {
+      tbody.innerHTML = Object.entries(config.routing_table).map(([task, providers]) => {
+        const tags = providers.map((p,i) =>
+          `<span class="ptag ${i===0?'ptag-primary':(p==='local'||p.startsWith('gemini_local')?'ptag-local':'ptag-fallback')}">${p}</span>`
+        ).join('');
+        return `<tr><td>${task.replace(/_/g,' ')}</td><td>${tags}</td></tr>`;
+      }).join('');
+    }
+    // Cost tracker — normalize dari /api/brain/stats format
+    const providerStats = stats.providers || {};
+    renderCostTracker(providerStats);
+  } catch(e) {
+    if (grid) grid.innerHTML = '<div class="metric-label red">Failed to load: '+e.message+'</div>';
+  }
+}
+
+function renderCostTracker(providers) {
+  // providers bisa dari WS (llm_stats) atau REST (/api/brain/stats.providers)
+  const summary = providers?._summary;
+  if (!summary) {
+    // Kalau tidak ada _summary, hitung manual dari providers
+    const allProviders = Object.entries(providers || {});
+    const totalCost = allProviders.reduce((sum, [k,v]) => sum + (v?.total_cost_usd || 0), 0);
+    if (totalCost === 0) return;
+    setText('costToday', fmtUsd(totalCost));
+    const cpv = document.getElementById('costByProvider');
+    if (cpv) {
+      const entries = allProviders.filter(([k,v]) => (v?.total_cost_usd||0) > 0);
+      cpv.innerHTML = entries.length ? entries.map(([k,v]) =>
+        `<div class="counter-row"><span>${k}</span><span class="yellow">${fmtUsd(v.total_cost_usd)}</span></div>`
+      ).join('') : '<div class="metric-label">No costs yet</div>';
+    }
+    return;
+  }
+  setText('costToday', fmtUsd(summary.daily_cost));
+  setText('costBudget', fmtUsd(summary.daily_budget));
+  const pct = Math.min(100, (summary.daily_cost / (summary.daily_budget||5)) * 100);
+  const bar = document.getElementById('costBar');
+  if (bar) {
+    bar.style.width = pct + '%';
+    bar.style.background = pct > 80 ? 'var(--accent)' : pct > 50 ? 'var(--yellow)' : 'var(--green)';
+  }
+  const cpv = document.getElementById('costByProvider');
+  if (cpv) {
+    const entries = Object.entries(providers).filter(([k])=>k!=='_summary'&&(providers[k].total_cost_usd||0)>0);
+    cpv.innerHTML = entries.length ? entries.map(([k,v]) =>
+      `<div class="counter-row"><span>${k}</span><span class="yellow">${fmtUsd(v.total_cost_usd)}</span></div>`
+    ).join('') : '<div class="metric-label">No costs yet</div>';
+  }
+}
+
+async function checkBrainHealth() {
+  const el = document.getElementById('providerHealthList');
+  if (el) el.innerHTML = '<span class="loading-spin"></span> Checking all providers...';
+  try {
+    const d = await apiGet('/api/brain/health');
+    if (el) {
+      el.innerHTML = Object.entries(d.providers||{}).map(([name,ok]) => `
+        <div class="counter-row">
+          <span>${ok?'✅':'❌'} ${name}</span>
+          <span class="${ok?'green':'red'}">${ok?'Healthy':'Failed'}</span>
+        </div>`).join('') || '<div class="metric-label">No providers</div>';
+    }
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="metric-label red">Health check failed</div>';
+  }
+}
+
+async function sendTestPrompt() {
+  const btn = document.getElementById('testSendBtn');
+  const resDiv = document.getElementById('testResult');
+  const resText = document.getElementById('testResultText');
+  const resMeta = document.getElementById('testResultMeta');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="loading-spin"></span> Sending...';
+  resDiv.style.display = 'none';
+  try {
+    const body = {
+      task_type: document.getElementById('testTaskType').value,
+      system_prompt: document.getElementById('testSystemPrompt').value,
+      user_prompt: document.getElementById('testUserPrompt').value,
+      provider: document.getElementById('testProvider').value || null
+    };
+    const d = await apiPostBody('/api/brain/test', body);
+    resText.textContent = d.text || '[empty response]';
+    resText.style.borderColor = d.success ? 'rgba(0,212,255,.15)' : 'rgba(233,69,96,.3)';
+    resMeta.innerHTML = `
+      <span>Provider: <b>${d.provider}</b></span>
+      <span>Model: <b>${d.model}</b></span>
+      <span>Latency: <b class="cyan">${fmtMs(d.latency_ms)}</b></span>
+      <span>Tokens: <b>${(d.input_tokens||0)+(d.output_tokens||0)}</b></span>
+      <span>Cost: <b class="yellow">${fmtUsd(d.cost_usd)}</b></span>
+      <span class="${d.success?'green':'red'}">${d.success?'✅ Success':'❌ '+d.error}</span>`;
+    resDiv.style.display = 'block';
+    toast(d.success ? '✅ Response received from '+d.provider : '❌ '+d.error, d.success?'ok':'err');
+  } catch(e) {
+    resText.textContent = 'Error: ' + e.message;
+    resDiv.style.display = 'block';
+    toast('Failed: '+e.message, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '🚀 Send to Brain';
+  }
+}
+
+function clearTestResult() {
+  document.getElementById('testResult').style.display = 'none';
+}
+
+// ── Pipeline ──
+async function refreshPipeline() {
+  try {
+    const d = await apiGet('/api/pipeline/state');
+    updateStateMachineUI(d.state);
+    // Details
+    const det = document.getElementById('pipelineDetails');
+    if (det) det.innerHTML = `
+      <div class="counter-row"><span>Stream Running</span><span class="${d.stream_running?'green':'muted'}">${d.stream_running?'✅ Yes':'⏸ No'}</span></div>
+      <div class="counter-row"><span>Emergency Stop</span><span class="${d.emergency_stopped?'red':'green'}">${d.emergency_stopped?'🛑 YES':'✅ Clear'}</span></div>
+      <div class="counter-row"><span>Valid Transitions</span><span class="cyan">${(d.valid_transitions||[]).join(', ')||'—'}</span></div>`;
+    // History
+    const hist = document.getElementById('transitionHistory');
+    if (hist && d.history) {
+      hist.innerHTML = d.history.length ? [...d.history].reverse().slice(0,10).map(h =>
+        `<div class="counter-row"><span class="muted">${new Date(h.timestamp*1000).toLocaleTimeString()}</span><span>${h.from} → <b class="cyan">${h.to}</b></span></div>`
+      ).join('') : '<div class="metric-label">No transitions yet</div>';
+    }
+    // Pipeline info text
+    const pi = document.getElementById('pipelineInfo');
+    if (pi) pi.textContent = `Current: ${d.state} | Stream: ${d.stream_running?'Running':'Stopped'} | Emergency: ${d.emergency_stopped?'YES':'No'}`;
+  } catch(e) {}
+}
+
+function updateStateMachineUI(currentState) {
+  ['IDLE','SELLING','REACTING','ENGAGING'].forEach(s => {
+    const el = document.getElementById('sn-'+s);
+    if (!el) return;
+    el.className = 'state-node ' + ((s===currentState?.toUpperCase()) ? 'current' : 'available');
+  });
+}
+
+async function transitionState(targetState) {
+  try {
+    const d = await apiPostBody('/api/pipeline/transition', {target_state: targetState});
+    toast(`→ ${d.to}`, 'ok');
+    updateStateMachineUI(d.to);
+    refreshPipeline();
+  } catch(e) { toast('Transition failed: '+e.message, 'err'); }
+}
+
+function confirmEmergencyStop() {
+  if (confirm('🛑 EMERGENCY STOP\n\nThis will immediately halt all operations.\nAre you sure?')) {
+    apiPost('/api/emergency-stop', '🛑 Emergency stopping...');
+  }
+}
+
+// ── Commerce ──
+async function refreshProducts() {
+  const el = document.getElementById('productList');
+  const cur = document.getElementById('currentProductCard');
+  if (el) el.innerHTML = '<span class="loading-spin"></span>';
+  try {
+    const products = await apiGet('/api/products');
+    const current = products.find(p => p.is_active);
+    if (cur) {
+      cur.innerHTML = current ? `
+        <div class="metric-value purple">${current.name}</div>
+        <div class="metric-label" style="margin-top:4px">${current.price_formatted || fmtRp(current.price)} • ${current.category}</div>
+        <div class="btn-row"><button class="btn btn-ghost btn-sm" onclick="refreshProducts()">🔄 Refresh</button></div>
+      ` : '<div class="metric-label">No active product</div>';
+    }
+    if (el) {
+      el.innerHTML = products.length ? products.map(p => `
+        <div class="product-item ${p.is_active?'current-product':''}">
+          <div>
+            <div style="font-weight:600;font-size:13px">${p.is_active?'🟢 ':''} ${p.name}</div>
+            <div style="font-size:11px;color:var(--muted)">${p.category} • ID: ${p.id}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-weight:700;color:var(--green)">${p.price_formatted || fmtRp(p.price)}</div>
+            ${!p.is_active?`<button class="btn btn-sm btn-ghost" onclick="switchProduct(${p.id})" style="margin-top:4px">Switch</button>`:'<span class="metric-label">ACTIVE</span>'}
+          </div>
+        </div>`).join('')
+      : '<div class="empty-state">No products in catalog</div>';
+    }
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="metric-label red">Failed: '+e.message+'</div>';
+  }
+}
+
+async function switchProduct(id) {
+  try {
+    await apiPost('/api/products/'+id+'/switch', '🔄 Switching product...');
+    refreshProducts();
+  } catch(e) { toast('Failed: '+e.message, 'err'); }
+}
+
+async function refreshRevenue(hours=1) {
+  try {
+    const d = await apiGet('/api/analytics/revenue?hours='+hours);
+    const total = d.total ?? Object.values(d).reduce((a,b)=>a+b,0);
+    setText('commRevTotal', fmtRp(total));
+    const bd = document.getElementById('commRevBreakdown');
+    if (bd) {
+      const entries = Object.entries(d).filter(([k])=>k!=='total');
+      bd.innerHTML = entries.map(([k,v]) =>
+        `<div class="counter-row"><span>${cap(k)}</span><span class="green">${fmtRp(v)}</span></div>`
+      ).join('') || '<div class="metric-label">No revenue data</div>';
+    }
+  } catch(e) {}
+}
+
+// ── Commerce KPIs from snapshot ──
+async function refreshCommerceKPIs() {
+  try {
+    const d = await apiGet('/api/metrics?window=3600');
+    const el = document.getElementById('commerceKPIs');
+    if (!el) return;
+    const cnt = d.counters || {};
+    const lat = d.latency || {};
+    el.innerHTML = Object.entries(cnt).map(([k,v]) =>
+      `<div class="counter-row"><span>${k.replace(/_/g,' ')}</span><span class="cyan">${v}</span></div>`
+    ).join('') || '<div class="metric-label">No KPI data yet</div>';
+  } catch(e) {}
+}
+
+// ── Chat Monitor ──
+function addChatEvent(ev) {
+  const list = document.getElementById('chatList');
+  if (!list) return;
+  const empty = list.querySelector('.empty-state');
+  if (empty) empty.remove();
+  chatMsgCount++;
+  // Update stats
+  chatStats[ev.intent] = (chatStats[ev.intent]||0)+1;
+  setText('csTotalMsg', chatMsgCount);
+  setText('csPurchase', chatStats.purchase||0);
+  setText('csQuestion', chatStats.question||0);
+  setText('csReaction', chatStats.reaction||0);
+  setText('csGeneral', chatStats.general||0);
+  const item = document.createElement('div');
+  item.className = 'chat-item ' + (ev.intent||'general');
+  const intentBadge = ev.intent && ev.intent !== 'general'
+    ? `<span class="chat-intent-badge intent-${ev.intent}">${ev.intent}</span>` : '';
+  item.innerHTML = `${intentBadge}<span class="chat-username">${ev.username||'anon'}</span><span class="chat-platform">[${ev.platform||'?'}]</span> ${ev.message||''}`;
+  list.insertBefore(item, list.firstChild);
+  // Keep max 100 messages
+  while (list.children.length > 100) list.removeChild(list.lastChild);
+}
+
+function clearChat() {
+  const list = document.getElementById('chatList');
+  if (list) list.innerHTML = '<div class="empty-state">Chat cleared</div>';
+  chatMsgCount = 0; chatStats = {purchase:0,question:0,reaction:0,general:0};
+  setText('csTotalMsg',0); setText('csPurchase',0); setText('csQuestion',0); setText('csReaction',0); setText('csGeneral',0);
+}
+
+// ── Diagnostic ──
+async function runDiagnostic() {
+  const el = document.getElementById('diagReport');
+  if (el) el.innerHTML = '<span class="loading-spin"></span> Running full diagnostic...';
+  try {
+    const d = await apiGet('/diagnostic/');
+    const overall = d.overall_status||'unknown';
+    const overallCls = overall==='healthy'?'ds-ok':overall==='degraded'?'ds-warn':'ds-fail';
+    const comps = (d.components||[]).map(c => {
+      const scls = c.status==='healthy'?'ds-ok':c.status==='mock'?'ds-mock':c.status==='degraded'?'ds-warn':'ds-fail';
+      return `<div class="diag-item">
+        <div class="diag-name">${c.name}</div>
+        <span class="diag-status ${scls}">${c.status}</span>
+        <span class="diag-ms">${c.latency_ms?c.latency_ms.toFixed(0)+'ms':''}</span>
+        <span class="diag-msg" title="${c.message||''}">${c.message||''}</span>
+      </div>`;
+    }).join('');
+    if (el) el.innerHTML = `
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+        <span style="font-size:18px;font-weight:800">Overall: </span>
+        <span class="diag-status ${overallCls}" style="font-size:14px">${overall.toUpperCase()}</span>
+        <span class="muted" style="font-size:11px">Mock: ${d.mock_mode?'YES':'NO'} | DB: ${d.database?.tables??'?'} tables</span>
+      </div>
+      ${comps || '<div class="metric-label">No component data</div>'}`;
+    toast(overall==='healthy'?'✅ System healthy':'⚠️ Check diagnostic report', overall==='healthy'?'ok':'err');
+  } catch(e) {
+    if (el) el.innerHTML = '<div class="metric-label red">Diagnostic failed: '+e.message+'</div>';
+  }
+}
+
+async function refreshSysInfo() {
+  try {
+    const d = await apiGet('/diagnostic/');
+    const el = document.getElementById('sysInfo');
+    if (!el || !d.system) return;
+    el.innerHTML = `
+      <div class="counter-row"><span>Python</span><span class="cyan">${d.system.python||'—'}</span></div>
+      <div class="counter-row"><span>Platform</span><span class="muted">${d.system.platform||'—'}</span></div>
+      <div class="counter-row"><span>PID</span><span class="muted">${d.system.pid||'—'}</span></div>
+      <div class="counter-row"><span>DB Tables</span><span class="cyan">${d.database?.tables??'—'}</span></div>
+      <div class="counter-row"><span>Mock Mode</span><span class="${d.mock_mode?'yellow':'green'}">${d.mock_mode?'YES':'NO'}</span></div>
+      <div class="counter-row"><span>Config Loaded</span><span class="${d.config_loaded?'green':'red'}">${d.config_loaded?'YES':'NO'}</span></div>`;
+  } catch(e) {}
+}
+
+function clearApiLog() {
+  apiLogLines = [];
+  const box = document.getElementById('apiLog');
+  if (box) box.innerHTML = '';
+}
+
+// ── Initial load ──
+async function init() {
+  await Promise.all([refreshStatus(), refreshHealth()]);
+  connectWsMain();
+  connectWsChat();
+  // Fallback polling if WS not available
+  setInterval(async () => {
+    if (!wsMain || wsMain.readyState !== WebSocket.OPEN) {
+      await refreshStatus();
+      try {
+        const d = await apiGet('/api/metrics?window=60');
+        if (d.latency) renderLatency(d.latency);
+        if (d.revenue) renderRevenue(d.revenue);
+        if (d.counters||d.gauges) renderCountersGauges(d.counters||{},d.gauges||{});
+      } catch(e) {}
+    }
+  }, 5000);
+  // Health refresh every 30s
+  setInterval(refreshHealth, 30000);
+}
+
+window.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>

@@ -1,0 +1,712 @@
+"""Dashboard REST API — Control and monitoring endpoints.
+
+Provides full system control: status, metrics, products, stream, LLM brain,
+emergency stop, and interactive pipeline workflow.
+Requirements: 11.1, 11.2, 11.3, 11.4, 11.5
+
+Error handling strategy:
+  - Every endpoint wrapped in try/except
+  - Errors logged via structlog with full context
+  - User receives JSON error (never raw 500 crash)
+  - WebSocket errors logged and connection closed gracefully
+"""
+
+from __future__ import annotations
+
+import asyncio
+import os
+import time
+from typing import Any
+
+from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
+
+from src.commerce.analytics import get_analytics
+from src.commerce.manager import AffiliateTracker, Product, ProductManager
+from src.config import get_config, get_env, is_mock_mode
+from src.utils.health import get_health_manager
+from src.utils.logging import get_logger
+
+logger = get_logger("dashboard.api")
+
+router = APIRouter(prefix="/api", tags=["dashboard"])
+
+
+# ── Response Models ──────────────────────────────────────────────
+
+class SystemStatus(BaseModel):
+    state: str
+    mock_mode: bool
+    uptime_sec: float
+    viewer_count: int
+    current_product: dict[str, Any] | None
+    stream_status: str
+    llm_budget_remaining: float
+    safety_incidents: int
+
+
+class MetricsResponse(BaseModel):
+    latency: dict[str, dict[str, float]]
+    revenue: dict[str, float]
+    counters: dict[str, int]
+    gauges: dict[str, float]
+
+
+class ProductResponse(BaseModel):
+    id: int
+    name: str
+    price: float
+    price_formatted: str
+    category: str
+    is_active: bool
+
+
+class ChatEventResponse(BaseModel):
+    platform: str
+    username: str
+    message: str
+    intent: str
+    priority: int
+    timestamp: float
+
+
+class BrainTestRequest(BaseModel):
+    """Request to test LLM Brain with a prompt."""
+    system_prompt: str = "Kamu adalah AI host live commerce Indonesia yang ramah dan energik."
+    user_prompt: str = "Halo, perkenalkan produk ini!"
+    task_type: str = "chat_reply"
+    provider: str | None = None
+
+
+class BrainTestResponse(BaseModel):
+    """Response from LLM Brain test."""
+    text: str
+    provider: str
+    model: str
+    task_type: str
+    latency_ms: float
+    cost_usd: float
+    success: bool
+    error: str = ""
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+# ── Shared state (initialized by main.py) ────────────────────────
+
+_product_manager: ProductManager | None = None
+_affiliate_tracker: AffiliateTracker | None = None
+_system_start_time = time.time()
+_stream_running = False
+_emergency_stopped = False
+
+# Pipeline state machine
+_pipeline_state = "IDLE"  # IDLE, SELLING, REACTING, ENGAGING, PAUSED
+_pipeline_history: list[dict[str, Any]] = []
+MAX_PIPELINE_HISTORY = 100
+
+# Shared LLM Router instance
+_llm_router = None
+
+# Recent chat events buffer
+_recent_chats: list[dict[str, Any]] = []
+MAX_RECENT_CHATS = 50
+
+
+def init_dashboard_state(
+    product_manager: ProductManager | None = None,
+    affiliate_tracker: AffiliateTracker | None = None,
+) -> None:
+    """Initialize dashboard shared state from main app."""
+    global _product_manager, _affiliate_tracker
+    _product_manager = product_manager or ProductManager()
+    _affiliate_tracker = affiliate_tracker or AffiliateTracker()
+
+
+def get_llm_router():
+    """Get or create the shared LLM Router instance."""
+    global _llm_router
+    if _llm_router is None:
+        try:
+            from src.brain.router import LLMRouter
+            logger.info("llm_router_initializing")
+            _llm_router = LLMRouter()
+            logger.info("llm_router_initialized", adapters=list(_llm_router.adapters.keys()))
+        except Exception as e:
+            logger.error("llm_router_init_failed", error=str(e), exc_info=True)
+            return None
+    return _llm_router
+
+
+def record_chat_event(event: dict[str, Any]) -> None:
+    """Record a chat event for the dashboard. Thread-safe via GIL."""
+    _recent_chats.append(event)
+    if len(_recent_chats) > MAX_RECENT_CHATS:
+        _recent_chats.pop(0)
+
+
+# ── System Endpoints ─────────────────────────────────────────────
+
+@router.get("/status")
+async def get_status() -> dict[str, Any]:
+    """Get full system status (no auth required)."""
+    try:
+        analytics = get_analytics()
+        pm = _product_manager or ProductManager()
+        current = pm.get_current_product()
+        gauges = analytics.get_gauges()
+        counters = analytics.get_counters()
+        return {
+            "state": _pipeline_state if not _emergency_stopped else "STOPPED",
+            "mock_mode": is_mock_mode(),
+            "uptime_sec": round(time.time() - _system_start_time, 0),
+            "viewer_count": int(gauges.get("viewers", 0)),
+            "current_product": {
+                "id": current.id,
+                "name": current.name,
+                "price": current.price_formatted,
+            } if current else None,
+            "stream_status": "stopped" if _emergency_stopped else ("live" if _stream_running else "idle"),
+            "stream_running": _stream_running,
+            "emergency_stopped": _emergency_stopped,
+            "llm_budget_remaining": gauges.get("llm_budget_remaining", 5.0),
+            "safety_incidents": counters.get("safety_incident", 0),
+        }
+    except Exception as e:
+        logger.error("status_endpoint_error", error=str(e), exc_info=True)
+        return {
+            "state": "ERROR", "mock_mode": is_mock_mode(),
+            "uptime_sec": round(time.time() - _system_start_time, 0),
+            "error": str(e), "stream_running": _stream_running,
+            "emergency_stopped": _emergency_stopped,
+        }
+
+
+@router.get("/metrics")
+async def get_metrics(window: int = 60) -> dict[str, Any]:
+    """Get aggregated metrics with configurable time window."""
+    try:
+        analytics = get_analytics()
+        return {
+            "latency": analytics.get_all_latency_stats(float(window)),
+            "revenue": analytics.get_revenue_summary(float(window)),
+            "counters": analytics.get_counters(),
+            "gauges": analytics.get_gauges(),
+            "window_sec": window,
+        }
+    except Exception as e:
+        logger.error("metrics_endpoint_error", error=str(e), exc_info=True)
+        return {"error": str(e), "latency": {}, "revenue": {}, "counters": {}, "gauges": {}}
+
+
+# ── Product Endpoints ────────────────────────────────────────────
+
+@router.get("/products")
+async def list_products() -> list[dict[str, Any]]:
+    """List all active products."""
+    try:
+        pm = _product_manager or ProductManager()
+        return [
+            {
+                "id": p.id, "name": p.name, "price": p.price,
+                "price_formatted": p.price_formatted,
+                "category": p.category, "is_active": p.is_active,
+            }
+            for p in pm.get_all_active()
+        ]
+    except Exception as e:
+        logger.error("list_products_error", error=str(e), exc_info=True)
+        return []
+
+
+@router.post("/products/{product_id}/switch")
+async def switch_product(product_id: int) -> dict[str, Any]:
+    """Manually switch to a specific product."""
+    try:
+        pm = _product_manager or ProductManager()
+        products = pm.get_all_active()
+        target = next((p for p in products if p.id == product_id), None)
+        if not target:
+            raise HTTPException(404, f"Product {product_id} not found")
+        for i, p in enumerate(pm._products):
+            if p.id == product_id:
+                pm._current_index = i
+                break
+        logger.info("product_switched", product_id=product_id, name=target.name)
+        return {"status": "switched", "product": target.name}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("switch_product_error", product_id=product_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to switch product: {e}")
+
+
+# ── Chat Endpoints ───────────────────────────────────────────────
+
+@router.get("/chat/recent", response_model=list[ChatEventResponse])
+async def get_recent_chats(limit: int = 20) -> list[ChatEventResponse]:
+    """Get recent chat events."""
+    chats = _recent_chats[-limit:]
+    return [
+        ChatEventResponse(
+            platform=c.get("platform", "unknown"),
+            username=c.get("username", ""),
+            message=c.get("message", ""),
+            intent=c.get("intent", "general"),
+            priority=c.get("priority", 4),
+            timestamp=c.get("timestamp", 0),
+        )
+        for c in reversed(chats)
+    ]
+
+
+# ── Stream Control Endpoints ────────────────────────────────────
+
+@router.post("/stream/start")
+async def start_stream() -> dict[str, str]:
+    """Start RTMP streaming."""
+    global _stream_running, _emergency_stopped
+    if _emergency_stopped:
+        raise HTTPException(400, "Emergency stop active. Use /api/emergency-reset first.")
+    _stream_running = True
+    logger.info("stream_start_api")
+    return {"status": "started"}
+
+
+@router.post("/stream/stop")
+async def stop_stream() -> dict[str, str]:
+    """Stop RTMP streaming gracefully."""
+    global _stream_running
+    _stream_running = False
+    logger.info("stream_stop_api")
+    return {"status": "stopped"}
+
+
+@router.post("/emergency-stop")
+async def emergency_stop() -> dict[str, str]:
+    """Emergency stop — halts all operations immediately."""
+    global _stream_running, _emergency_stopped, _pipeline_state
+    _stream_running = False
+    _emergency_stopped = True
+    _pipeline_state = "STOPPED"
+    logger.critical("EMERGENCY_STOP")
+    return {"status": "emergency_stopped", "message": "All operations halted. Use /api/emergency-reset to recover."}
+
+
+@router.post("/emergency-reset")
+async def emergency_reset() -> dict[str, str]:
+    """Reset after emergency stop."""
+    global _emergency_stopped, _pipeline_state
+    _emergency_stopped = False
+    _pipeline_state = "IDLE"
+    logger.info("emergency_reset")
+    return {"status": "reset", "message": "System ready to restart."}
+
+
+# ── Pipeline State Machine ──────────────────────────────────────
+
+@router.get("/pipeline/state")
+async def get_pipeline_state() -> dict[str, Any]:
+    """Get current pipeline state machine status."""
+    return {
+        "state": _pipeline_state,
+        "stream_running": _stream_running,
+        "emergency_stopped": _emergency_stopped,
+        "history": _pipeline_history[-20:],
+        "valid_transitions": _get_valid_transitions(),
+    }
+
+
+class TransitionRequest(BaseModel):
+    target_state: str
+
+
+@router.post("/pipeline/transition")
+async def pipeline_transition(request: TransitionRequest) -> dict[str, Any]:
+    """Transition pipeline to a new state."""
+    target_state = request.target_state
+    global _pipeline_state
+    valid = _get_valid_transitions()
+    target_upper = target_state.upper()
+
+    if target_upper not in valid:
+        raise HTTPException(
+            400,
+            f"Invalid transition: {_pipeline_state} → {target_upper}. "
+            f"Valid: {valid}"
+        )
+
+    old_state = _pipeline_state
+    _pipeline_state = target_upper
+    _pipeline_history.append({
+        "from": old_state,
+        "to": target_upper,
+        "timestamp": time.time(),
+    })
+    if len(_pipeline_history) > MAX_PIPELINE_HISTORY:
+        _pipeline_history.pop(0)
+
+    logger.info("pipeline_transition", old=old_state, new=target_upper)
+    return {"status": "transitioned", "from": old_state, "to": target_upper}
+
+
+def _get_valid_transitions() -> list[str]:
+    """Return valid next states from current state."""
+    transitions = {
+        "IDLE": ["SELLING", "PAUSED"],
+        "SELLING": ["REACTING", "ENGAGING", "PAUSED", "IDLE"],
+        "REACTING": ["SELLING", "ENGAGING", "PAUSED"],
+        "ENGAGING": ["SELLING", "REACTING", "PAUSED"],
+        "PAUSED": ["IDLE", "SELLING"],
+        "STOPPED": ["IDLE"],
+    }
+    return transitions.get(_pipeline_state, ["IDLE"])
+
+
+# ── LLM Brain Endpoints ─────────────────────────────────────────
+
+@router.get("/brain/stats")
+async def brain_stats() -> dict[str, Any]:
+    """Get LLM Brain usage statistics."""
+    try:
+        router_instance = get_llm_router()
+        if router_instance is None:
+            logger.error("brain_stats_no_router", msg="LLM Router initialization failed - check logs")
+            return {
+                "error": "LLM Router not initialized - check server logs for details",
+                "providers": {},
+                "adapters": {},
+                "routing_table": {},
+                "hint": "Check if .env file exists and contains valid API keys"
+            }
+
+        stats = router_instance.get_usage_stats()
+
+        from src.brain.adapters.base import TaskType
+        routing_info: dict[str, Any] = {}
+        for task_type, providers in router_instance.routing_table.items():
+            routing_info[task_type.value] = providers
+
+        adapters_info: dict[str, Any] = {}
+        for name, adapter in router_instance.adapters.items():
+            try:
+                adapters_info[name] = {
+                    "model": getattr(adapter, "_litellm_model", adapter.model),
+                    "available": adapter.is_available,
+                    "timeout_ms": adapter.timeout_ms,
+                    "max_tokens": adapter.max_tokens,
+                    "api_base": getattr(adapter, "_api_base", ""),
+                }
+            except Exception as ae:
+                adapters_info[name] = {"error": str(ae)}
+
+        logger.info("brain_stats_ok", adapter_count=len(adapters_info))
+        return {
+            "providers": stats,
+            "routing_table": routing_info,
+            "adapters": adapters_info,
+        }
+    except Exception as e:
+        logger.error("brain_stats_error", error=str(e), exc_info=True)
+        return {"error": str(e), "providers": {}, "adapters": {}, "routing_table": {}}
+
+
+@router.get("/brain/health")
+async def brain_health() -> dict[str, Any]:
+    """Check health of all LLM providers (quick ping)."""
+    try:
+        router_instance = get_llm_router()
+        if router_instance is None:
+            logger.warning("brain_health_no_router")
+            return {"error": "LLM Router not initialized", "providers": {}}
+
+        health = await asyncio.wait_for(
+            router_instance.health_check_all(),
+            timeout=30.0,
+        )
+        healthy_count = sum(1 for v in health.values() if v)
+        logger.info("brain_health_ok", healthy=healthy_count, total=len(health))
+        return {
+            "providers": health,
+            "mock_mode": is_mock_mode(),
+            "healthy_count": healthy_count,
+            "total_count": len(health),
+        }
+    except asyncio.TimeoutError:
+        logger.error("brain_health_timeout")
+        return {"error": "Health check timed out", "providers": {}}
+    except Exception as e:
+        logger.error("brain_health_error", error=str(e), exc_info=True)
+        return {"error": str(e), "providers": {}}
+
+
+@router.post("/brain/test")
+async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
+    """Send a test prompt through the LLM Brain router.
+
+    Fully wrapped in try/except — never returns raw 500 error.
+    All failures return success=False with error details in JSON.
+    """
+    logger.info(
+        "brain_test_request",
+        task_type=request.task_type,
+        provider=request.provider or "auto",
+        prompt_len=len(request.user_prompt),
+    )
+
+    router_instance = get_llm_router()
+    if router_instance is None:
+        logger.error("brain_test_no_router")
+        return {
+            "text": "", "provider": "none", "model": "none",
+            "task_type": request.task_type, "latency_ms": 0.0,
+            "cost_usd": 0.0, "success": False,
+            "error": "LLM Router not initialized — check server logs",
+            "input_tokens": 0, "output_tokens": 0,
+        }
+
+    try:
+        from src.brain.adapters.base import TaskType
+        try:
+            task = TaskType(request.task_type)
+        except ValueError:
+            logger.warning("brain_test_invalid_task", task=request.task_type)
+            task = TaskType.CHAT_REPLY
+
+        logger.info(
+            "brain_test_routing",
+            task=task.value,
+            preferred_provider=request.provider or "auto",
+        )
+
+        response = await asyncio.wait_for(
+            router_instance.route(
+                system_prompt=request.system_prompt,
+                user_prompt=request.user_prompt,
+                task_type=task,
+                preferred_provider=request.provider or None,
+            ),
+            timeout=90.0,  # Max 90s — pro models can be slow
+        )
+
+        logger.info(
+            "brain_test_result",
+            success=response.success,
+            provider=response.provider,
+            model=response.model,
+            latency_ms=round(response.latency_ms, 1),
+            tokens=response.input_tokens + response.output_tokens,
+            error=response.error[:100] if response.error else "",
+        )
+
+        return {
+            "text": response.text,
+            "provider": response.provider,
+            "model": response.model,
+            "task_type": response.task_type.value,
+            "latency_ms": round(response.latency_ms, 1),
+            "cost_usd": round(response.cost_usd, 6),
+            "success": response.success,
+            "error": response.error or "",
+            "input_tokens": response.input_tokens,
+            "output_tokens": response.output_tokens,
+        }
+
+    except asyncio.TimeoutError:
+        logger.error("brain_test_timeout", timeout_sec=90)
+        return {
+            "text": "", "provider": request.provider or "auto",
+            "model": "unknown", "task_type": request.task_type,
+            "latency_ms": 90000.0, "cost_usd": 0.0, "success": False,
+            "error": "Request timed out after 90 seconds",
+            "input_tokens": 0, "output_tokens": 0,
+        }
+    except Exception as e:
+        logger.error("brain_test_exception", error=str(e), exc_info=True)
+        return {
+            "text": "", "provider": request.provider or "auto",
+            "model": "unknown", "task_type": request.task_type,
+            "latency_ms": 0.0, "cost_usd": 0.0, "success": False,
+            "error": f"Internal error: {str(e)[:200]}",
+            "input_tokens": 0, "output_tokens": 0,
+        }
+
+
+@router.get("/brain/config")
+async def brain_config() -> dict[str, Any]:
+    """Get LLM Brain configuration and routing table."""
+    import os
+    from src.brain.adapters.base import TaskType as TT
+    try:
+        config = get_config()
+        llm_cfg = config.llm_providers
+
+        # Get routing table from router instance if available
+        router_instance = get_llm_router()
+        routing_table: dict[str, list[str]] = {}
+        if router_instance:
+            for task_type, providers in router_instance.routing_table.items():
+                routing_table[task_type.value] = providers
+
+        return {
+            "daily_budget_usd": llm_cfg.daily_budget_usd,
+            "fallback_order": llm_cfg.fallback_order,
+            "routing_table": routing_table,
+            "providers": {
+                "gemini": {
+                    "model": f"gemini/{llm_cfg.gemini.model}",
+                    "timeout_ms": llm_cfg.gemini.timeout_ms,
+                    "backend": "litellm",
+                },
+                "claude": {
+                    "model": f"anthropic/{llm_cfg.claude.model}",
+                    "timeout_ms": llm_cfg.claude.timeout_ms,
+                    "backend": "litellm",
+                },
+                "gpt4o": {
+                    "model": f"openai/{llm_cfg.gpt4o.model}",
+                    "timeout_ms": llm_cfg.gpt4o.timeout_ms,
+                    "backend": "litellm",
+                },
+                "groq": {
+                    "model": "groq/llama-3.3-70b-versatile",
+                    "timeout_ms": 8000,
+                    "backend": "litellm",
+                },
+                "chutes": {
+                    "model": "openai/MiniMaxAI/MiniMax-M2.5",
+                    "api_base": "https://llm.chutes.ai/v1",
+                    "timeout_ms": 30000,
+                    "backend": "litellm",
+                },
+                "gemini_local_pro": {
+                    "model": "openai/gemini-3.1-pro-high",
+                    "api_base": os.getenv("LOCAL_GEMINI_URL", "http://127.0.0.1:8091/v1"),
+                    "timeout_ms": 15000,
+                    "backend": "litellm",
+                    "cost": "free",
+                },
+                "gemini_local_flash": {
+                    "model": "openai/gemini-3-flash",
+                    "api_base": os.getenv("LOCAL_GEMINI_URL", "http://127.0.0.1:8091/v1"),
+                    "timeout_ms": 8000,
+                    "backend": "litellm",
+                    "cost": "free",
+                },
+                "local": {
+                    "model": f"openai/{llm_cfg.qwen.model}",
+                    "api_base": os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
+                    "timeout_ms": llm_cfg.qwen.timeout_ms,
+                    "backend": "litellm",
+                    "cost": "free",
+                },
+            },
+            "task_types": [t.value for t in TT],
+        }
+    except Exception as e:
+        logger.error("brain_config_error", error=str(e))
+        return {"error": str(e)}
+
+
+# ── Health Endpoints ─────────────────────────────────────────────
+
+@router.get("/health/summary")
+async def health_summary() -> dict[str, Any]:
+    """Public health summary (no auth required for monitoring)."""
+    try:
+        hm = get_health_manager()
+        results = await asyncio.wait_for(hm.check_all(), timeout=10.0)
+        return {
+            "status": hm.overall_status,
+            "components": {r.name: r.status for r in results},
+            "mock_mode": is_mock_mode(),
+        }
+    except asyncio.TimeoutError:
+        logger.error("health_summary_timeout")
+        return {"status": "degraded", "components": {}, "error": "Health check timed out", "mock_mode": is_mock_mode()}
+    except Exception as e:
+        logger.error("health_summary_error", error=str(e), exc_info=True)
+        return {"status": "failed", "components": {}, "error": str(e), "mock_mode": is_mock_mode()}
+
+
+@router.get("/analytics/revenue")
+async def revenue_report(hours: int = 1) -> dict[str, Any]:
+    """Get revenue analytics."""
+    try:
+        analytics = get_analytics()
+        return analytics.get_revenue_summary(hours * 3600.0)
+    except Exception as e:
+        logger.error("revenue_report_error", error=str(e), exc_info=True)
+        return {"error": str(e), "total": 0.0}
+
+
+# ── WebSocket ────────────────────────────────────────────────────
+
+_ws_clients: list[WebSocket] = []
+
+
+@router.websocket("/ws/dashboard")
+async def ws_dashboard(websocket: WebSocket) -> None:
+    """WebSocket for real-time dashboard updates (every 1s)."""
+    await websocket.accept()
+    _ws_clients.append(websocket)
+    logger.info("ws_client_connected", total=len(_ws_clients))
+
+    try:
+        import asyncio
+        while True:
+            analytics = get_analytics()
+            snapshot = analytics.get_dashboard_snapshot()
+            snapshot["stream_running"] = _stream_running
+            snapshot["emergency_stopped"] = _emergency_stopped
+            snapshot["mock_mode"] = is_mock_mode()
+            snapshot["pipeline_state"] = _pipeline_state
+
+            pm = _product_manager or ProductManager()
+            current = pm.get_current_product()
+            snapshot["current_product"] = {
+                "name": current.name, "price": current.price_formatted
+            } if current else None
+
+            # Add LLM stats if available
+            router_instance = get_llm_router()
+            if router_instance:
+                try:
+                    usage = router_instance.get_usage_stats()
+                    snapshot["llm_stats"] = usage
+                except Exception:
+                    pass
+
+            await websocket.send_json(snapshot)
+            await asyncio.sleep(1.0)
+
+    except WebSocketDisconnect:
+        _ws_clients.remove(websocket)
+        logger.info("ws_client_disconnected", total=len(_ws_clients))
+    except Exception as e:
+        if websocket in _ws_clients:
+            _ws_clients.remove(websocket)
+        logger.error("ws_error", error=str(e))
+
+
+@router.websocket("/ws/chat")
+async def ws_chat(websocket: WebSocket) -> None:
+    """WebSocket for real-time chat events."""
+    await websocket.accept()
+    last_idx = len(_recent_chats)
+
+    try:
+        import asyncio
+        while True:
+            # Send new chats since last check
+            if len(_recent_chats) > last_idx:
+                new_chats = _recent_chats[last_idx:]
+                for chat in new_chats:
+                    await websocket.send_json(chat)
+                last_idx = len(_recent_chats)
+            await asyncio.sleep(0.2)
+
+    except WebSocketDisconnect:
+        pass
+    except Exception as e:
+        logger.error("ws_chat_error", error=str(e))
