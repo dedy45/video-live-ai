@@ -49,11 +49,26 @@ echo.
 
 echo [4/5] Running setup script with UV...
 echo Using UV Python (NOT conda!)
-uv run python scripts/setup_livetalking.py
+echo.
+echo NOTE: This will setup folders and check dependencies
+echo LiveTalking submodule will be cloned if not present
+echo.
+uv run python scripts/setup_livetalking.py --skip-models
 if %errorlevel% neq 0 (
-    echo ERROR: Setup script failed
-    pause
-    exit /b 1
+    echo.
+    echo WARNING: Setup script had issues
+    echo This is okay if LiveTalking submodule is not cloned yet
+    echo.
+    echo You can:
+    echo 1. Continue with basic setup
+    echo 2. Clone LiveTalking manually: git submodule update --init
+    echo 3. Run this script again after cloning
+    echo.
+    set /p CONTINUE="Continue anyway? (y/n): "
+    if /i not "%CONTINUE%"=="y" (
+        pause
+        exit /b 1
+    )
 )
 echo.
 

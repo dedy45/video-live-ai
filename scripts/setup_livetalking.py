@@ -84,12 +84,26 @@ def install_dependencies(project_root: Path) -> bool:
     livetalking_dir = project_root / "external" / "livetalking"
     requirements_file = livetalking_dir / "requirements.txt"
     
+    # Check if LiveTalking submodule exists
+    if not livetalking_dir.exists():
+        print("⚠ LiveTalking submodule not cloned yet")
+        print("  This is okay - dependencies will be installed when you run setup again")
+        print("  after cloning the submodule")
+        return True
+    
     if not requirements_file.exists():
-        print(f"Warning: {requirements_file} not found", file=sys.stderr)
-        return False
+        print(f"⚠ Warning: {requirements_file} not found")
+        print("  Installing basic dependencies from pyproject.toml instead")
+        # Install from pyproject.toml [livetalking] section
+        if not run_command(["uv", "pip", "install", "-e", ".[livetalking]"], cwd=project_root):
+            print("Failed to install dependencies from pyproject.toml", file=sys.stderr)
+            return False
+        print("✓ Basic dependencies installed")
+        return True
     
     # Install using uv (faster than pip)
-    if not run_command(["uv", "pip", "install", "-r", str(requirements_file)]):
+    print(f"Installing from: {requirements_file}")
+    if not run_command(["uv", "pip", "install", "-r", str(requirements_file)], cwd=project_root):
         print("Failed to install dependencies", file=sys.stderr)
         return False
     
