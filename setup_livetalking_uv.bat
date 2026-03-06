@@ -39,9 +39,31 @@ if not exist ".venv" (
 echo.
 
 echo [3/5] Installing dependencies...
-uv pip install -e ".[livetalking]"
+echo.
+echo NOTE: This will download ~2GB of packages (torch, opencv, etc)
+echo This may take 5-15 minutes depending on your internet speed
+echo.
+echo Installing core dependencies first...
+uv pip install -e .
 if %errorlevel% neq 0 (
-    echo ERROR: Failed to install dependencies
+    echo ERROR: Failed to install core dependencies
+    pause
+    exit /b 1
+)
+echo.
+echo Installing LiveTalking dependencies (torch, opencv, aiortc)...
+echo This is the BIG download - please be patient!
+echo.
+uv pip install -e ".[livetalking]" --verbose
+if %errorlevel% neq 0 (
+    echo.
+    echo ERROR: Failed to install LiveTalking dependencies
+    echo.
+    echo Common causes:
+    echo 1. Network timeout - try again
+    echo 2. Disk space - need ~5GB free
+    echo 3. Corrupt cache - run: simple_setup_uv.bat
+    echo.
     pause
     exit /b 1
 )

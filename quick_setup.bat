@@ -39,7 +39,14 @@ echo.
 echo [3/5] Installing CORE dependencies only...
 echo (This skips LiveTalking dependencies for now)
 echo.
-uv pip install --no-cache -e .
+echo Installing ~200MB of packages:
+echo   - FastAPI, Pydantic, LiteLLM
+echo   - LLM providers (Gemini, Claude, GPT-4o, Groq)
+echo   - Basic utilities (websockets, edge-tts, etc)
+echo.
+echo Estimated time: 2-5 minutes
+echo.
+uv pip install --no-cache -e . --verbose
 if %errorlevel% neq 0 (
     echo ERROR: Installation failed
     echo.
@@ -50,6 +57,13 @@ if %errorlevel% neq 0 (
     uv pip install --no-cache websockets edge-tts ffmpeg-python numpy Pillow httpx
     if %errorlevel% neq 0 (
         echo ERROR: Even minimal install failed
+        echo.
+        echo Possible causes:
+        echo 1. Network timeout - check internet connection
+        echo 2. Disk space - need ~500MB free
+        echo 3. Firewall blocking PyPI
+        echo.
+        echo Run diagnose_setup.bat for detailed check
         pause
         exit /b 1
     )

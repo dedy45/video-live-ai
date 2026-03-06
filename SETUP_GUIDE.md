@@ -192,6 +192,24 @@ git submodule update --init
 setup_livetalking_uv.bat
 ```
 
+### Setup Hangs at "Installing dependencies"
+
+**Cause:** Downloading large packages (torch ~1.5GB)
+
+**Solutions:**
+1. Use verbose mode: `setup_livetalking_verbose.bat`
+2. Install step-by-step: `quick_setup.bat` first, then add LiveTalking
+3. Increase timeout: `set UV_HTTP_TIMEOUT=600`
+
+### For Complete Troubleshooting
+
+See `TROUBLESHOOTING_SETUP.md` for detailed solutions to all common issues.
+
+Or run diagnostic:
+```bash
+diagnose_setup.bat
+```
+
 ## ✅ Verification
 
 After setup, verify:
@@ -240,11 +258,21 @@ uv run python -m src.main
 
 ## 📚 Additional Resources
 
-- **TROUBLESHOOTING_UV.md** - Fix common errors
+- **TROUBLESHOOTING_SETUP.md** - Complete troubleshooting guide (10+ common issues)
 - **UV_VS_CONDA_GUIDE.md** - UV vs Conda explained
 - **LIVETALKING_QUICKSTART.md** - LiveTalking setup
 - **README.md** - Main documentation
 
+## 🔧 Diagnostic Tools
+
+| Script | Purpose | When to Use |
+|--------|---------|-------------|
+| `test_setup.bat` | Verify installation | After setup, before running |
+| `diagnose_setup.bat` | Full diagnostic | When setup fails or hangs |
+| `setup_livetalking_verbose.bat` | Debug mode setup | Troubleshooting LiveTalking install |
+
 ---
 
 **Start with `quick_setup.bat` for fastest setup!**
+
+**If setup hangs, see `TROUBLESHOOTING_SETUP.md` for solutions.**
