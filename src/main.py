@@ -104,9 +104,24 @@ def create_app() -> FastAPI:
             msg="Running in Mock Mode — GPU components will use placeholders",
         )
 
+    # Step 4b: Initialize Face Pipeline (LiveTalking or MuseTalk)
+    try:
+        avatar_engine = config.avatar.engine
+        if avatar_engine == "livetalking" or config.avatar.livetalking.enabled:
+            from src.face.livetalking_adapter import LiveTalkingPipeline
+            face_pipeline = LiveTalkingPipeline()
+            logger.info("face_pipeline_initialized", engine="livetalking")
+        else:
+            from src.face.pipeline import AvatarPipeline
+            face_pipeline = AvatarPipeline()
+            logger.info("face_pipeline_initialized", engine="musetalk")
+    except Exception as e:
+        logger.warning("face_pipeline_init_failed", error=str(e))
+        face_pipeline = None
+
     # Step 5: Register health checks
     health = get_health_manager()
-    _register_health_checks(health)
+    _register_health_checks(health, face_pipeline=face_pipeline)
 
     # Step 6: Initialize commerce components for dashboard
     try:
@@ -230,9 +245,34 @@ def create_app() -> FastAPI:
     return app
 
 
-def _register_health_checks(health_manager) -> None:
+def _register_health_checks(health_manager, face_pipeline=None) -> None:
     """Register all component health checks."""
     from src.config import is_mock_mode
+
+    # Face pipeline health (LiveTalking or MuseTalk)
+    if face_pipeline is not None:
+        _pipeline = face_pipeline
+
+        async def face_health() -> HealthStatus:
+            try:
+                engine_name = getattr(_pipeline, "engine", None)
+                engine_type = type(engine_name).__name__ if engine_name else "unknown"
+                if hasattr(_pipeline, "health_check"):
+                    healthy = await _pipeline.health_check()
+                else:
+                    healthy = True
+                return HealthStatus(
+                    name="face_pipeline",
+                    healthy=healthy,
+                    status="healthy" if healthy else "degraded",
+                    message=f"Engine: {engine_type}",
+                )
+            except Exception as e:
+                return HealthStatus(
+                    name="face_pipeline", healthy=False, status="failed", message=str(e),
+                )
+
+        health_manager.register("face_pipeline", face_health)
 
     # Database health
     async def db_health() -> HealthStatus:

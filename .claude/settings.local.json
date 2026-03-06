@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(uv pip:*)",
+      "Bash(MOCK_MODE=true uv run:*)"
+    ]
+  }
+}

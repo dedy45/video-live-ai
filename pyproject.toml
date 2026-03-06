@@ -30,9 +30,9 @@ dependencies = [
     "groq>=0.5.0",
 
     # Chat Monitoring
-    # TikTokLive needs betterproto which only works on Python <3.13
-    # On Python 3.13+ this line is SKIPPED by the resolver
-    "TikTokLive>=6.0.0; python_version < '3.13'",
+    # TikTokLive needs betterproto pre-release which causes resolver issues
+    # Disabled for now — use websockets directly for chat monitoring
+    # "TikTokLive>=6.0.0; python_version < '3.13'",
     "websockets>=12.0",
 
     # Voice / TTS
@@ -109,6 +109,9 @@ asyncio_mode = "auto"
 markers = [
     "integration: requires GPU server (deselect with '-m not integration')",
 ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
 
 [build-system]
 requires = ["hatchling"]

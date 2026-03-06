@@ -8,8 +8,10 @@ from src.face.pipeline import (
     TemporalSmoother,
     VideoFrame,
 )
+from src.face.livetalking_adapter import LiveTalkingEngine, LiveTalkingPipeline
 
 __all__ = [
     "AvatarPipeline", "GFPGANEnhancer", "IdentityController",
     "MuseTalkEngine", "TemporalSmoother", "VideoFrame",
+    "LiveTalkingEngine", "LiveTalkingPipeline",
 ]

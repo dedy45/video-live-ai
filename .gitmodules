@@ -1,0 +1,3 @@
+[submodule "external/livetalking"]
+	path = external/livetalking
+	url = https://github.com/lipku/LiveTalking.git

@@ -60,6 +60,16 @@ class GFPGANConfig(BaseModel):
     upscale_factor: int = 2
 
 
+class LiveTalkingConfig(BaseModel):
+    enabled: bool = False
+    reference_video: str = "assets/avatar/reference.mp4"
+    reference_audio: str = "assets/avatar/reference.wav"
+    use_webrtc: bool = False
+    use_rtmp: bool = True
+    livetalking_fps: int = 30
+    livetalking_resolution: list[int] = Field(default_factory=lambda: [512, 512])
+
+
 class AvatarConfig(BaseModel):
     engine: str = "musetalk"
     reference_image: str = "assets/avatar/face.png"
@@ -68,6 +78,7 @@ class AvatarConfig(BaseModel):
     identity_reset_minutes: int = 15
     temporal_smoother: TemporalSmootherConfig = TemporalSmootherConfig()
     gfpgan: GFPGANConfig = GFPGANConfig()
+    livetalking: LiveTalkingConfig = LiveTalkingConfig()
 
 
 class ReconnectConfig(BaseModel):
@@ -186,6 +197,15 @@ class EnvSettings(BaseSettings):
     env: str = "development"
     log_level: str = "DEBUG"
 
+    # LiveTalking
+    livetalking_enabled: bool = False
+    livetalking_reference_video: str = "assets/avatar/reference.mp4"
+    livetalking_reference_audio: str = "assets/avatar/reference.wav"
+    livetalking_use_webrtc: bool = False
+    livetalking_use_rtmp: bool = True
+    livetalking_fps: int = 30
+    livetalking_resolution: str = "512,512"
+
     # GPU
     gpu_device: str = "cuda:0"
 
@@ -254,6 +274,41 @@ def load_config(
         if "logging" not in config_data:
             config_data["logging"] = {}
         config_data["logging"]["level"] = log_level
+
+    # LiveTalking env overrides
+    lt_enabled = os.getenv("LIVETALKING_ENABLED")
+    if lt_enabled is not None:
+        if "avatar" not in config_data:
+            config_data["avatar"] = {}
+        if "livetalking" not in config_data["avatar"]:
+            config_data["avatar"]["livetalking"] = {}
+        lt = config_data["avatar"]["livetalking"]
+        lt["enabled"] = lt_enabled.lower() in ("true", "1", "yes")
+
+        for env_key, cfg_key in [
+            ("LIVETALKING_REFERENCE_VIDEO", "reference_video"),
+            ("LIVETALKING_REFERENCE_AUDIO", "reference_audio"),
+        ]:
+            val = os.getenv(env_key)
+            if val:
+                lt[cfg_key] = val
+
+        lt_webrtc = os.getenv("LIVETALKING_USE_WEBRTC")
+        if lt_webrtc is not None:
+            lt["use_webrtc"] = lt_webrtc.lower() in ("true", "1", "yes")
+        lt_rtmp = os.getenv("LIVETALKING_USE_RTMP")
+        if lt_rtmp is not None:
+            lt["use_rtmp"] = lt_rtmp.lower() in ("true", "1", "yes")
+        lt_fps = os.getenv("LIVETALKING_FPS")
+        if lt_fps:
+            lt["livetalking_fps"] = int(lt_fps)
+        lt_res = os.getenv("LIVETALKING_RESOLUTION")
+        if lt_res:
+            lt["livetalking_resolution"] = [int(x) for x in lt_res.split(",")]
+
+        # Switch engine to livetalking when enabled
+        if lt.get("enabled"):
+            config_data["avatar"]["engine"] = "livetalking"
 
     _config = Config(**config_data)
     return _config

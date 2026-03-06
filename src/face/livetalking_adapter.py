@@ -249,17 +249,18 @@ class LiveTalkingPipeline:
     def __init__(self) -> None:
         config = get_config()
         avatar_cfg = config.avatar
-        
+        lt_cfg = avatar_cfg.livetalking
+
         # Use LiveTalking engine instead of MuseTalk
         self.engine = LiveTalkingEngine(
-            reference_video=avatar_cfg.get("reference_video", "assets/avatar/reference.mp4"),
-            reference_audio=avatar_cfg.get("reference_audio", "assets/avatar/reference.wav"),
-            resolution=tuple(avatar_cfg.resolution),
-            fps=avatar_cfg.fps,
-            use_webrtc=avatar_cfg.get("use_webrtc", False),
-            use_rtmp=avatar_cfg.get("use_rtmp", True),
+            reference_video=lt_cfg.reference_video,
+            reference_audio=lt_cfg.reference_audio,
+            resolution=tuple(lt_cfg.livetalking_resolution),
+            fps=lt_cfg.livetalking_fps,
+            use_webrtc=lt_cfg.use_webrtc,
+            use_rtmp=lt_cfg.use_rtmp,
         )
-        
+
         logger.info("livetalking_pipeline_init")
 
     async def render(
