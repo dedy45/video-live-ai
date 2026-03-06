@@ -229,6 +229,268 @@ s
 
 ---
 
+## [0.3.7] — 2026-03-06
+
+### Fixed (Documentation Sync)
+
+**All 6 Documentation Files Updated**
+
+- `docs/architecture.md` — Updated to v0.3.7
+  - Added LiveTalking to Layer 3 (Face) architecture diagram
+  - Updated directory structure with `livetalking_adapter.py` and `external/livetalking/`
+  - Changed "7 test files" → "8 test files" (added test_livetalking_integration.py)
+  - Updated scripts section to include `setup_livetalking.py`
+- `docs/changelogs.md` — Added v0.3.2 through v0.3.7 entries
+  - v0.3.2: LiveTalking integration (adapter, setup script, tests, quickstart)
+  - v0.3.3: Git repository setup (.gitignore for UV, README, backup checklist)
+  - v0.3.4: UV vs Conda documentation (guide, setup batch file, cleanup analysis)
+  - v0.3.5: UV troubleshooting (simple_setup, fix_and_setup batch files)
+  - v0.3.6: Setup automation (quick_setup.bat, SETUP_GUIDE.md, graceful error handling)
+  - v0.3.7: This documentation sync
+- `docs/contributing.md` — Updated to v0.3.7
+  - Added "UV Package Manager Rules" section with setup commands
+  - Added UV best practices (never mix with conda, always use `uv run`)
+  - Added common UV errors table with solutions
+  - Updated project structure to show `.venv/`, `external/livetalking/`, setup scripts
+  - Clarified: Package Manager is UV (NOT conda)
+- `docs/security.md` — Updated to v0.3.7
+  - Added "LiveTalking Configuration" table (7 env variables)
+  - Added "Git Repository Security" section
+  - Documented what IS committed vs NOT committed (.gitignore rules)
+  - Added setup-after-clone instructions
+- `docs/task_status.md` — Updated to v0.3.7
+  - Added 4 new completed phases: LiveTalking Integration, Git Repository, UV Setup, Documentation Update
+  - Added `test_livetalking_integration.py` to test results table (status: pending)
+  - Updated "Overall Status" section with new phases
+- `docs/workflow.md` — Updated to v0.3.7
+  - Replaced "Quick Start — CLI Scripts" with "Quick Start — Setup Options"
+  - Added 3 setup options: quick_setup.bat, setup_livetalking_uv.bat, simple_setup_uv.bat
+  - Added reference to `SETUP_GUIDE.md` for detailed instructions
+
+**Summary of Changes Documented:**
+
+- LiveTalking integration as production-ready Face engine (60fps, RTMP/WebRTC native)
+- Git repository setup with UV-optimized .gitignore
+- UV package manager setup automation (4 batch files)
+- 3 new documentation files: SETUP_GUIDE.md, LIVETALKING_QUICKSTART.md, UV_VS_CONDA_GUIDE.md
+- Setup flow: quick_setup.bat (fast) → test → setup_livetalking_uv.bat (full)
+
+---
+
+## [0.3.6] — 2026-03-06
+
+### Added (Setup Automation & Documentation)
+
+**Quick Setup System**
+
+- `quick_setup.bat` — Fast setup WITHOUT LiveTalking (2-5 min, ~200MB)
+  - Installs core dependencies only (FastAPI, LLM providers, basic utilities)
+  - Skips torch, opencv, aiortc (heavy LiveTalking deps)
+  - Perfect for testing project without GPU
+- `SETUP_GUIDE.md` — Comprehensive setup guide with 3 options
+  - Option 1: Quick Setup (recommended for first time)
+  - Option 2: Full Setup with LiveTalking
+  - Option 3: Fix Corrupt Environment
+  - Includes flow diagram, comparison table, troubleshooting
+
+**Setup Script Improvements**
+
+- `scripts/setup_livetalking.py` — Handle missing submodule gracefully
+  - No crash if `external/livetalking/` not cloned yet
+  - Clear error message with instructions
+  - Skip LiveTalking-specific steps if submodule missing
+- `setup_livetalking_uv.bat` — Don't crash if submodule missing
+  - Check submodule before running setup script
+  - Provide git submodule command if missing
+
+### Fixed
+
+- **KeyboardInterrupt crash** — Setup script no longer crashes when LiveTalking submodule missing
+- **Missing requirements.txt** — Script handles `external/livetalking/requirements.txt` not found
+
+### Workflow
+
+**Recommended Setup Flow:**
+```bash
+# Day 1: Quick start (no LiveTalking)
+quick_setup.bat
+set MOCK_MODE=true
+uv run python -m src.main
+
+# Day 2-3: Test, develop, configure
+
+# Day 4: Add LiveTalking when ready
+git submodule update --init
+setup_livetalking_uv.bat
+```
+
+---
+
+## [0.3.5] — 2026-03-06
+
+### Added (UV Troubleshooting & Cleanup Scripts)
+
+**UV Environment Cleanup**
+
+- `simple_setup_uv.bat` — Simple and robust UV setup
+  - Delete `.venv` if exists
+  - Clean UV cache
+  - Create fresh `.venv`
+  - Install with `--no-cache` flag
+  - Verify installation
+- `fix_and_setup_uv.bat` — Comprehensive fix script
+  - Full cleanup (`.venv` + UV cache)
+  - Fresh install with no cache
+  - Detailed error messages
+
+### Fixed
+
+- **Websockets corruption error** — `Failed to read metadata from installed package websockets==16.0`
+  - Root cause: Corrupt package metadata in UV cache or `.venv`
+  - Solution: Delete `.venv` + clean UV cache + install with `--no-cache`
+- **Missing METADATA file** — System cannot find `websockets-16.0.dist-info\METADATA`
+  - Fixed by fresh install without cache
+
+---
+
+## [0.3.4] — 2026-03-06
+
+### Added (UV vs Conda Documentation)
+
+**UV Package Manager Documentation**
+
+- `UV_VS_CONDA_GUIDE.md` — Complete guide for UV vs Conda
+  - Why UV uses miniconda Python (fallback when `.venv` missing)
+  - 3 solutions: Batch file (auto), Manual step-by-step, Activate venv
+  - Verification commands for Python path
+  - Common errors & solutions
+  - UV vs Conda comparison table
+  - Best practices for this project
+  - Migration guide from Conda to UV
+- `setup_livetalking_uv.bat` — Automated UV setup script
+  - Check UV installed
+  - Create `.venv` if not exists
+  - Install dependencies to `.venv`
+  - Run setup with UV Python (not conda)
+- `CONDA_VS_UV_CLEANUP.md` — Analysis of conda base environment
+  - Confirmed conda base is CLEAN (no LiveTalking packages)
+  - Root cause: `.venv` not created, not conda pollution
+
+### Fixed
+
+- **UV using miniconda Python** — `uv run python` was using `C:\Users\Dedy\miniconda3\python.exe`
+  - Root cause: `.venv` not created yet, UV fallback to system Python
+  - Solution: Create `.venv` first with `uv venv`, then install dependencies
+- **Path resolution error** — `can't open file ... No such file or directory`
+  - User was in wrong directory when running `uv run python scripts/...`
+  - Solution: Always `cd` to `videoliveai/` first
+
+### Verified
+
+- Conda base environment is CLEAN (no packages from LiveTalking)
+- Issue was `.venv` not created, NOT conda pollution
+- UV correctly uses `.venv/Scripts/python.exe` when venv exists
+
+---
+
+## [0.3.3] — 2026-03-06
+
+### Added (Git Repository & Backup)
+
+**Git Repository Setup**
+
+- Initialize git in `videoliveai/` folder only (not parent folder)
+- `.gitignore` optimized for UV package manager
+  - Ignore `.venv/` (UV virtual environment)
+  - Ignore `.env` (secrets)
+  - Ignore `models/` (large model weights)
+  - Ignore `data/*.db`, `data/logs/` (runtime data)
+  - Ignore `assets/avatar/` (user-specific references)
+  - Keep `.env.example`, `data/sample_products.json`
+- `README.md` — Complete project documentation
+  - Badges (Python, UV, License, Tests)
+  - Features, architecture, quick start
+  - Setup instructions, testing guide
+  - Deployment, monitoring, contributing
+- `BACKUP_CHECKLIST.md` — Backup guide for UV projects
+  - What to backup (source code, config templates, docs, tests)
+  - What NOT to backup (`.venv/`, models, runtime data)
+  - Backup commands, restore procedure
+  - UV-specific notes (no conda environments)
+
+**Git Commit & Push**
+
+- Committed 112 files (15,321 lines of code)
+- Pushed to: https://github.com/dedy45/video-live-ai.git
+- Includes: Source code, tests, scripts, docs, config templates
+- Excludes: `.venv/`, `.env`, `models/`, runtime data
+
+---
+
+## [0.3.2] — 2026-03-06
+
+### Added (LiveTalking Integration)
+
+**LiveTalking Real-Time Avatar System**
+
+- `src/face/livetalking_adapter.py` — LiveTalking integration adapter (500+ lines)
+  - `LiveTalkingEngine` class wrapping LiveTalking capabilities
+  - 60fps real-time rendering with MuseTalk 1.5 + ER-NeRF + GFPGAN
+  - Native RTMP/WebRTC streaming support
+  - Reference video/audio training pipeline
+  - Mock mode support for GPU-less development
+  - Async initialization and streaming methods
+- `scripts/setup_livetalking.py` — Automated setup script
+  - Clone LiveTalking as git submodule
+  - Install dependencies (torch, opencv, aiortc)
+  - Create model folders
+  - Update `.env` with LiveTalking config
+  - Verify installation
+- `tests/test_livetalking_integration.py` — Test suite
+  - Engine initialization tests
+  - Mock mode tests (no GPU required)
+  - Configuration validation
+  - Integration with existing pipeline
+- `LIVETALKING_QUICKSTART.md` — Quick start guide
+  - 5-minute setup instructions
+  - Reference material preparation guide
+  - Model download links
+  - Usage examples (Option A: Replace pipeline, Option B: Conditional)
+  - Configuration guide (.env settings)
+  - Testing strategy (3 levels)
+  - Troubleshooting common errors
+  - Performance expectations
+
+**Dependencies**
+
+- Updated `pyproject.toml` with `[project.optional-dependencies.livetalking]`
+  - torch>=2.4.0, torchvision, torchaudio
+  - opencv-python>=4.9.0
+  - scikit-image, scipy, librosa, soundfile, resampy
+  - aiortc>=1.6.0, av>=11.0.0 (WebRTC)
+  - imageio, imageio-ffmpeg
+
+**Architecture Changes**
+
+- Face Layer (Layer 3) now has TWO engines:
+  - `pipeline.py` — Basic MuseTalk engine (existing)
+  - `livetalking_adapter.py` — Production LiveTalking engine (NEW)
+- LiveTalking chosen over LinYTalker for:
+  - Real-time 60fps (LinYTalker only partial)
+  - Native RTMP/WebRTC built-in
+  - Production-ready and battle-tested
+  - Multi-concurrent streams support
+  - Lower latency (2-3s vs 3-5s)
+
+**Integration Strategy**
+
+- LiveTalking integrated into EXISTING project (not new folder)
+- Replaces Face layer, other components unchanged
+- Drop-in replacement for MuseTalk engine
+- Backward compatible (can switch between engines)
+
+---
+
 ## [0.3.1] — 2026-03-03
 
 ### Fixed

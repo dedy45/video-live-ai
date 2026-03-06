@@ -1,17 +1,31 @@
 # Development & Deployment Workflow
 
-> **Version**: 0.4.3
-> **Last Updated**: 2026-03-03 19:35
+> **Version**: 0.3.7
+> **Last Updated**: 2026-03-06 14:00
 
-## Quick Start — CLI Scripts
+## Quick Start — Setup Options
 
 ```bash
-# Interactive Controller Menu (recommended)
+# Option 1: Quick Setup (RECOMMENDED for first time)
+# Fast setup WITHOUT LiveTalking (2-5 min, ~200MB)
+quick_setup.bat
+
+# Option 2: Full Setup with LiveTalking
+# Complete setup including LiveTalking (10-20 min, ~2GB)
+setup_livetalking_uv.bat
+
+# Option 3: Fix Corrupt Environment
+# Clean install if websockets error or corrupt packages
+simple_setup_uv.bat
+
+# Interactive Controller Menu (after setup)
 scripts\menu.bat
 
 # Full Validation Pipeline (automated, no prompts)
 scripts\validate.bat
 ```
+
+See `SETUP_GUIDE.md` for detailed setup instructions.
 
 | Environment  | Purpose                                       | GPU              | Location     |
 | ------------ | --------------------------------------------- | ---------------- | ------------ |

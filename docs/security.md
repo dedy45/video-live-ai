@@ -1,7 +1,7 @@
 # Security Policy
 
-> **Version**: 0.4.1
-> **Last Updated**: 2026-03-03 11:35
+> **Version**: 0.3.7
+> **Last Updated**: 2026-03-06 14:00
 > Kebijakan keamanan untuk AI Live Commerce Platform.
 
 ## Credential Management
@@ -23,6 +23,18 @@
 | TikTok  | `TIKTOK_SESSION_ID` | Chat monitoring   | ✅       |
 | Shopee  | `SHOPEE_API_KEY`    | Chat monitoring   | ⬜ opt   |
 | Sentry  | `SENTRY_DSN`        | Error Tracking    | ⬜ opt   |
+
+## LiveTalking Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `LIVETALKING_ENABLED` | `false` | Enable LiveTalking engine |
+| `LIVETALKING_REFERENCE_VIDEO` | `assets/avatar/reference.mp4` | 5-min reference video |
+| `LIVETALKING_REFERENCE_AUDIO` | `assets/avatar/reference.wav` | 3-10s voice sample |
+| `LIVETALKING_USE_WEBRTC` | `false` | Enable WebRTC streaming |
+| `LIVETALKING_USE_RTMP` | `true` | Enable RTMP streaming |
+| `LIVETALKING_FPS` | `30` | Target frames per second |
+| `LIVETALKING_RESOLUTION` | `512,512` | Output resolution (W,H) |
 
 ## Dashboard Authentication
 
@@ -70,3 +82,32 @@ Endpoints TANPA auth (monitoring & internal tooling):
 - TIDAK memerlukan API keys
 - TIDAK melakukan network calls
 - Output adalah placeholder data saja
+
+## Git Repository Security
+
+**Repository**: https://github.com/dedy45/video-live-ai.git
+
+**What is committed:**
+- ✅ Source code (`src/`, `tests/`, `scripts/`)
+- ✅ Documentation (`docs/`, `*.md`)
+- ✅ Config templates (`.env.example`, `config.yaml`)
+- ✅ Sample data (`data/sample_products.json`)
+
+**What is NOT committed (in .gitignore):**
+- ❌ `.venv/` — UV virtual environment (recreate with `uv venv`)
+- ❌ `.env` — Secrets and API keys
+- ❌ `models/` — Large model weights (download separately)
+- ❌ `data/*.db` — Runtime database
+- ❌ `data/logs/` — Application logs
+- ❌ `assets/avatar/` — User-specific reference materials
+- ❌ `external/livetalking/` — Git submodule (clone with `git submodule update --init`)
+
+**Setup after clone:**
+```bash
+git clone https://github.com/dedy45/video-live-ai.git
+cd video-live-ai
+cp .env.example .env  # Edit with your API keys
+uv venv
+uv pip install -e ".[livetalking]"
+git submodule update --init  # Clone LiveTalking
+```

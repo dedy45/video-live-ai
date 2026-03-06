@@ -1,7 +1,8 @@
 # Task Status Dashboard
 
 > Agent-readable progress dashboard.
-> **Last Updated**: 2026-03-03 20:00 WIB
+> **Last Updated**: 2026-03-06 14:00 WIB
+> **Version**: 0.3.7
 > **Test Suite**: ✅ **67/67 PASSED** (2.47s)
 > **Pipeline**: ✅ **11/11 layers** (verify_pipeline.py)
 > **Modules**: ✅ **24/24 imports OK**
@@ -12,6 +13,9 @@
 | ----------------------------- | ------- | ------------------------------------------------------ |
 | Phase 0.2: Agent Persistence  | ✅ Done | 6 docs files                                           |
 | Phase 0.3: Mock Mode          | ✅ Done | `utils/mock_mode.py`                                   |
+| LiveTalking Integration       | ✅ Done | `livetalking_adapter.py`, setup scripts, tests, docs   |
+| Git Repository Setup          | ✅ Done | `.gitignore`, `README.md`, push to GitHub              |
+| UV Setup Automation           | ✅ Done | 4 batch files, 3 guide docs                            |
 | Phase 1: Infrastructure       | ✅ Done | config, logging, database, diagnostic                  |
 | Phase 2: Brain (Layer 1)      | ✅ Done | 5 adapters, router, persona, safety                    |
 | Phase 4: Voice (Layer 2)      | ✅ Done | FishSpeech, EdgeTTS, AudioCache, VoiceRouter           |
@@ -38,19 +42,24 @@
 | CLI Tools                     | ✅ Done | `scripts/validate.bat`, `scripts/menu.bat`             |
 | Phase 18.5: Doc Sync Audit    | ✅ Done | `tasks.md` (all phases marked), `changelogs.md` v0.4.3 |
 | menu.bat + validate.bat Debug | ✅ Done | 6 bugs fixed, `EnvSettings` + `uv run` + Unicode       |
+| LiveTalking Integration v0.3.2 | ✅ Done | Adapter, setup script, tests, quickstart guide         |
+| Git Repository v0.3.3         | ✅ Done | GitHub setup, .gitignore for UV, backup checklist      |
+| UV Setup Scripts v0.3.4-v0.3.6 | ✅ Done | UV guide, 4 batch files, setup guide, troubleshooting  |
+| Documentation Update v0.3.7   | ✅ Done | All 6 docs updated with LiveTalking + UV changes       |
 
 ## Test Results (67/67 ✅)
 
-| Test File           | Tests | Status      |
-| ------------------- | ----- | ----------- |
-| test_brain.py       | 16    | ✅ All pass |
-| test_config.py      | 5     | ✅ All pass |
-| test_dashboard.py   | 10    | ✅ All pass |
-| test_hardening.py   | 12    | ✅ All pass |
-| test_layers.py      | 14    | ✅ All pass |
-| test_mock_mode.py   | 6     | ✅ All pass |
-| test_performance.py | 2     | ✅ All pass |
-| test_property.py    | 2     | ✅ All pass |
+| Test File                      | Tests | Status      |
+| ------------------------------ | ----- | ----------- |
+| test_brain.py                  | 16    | ✅ All pass |
+| test_config.py                 | 5     | ✅ All pass |
+| test_dashboard.py              | 10    | ✅ All pass |
+| test_hardening.py              | 12    | ✅ All pass |
+| test_layers.py                 | 14    | ✅ All pass |
+| test_mock_mode.py              | 6     | ✅ All pass |
+| test_performance.py            | 2     | ✅ All pass |
+| test_property.py               | 2     | ✅ All pass |
+| test_livetalking_integration.py | TBD   | ⏳ Pending  |
 
 ## Pending (Requires Real GPU / Active Session)
 

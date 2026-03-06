@@ -1,8 +1,8 @@
 # AI Live Commerce Platform — Architecture
 
-> **Version**: 0.4.1
-> **Last Updated**: 2026-03-03 11:35
-> **Updated By**: Agent (Antigravity)
+> **Version**: 0.3.7
+> **Last Updated**: 2026-03-06 14:00
+> **Updated By**: Agent (Documentation Sync)
 
 ## System Overview
 
@@ -26,7 +26,8 @@ AI Live Commerce Platform menggunakan arsitektur **7-layer** yang dirancang untu
 │  Fish Speech (GPU) | Edge TTS (cloud backup)    │
 ├─────────────────────────────────────────────────┤
 │  Layer 3: FACE (Avatar Rendering)               │
-│  MuseTalk | GFPGAN | Temporal Smoother          │
+│  LiveTalking (MuseTalk 1.5 + ER-NeRF + GFPGAN)  │
+│  60fps real-time | RTMP/WebRTC native           │
 ├─────────────────────────────────────────────────┤
 │  Layer 4: COMPOSITION (Video Compositor)        │
 │  FFmpeg 7-layer composition | NVENC encoding    │
@@ -160,7 +161,8 @@ videoliveai/
 │   ├── voice/              # Layer 2: Voice
 │   │   └── engine.py       # FishSpeech + EdgeTTS + cache + router
 │   ├── face/               # Layer 3: Face
-│   │   └── pipeline.py     # MuseTalk + GFPGAN + smoother
+│   │   ├── pipeline.py     # MuseTalk + GFPGAN + smoother (basic)
+│   │   └── livetalking_adapter.py  # LiveTalking integration (production)
 │   ├── composition/        # Layer 4: Composition
 │   │   └── compositor.py   # FFmpeg 7-layer filter graph
 │   ├── stream/             # Layer 5: Streaming
@@ -180,8 +182,11 @@ videoliveai/
 │   │   ├── diagnostic.py   # Health diagnostic
 │   │   └── frontend/       # HTML/JS dashboard UI
 │   └── main.py             # Entry point
-├── tests/                  # 7 test files, ~66 tests
-├── scripts/                # verify_pipeline.py
+├── tests/                  # 8 test files, ~67 tests
+│   └── test_livetalking_integration.py  # LiveTalking tests
+├── scripts/                # verify_pipeline.py, setup_livetalking.py
+├── external/               # Git submodules
+│   └── livetalking/        # LiveTalking repository
 ├── docs/                   # Architecture, workflow, changelogs
 ├── config.yaml             # System configuration
 ├── .env.example            # Environment template
