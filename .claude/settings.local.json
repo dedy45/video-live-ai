@@ -3,7 +3,20 @@
     "allow": [
       "Bash(mkdir:*)",
       "Bash(uv pip:*)",
-      "Bash(MOCK_MODE=true uv run:*)"
+      "Bash(MOCK_MODE=true uv run:*)",
+      "Bash(uv run:*)",
+      "Bash(python:*)",
+      "Bash(.venv/Scripts/python.exe:*)",
+      "Bash(timeout 15 bash:*)",
+      "Bash(uv sync:*)",
+      "WebSearch",
+      "Bash(wc:*)",
+      "Bash(pip install:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(rm:*)",
+      "Bash(cp:*)",
+      "Bash(tar xzf:*)"
     ]
   }
 }

@@ -18,6 +18,27 @@ AI-powered live commerce platform for automated livestreaming with hyper-realist
 
 ## 🚀 Quick Start
 
+### ⚡ First Time Setup (Complete Installation)
+
+**START HERE:** See [START_HERE.md](START_HERE.md) for step-by-step guide.
+
+```bash
+# 1. Run the interactive menu
+livetalking_menu.bat
+
+# 2. Select: 1 (Install FULL Dependencies)
+#    This installs PyTorch with CUDA + all dependencies (~5-8 GB, 10-20 min)
+
+# 3. Select: 3 (Download Models Guide)
+#    Download MuseTalk, ER-NeRF, GFPGAN models (~5 GB)
+
+# 4. Select: 4 (Run Web Interface)
+#    Test at http://localhost:8010/webrtcapi.html
+
+# 5. Select: 6 (Run Production)
+#    Start the full system
+```
+
 ### Prerequisites
 
 - Python 3.10+
