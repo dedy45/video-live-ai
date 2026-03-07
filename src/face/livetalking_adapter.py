@@ -3,11 +3,18 @@
 Integrates LiveTalking real-time avatar rendering into the existing Face pipeline.
 This adapter wraps LiveTalking's WebRTC/RTMP capabilities as a drop-in replacement
 for the MuseTalk engine.
+
+Runtime contract (see docs/specs/livetalking_runtime_contract.md):
+- Entry point: external/livetalking/app.py
+- Supported transports: webrtc, rtmp, rtcpush
+- Supported models: wav2lip, musetalk, ultralight
+- Default port: 8010
 """
 
 from __future__ import annotations
 
 import asyncio
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -21,17 +28,26 @@ from src.utils.logging import get_logger
 
 logger = get_logger("livetalking")
 
+# Supported transport modes for LiveTalking engine
+SUPPORTED_TRANSPORTS = ("webrtc", "rtmp", "rtcpush")
+
+# Supported model types
+SUPPORTED_MODELS = ("wav2lip", "musetalk", "ultralight")
+
+# Default engine settings
+DEFAULT_PORT = 8010
+DEFAULT_MODEL = "wav2lip"
+DEFAULT_AVATAR_ID = "wav2lip256_avatar1"
+
 
 class LiveTalkingEngine(BaseAvatarEngine):
     """LiveTalking real-time avatar engine.
-    
-    Provides 60fps real-time avatar rendering with:
-    - MuseTalk 1.5 lip-sync
-    - ER-NeRF avatar rendering
+
+    Wraps external/livetalking/app.py as a sidecar subprocess.
+    Provides real-time avatar rendering with:
+    - Wav2Lip or MuseTalk lip-sync
     - GFPGAN face enhancement
     - Native RTMP/WebRTC streaming
-    
-    This is a production-ready alternative to the basic MuseTalk engine.
     """
 
     def __init__(
@@ -43,44 +59,50 @@ class LiveTalkingEngine(BaseAvatarEngine):
         use_webrtc: bool = False,
         use_rtmp: bool = True,
     ) -> None:
-        """Initialize LiveTalking engine.
-        
-        Args:
-            reference_video: Path to 5-minute reference video for ER-NeRF training
-            reference_audio: Path to 3-10 second audio for voice cloning
-            resolution: Output video resolution (width, height)
-            fps: Target frames per second
-            use_webrtc: Enable WebRTC streaming (for browser)
-            use_rtmp: Enable RTMP streaming (for TikTok/Shopee)
-        """
         self.reference_video = Path(reference_video)
         self.reference_audio = Path(reference_audio)
         self.resolution = resolution
         self.fps = fps
         self.use_webrtc = use_webrtc
         self.use_rtmp = use_rtmp
-        
+
+        # Determine transport from flags
+        if use_webrtc:
+            self.transport = "webrtc"
+        elif use_rtmp:
+            self.transport = "rtmp"
+        else:
+            self.transport = "webrtc"  # default
+
         # LiveTalking process handle
         self._process: subprocess.Popen | None = None
         self._initialized = False
-        
+
+        # Engine settings from env or defaults
+        self.port = int(os.getenv("LIVETALKING_PORT", str(DEFAULT_PORT)))
+        self.model = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
+        self.avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
+
         # Check if LiveTalking is available
         self.livetalking_path = Path("external/livetalking")
+        self.app_py = self.livetalking_path / "app.py"
         if not self.livetalking_path.exists():
             logger.warning(
                 "livetalking_not_found",
                 path=str(self.livetalking_path),
                 msg="LiveTalking not installed. Run: git submodule update --init",
             )
-        
+
         logger.info(
             "livetalking_init",
             reference_video=str(self.reference_video),
             reference_audio=str(self.reference_audio),
             resolution=resolution,
             fps=fps,
-            webrtc=use_webrtc,
-            rtmp=use_rtmp,
+            transport=self.transport,
+            model=self.model,
+            avatar_id=self.avatar_id,
+            port=self.port,
         )
 
     async def initialize(self) -> bool:
@@ -125,11 +147,14 @@ class LiveTalkingEngine(BaseAvatarEngine):
                 )
                 return False
             
-            # TODO: Start LiveTalking server
-            # This would typically involve:
-            # 1. python livetalking/server.py --config config.yaml
-            # 2. Wait for server to be ready
-            # 3. Connect via WebRTC or RTMP
+            # Verify app.py entry point exists
+            if not self.app_py.exists():
+                logger.error(
+                    "livetalking_app_py_missing",
+                    path=str(self.app_py),
+                    msg="app.py not found in external/livetalking",
+                )
+                return False
             
             logger.info("livetalking_initialized")
             self._initialized = True
@@ -195,9 +220,9 @@ class LiveTalkingEngine(BaseAvatarEngine):
         # For now, raise NotImplementedError with clear instructions
         raise NotImplementedError(
             "LiveTalking GPU inference requires:\n"
-            "1. LiveTalking server running (python external/livetalking/server.py)\n"
-            "2. Models downloaded (MuseTalk, ER-NeRF, GFPGAN)\n"
-            "3. Reference video trained (5 minutes of avatar footage)\n"
+            "1. LiveTalking server running (python external/livetalking/app.py)\n"
+            "2. Models downloaded (Wav2Lip or MuseTalk)\n"
+            "3. Avatar data prepared (see docs/specs/livetalking_runtime_contract.md)\n"
             "4. WebRTC or RTMP connection established\n"
             "\n"
             "Use MOCK_MODE=true for testing without GPU."

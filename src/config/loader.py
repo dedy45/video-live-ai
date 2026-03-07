@@ -68,6 +68,10 @@ class LiveTalkingConfig(BaseModel):
     use_rtmp: bool = True
     livetalking_fps: int = 30
     livetalking_resolution: list[int] = Field(default_factory=lambda: [512, 512])
+    port: int = 8010
+    transport: str = "webrtc"
+    model: str = "wav2lip"
+    avatar_id: str = "wav2lip256_avatar1"
 
 
 class AvatarConfig(BaseModel):

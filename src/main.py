@@ -314,6 +314,44 @@ def _register_health_checks(health_manager, face_pipeline=None) -> None:
 
     health_manager.register("config", config_health)
 
+    # LiveTalking engine health (process manager)
+    async def livetalking_health() -> HealthStatus:
+        try:
+            from src.face.livetalking_manager import get_livetalking_manager
+            mgr = get_livetalking_manager()
+            status = mgr.get_status()
+            details = {
+                "app_py_exists": status.app_py_exists,
+                "model_path_exists": status.model_path_exists,
+                "avatar_path_exists": status.avatar_path_exists,
+                "port": status.port,
+                "model": status.model,
+            }
+            if status.state.value == "running":
+                return HealthStatus(
+                    name="livetalking", healthy=True, status="healthy",
+                    message=f"Running (pid={status.pid}, port={status.port})",
+                    details=details,
+                )
+            elif status.app_py_exists:
+                return HealthStatus(
+                    name="livetalking", healthy=True, status="idle",
+                    message=f"Stopped but ready (app.py found)",
+                    details=details,
+                )
+            else:
+                return HealthStatus(
+                    name="livetalking", healthy=False, status="degraded",
+                    message="LiveTalking not installed",
+                    details=details,
+                )
+        except Exception as e:
+            return HealthStatus(
+                name="livetalking", healthy=False, status="failed", message=str(e),
+            )
+
+    health_manager.register("livetalking", livetalking_health)
+
     # Analytics health
     async def analytics_health() -> HealthStatus:
         try:

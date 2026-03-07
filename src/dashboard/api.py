@@ -710,3 +710,170 @@ async def ws_chat(websocket: WebSocket) -> None:
         pass
     except Exception as e:
         logger.error("ws_chat_error", error=str(e))
+
+
+# ── LiveTalking Engine Control Endpoints ───────────────────
+
+@router.get("/engine/livetalking/status")
+async def engine_livetalking_status() -> dict[str, Any]:
+    """Get LiveTalking engine status."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        return mgr.get_status().to_dict()
+    except Exception as e:
+        logger.error("engine_status_error", error=str(e), exc_info=True)
+        return {"state": "error", "last_error": str(e)}
+
+
+@router.post("/engine/livetalking/start")
+async def engine_livetalking_start() -> dict[str, Any]:
+    """Start LiveTalking engine."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        status = mgr.start()
+        logger.info("engine_livetalking_start_api", state=status.state.value)
+        return status.to_dict()
+    except Exception as e:
+        logger.error("engine_start_error", error=str(e), exc_info=True)
+        return {"state": "error", "last_error": str(e)}
+
+
+@router.post("/engine/livetalking/stop")
+async def engine_livetalking_stop() -> dict[str, Any]:
+    """Stop LiveTalking engine."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        status = mgr.stop()
+        logger.info("engine_livetalking_stop_api", state=status.state.value)
+        return status.to_dict()
+    except Exception as e:
+        logger.error("engine_stop_error", error=str(e), exc_info=True)
+        return {"state": "error", "last_error": str(e)}
+
+
+@router.get("/engine/livetalking/logs")
+async def engine_livetalking_logs(tail: int = 100) -> dict[str, Any]:
+    """Get LiveTalking engine logs."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        logs = mgr.get_logs(tail=tail)
+        return {"lines": logs, "count": len(logs)}
+    except Exception as e:
+        logger.error("engine_logs_error", error=str(e), exc_info=True)
+        return {"lines": [], "count": 0, "error": str(e)}
+
+
+@router.get("/engine/livetalking/config")
+async def engine_livetalking_config() -> dict[str, Any]:
+    """Get LiveTalking engine configuration."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        config = mgr.get_config_dict()
+        # Add vendor debug URLs
+        port = config.get("port", 8010)
+        config["debug_urls"] = {
+            "webrtcapi": f"http://localhost:{port}/webrtcapi.html",
+            "rtcpushapi": f"http://localhost:{port}/rtcpushapi.html",
+            "dashboard_vendor": f"http://localhost:{port}/dashboard.html",
+            "echoapi": f"http://localhost:{port}/echoapi.html",
+        }
+        config["operator_dashboard"] = "/dashboard"
+        return config
+    except Exception as e:
+        logger.error("engine_config_error", error=str(e), exc_info=True)
+        return {"error": str(e)}
+
+
+# ── Readiness Endpoints ────────────────────────────────────
+
+@router.get("/readiness")
+async def get_readiness() -> dict[str, Any]:
+    """Get consolidated system readiness check."""
+    try:
+        from src.dashboard.readiness import run_readiness_checks
+        result = run_readiness_checks()
+        return result.to_dict()
+    except Exception as e:
+        logger.error("readiness_error", error=str(e), exc_info=True)
+        return {
+            "overall_status": "error",
+            "checks": [],
+            "blocking_issues": [str(e)],
+            "recommended_next_action": "Fix readiness check error",
+        }
+
+
+# ── Validation Workflow Endpoints ──────────────────────────
+
+@router.post("/validate/mock-stack")
+async def validate_mock_stack() -> dict[str, Any]:
+    """Validate mock stack is functional."""
+    try:
+        results: list[dict[str, Any]] = []
+
+        # Check config
+        from src.config import get_config, is_mock_mode
+        config = get_config()
+        results.append({"check": "config", "passed": True, "message": f"{config.app.name}"})
+        results.append({"check": "mock_mode", "passed": is_mock_mode(), "message": f"MOCK_MODE={is_mock_mode()}"})
+
+        # Check database
+        from src.data.database import check_database_health
+        db = check_database_health()
+        results.append({"check": "database", "passed": db.get("healthy", False), "message": str(db.get("message", ""))})
+
+        all_pass = all(r["passed"] for r in results)
+        return {"status": "pass" if all_pass else "fail", "checks": results}
+    except Exception as e:
+        logger.error("validate_mock_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/livetalking-engine")
+async def validate_livetalking_engine() -> dict[str, Any]:
+    """Validate LiveTalking engine readiness."""
+    try:
+        from src.face.livetalking_manager import get_livetalking_manager
+        mgr = get_livetalking_manager()
+        status = mgr.get_status()
+
+        checks = [
+            {"check": "app_py_exists", "passed": status.app_py_exists, "message": str(mgr.app_py)},
+            {"check": "model_path_exists", "passed": status.model_path_exists, "message": str(mgr.models_dir)},
+            {"check": "avatar_path_exists", "passed": status.avatar_path_exists, "message": f"{mgr.avatars_dir / mgr.avatar_id}"},
+            {"check": "engine_state", "passed": status.state.value in ("running", "stopped"), "message": status.state.value},
+        ]
+        all_pass = all(c["passed"] for c in checks)
+        return {"status": "pass" if all_pass else "fail", "checks": checks}
+    except Exception as e:
+        logger.error("validate_lt_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/rtmp-target")
+async def validate_rtmp_target() -> dict[str, Any]:
+    """Validate RTMP target configuration."""
+    try:
+        import os
+        import shutil
+        checks = []
+
+        ffmpeg = shutil.which("ffmpeg")
+        checks.append({"check": "ffmpeg_available", "passed": ffmpeg is not None, "message": ffmpeg or "not found"})
+
+        rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
+        stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
+        rtmp_ok = bool(rtmp_url and stream_key)
+        checks.append({"check": "rtmp_configured", "passed": rtmp_ok, "message": "configured" if rtmp_ok else "TIKTOK_RTMP_URL or TIKTOK_STREAM_KEY not set"})
+
+        all_pass = all(c["passed"] for c in checks)
+        return {"status": "pass" if all_pass else "fail", "checks": checks}
+    except Exception as e:
+        logger.error("validate_rtmp_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+

@@ -1,132 +1,75 @@
-# Development & Deployment Workflow
+# Development Workflow
 
-> **Version**: 0.3.7
-> **Last Updated**: 2026-03-06 14:00
+> Last updated: 2026-03-07
+> Package manager: `uv` only
 
-## Quick Start — Setup Options
+## Official Commands
 
 ```bash
-# Option 1: Quick Setup (RECOMMENDED for first time)
-# Fast setup WITHOUT LiveTalking (2-5 min, ~200MB)
-quick_setup.bat
-
-# Option 2: Full Setup with LiveTalking
-# Complete setup including LiveTalking (10-20 min, ~2GB)
-setup_livetalking_uv.bat
-
-# Option 3: Fix Corrupt Environment
-# Clean install if websockets error or corrupt packages
-simple_setup_uv.bat
-
-# Interactive Controller Menu (after setup)
-scripts\menu.bat
-
-# Full Validation Pipeline (automated, no prompts)
-scripts\validate.bat
+uv sync --extra dev
+uv run pytest tests -q -p no:cacheprovider
+uv run python scripts/verify_pipeline.py
+MOCK_MODE=true uv run python -m src.main
 ```
 
-See `SETUP_GUIDE.md` for detailed setup instructions.
+## Current Validation Snapshot
 
-| Environment  | Purpose                                       | GPU              | Location     |
-| ------------ | --------------------------------------------- | ---------------- | ------------ |
-| Local (Dev)  | Code editing, unit tests, Mock Mode           | ❌               | Windows/Mac  |
-| Remote (GPU) | Model inference, integration tests, streaming | ✅ RTX 4090/A100 | RunPod/Cloud |
+- `uv run pytest tests -q -p no:cacheprovider` -> `89 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers PASS`
+- `/dashboard` is the primary operator UI
+- `localhost:8010/*.html` are vendor debug pages only
 
 ## Local Development
 
 ```bash
-# 1. Clone & Setup
 cd videoliveai
-uv sync
-
-# 2. Run in Mock Mode (no GPU needed)
+uv sync --extra dev
 MOCK_MODE=true uv run python -m src.main
-
-# 3. Access endpoints
-#    Dashboard UI:   http://localhost:8000/dashboard
-#    API Docs:       http://localhost:8000/docs
-#    Diagnostic:     http://localhost:8000/diagnostic/
-#    Metrics:        http://localhost:8000/metrics
-
-# 4. Dashboard login:  admin / changeme (set in .env)
 ```
 
-## Verification & Testing
+### Local URLs
+
+| URL | Purpose |
+|-----|---------|
+| `http://localhost:8000/dashboard` | Operator dashboard |
+| `http://localhost:8000/docs` | FastAPI schema |
+| `http://localhost:8000/diagnostic/` | Diagnostics |
+| `http://localhost:8010/*.html` | LiveTalking vendor debug pages |
+
+## Verification
 
 ```bash
-# Verify all layers via Mock Architecture
-MOCK_MODE=true python scripts/verify_pipeline.py --verbose
-
-# Run Authentic Integration (Bypasses Mock, hits Real LLM/TTS APIs)
-# WARNING: Will consume API credits (Groq/Gemini).
-python scripts/test_authentic_flow.py
-
-# Run all unit / property tests
-uv run pytest tests/ -v
+uv run pytest tests -q -p no:cacheprovider
+uv run pytest tests/test_dashboard.py -v
+uv run pytest tests/test_livetalking_integration.py -v
+uv run python scripts/verify_pipeline.py
+uv run ruff check src/
 ```
 
-## Remote GPU Deployment (RunPod/EC2)
+## GPU / Remote Work
 
-Ensure you have a Linux machine with an NVIDIA GPU and SSH access.
+Use a Linux GPU host only for work that cannot be trusted in mock mode:
+
+- MuseTalk runtime validation
+- RTMP push validation
+- long-session stability
+- real TTS / real avatar asset validation
 
 ```bash
-# 1. Sync local workspace to remote
 REMOTE_HOST=IP_ADDRESS REMOTE_PORT=22 REMOTE_USER=root scripts/remote_sync.sh
-
-# 2. Execute and run detatched in tmux
 REMOTE_HOST=IP_ADDRESS REMOTE_PORT=22 REMOTE_USER=root scripts/remote_run.sh
 ```
 
-# Run specific test file
+## Rules
 
-uv run pytest tests/test_brain.py -v
-uv run pytest tests/test_dashboard.py -v
-uv run pytest tests/test_hardening.py -v
+- Always use `uv run`, never plain `python` as the documented command path.
+- Treat `external/livetalking/app.py` as the vendor engine entrypoint.
+- Do not document `conda` as an active path.
+- Do not treat vendor HTML pages as the main dashboard.
 
-# Run linting
+## Related Docs
 
-uv run ruff check src/
-uv run mypy src/
-
-````
-
-## Remote Deployment
-
-```bash
-# 1. Sync code to remote server
-./scripts/remote_sync.sh
-
-# 2. SSH into server
-ssh user@gpu-server
-
-# 3. Run with GPU
-cd /workspace/videoliveai
-uv sync --extra gpu
-MOCK_MODE=false uv run python -m src.main
-
-# 4. Run integration tests (requires GPU)
-uv run pytest tests/ -v -m integration
-````
-
-## Testing Pyramid
-
-| Level          | Mode              | Location   | Command                             |
-| -------------- | ----------------- | ---------- | ----------------------------------- |
-| Unit Tests     | `MOCK_MODE=true`  | Local      | `pytest tests/`                     |
-| Property Tests | `MOCK_MODE=true`  | Local      | `pytest tests/ -k hypothesis`       |
-| Integration    | `MOCK_MODE=false` | GPU Server | `pytest tests/ -m integration`      |
-| Verification   | `MOCK_MODE=true`  | Local      | `python scripts/verify_pipeline.py` |
-
-## Test Files
-
-| File                  | Tests  | Focus                                 |
-| --------------------- | ------ | ------------------------------------- |
-| `test_config.py`      | 5      | Config loading                        |
-| `test_mock_mode.py`   | 6      | Mock voice/avatar                     |
-| `test_brain.py`       | 16     | LLM adapters, router, persona, safety |
-| `test_layers.py`      | 14     | Voice, face, stream, chat, commerce   |
-| `test_hardening.py`   | 12     | Timeout, exceptions, edge cases       |
-| `test_dashboard.py`   | 10     | Analytics, dashboard API              |
-| `test_property.py`    | 2      | Hypothesis config round-trip          |
-| `test_performance.py` | 2      | GPU benchmark placeholders            |
-| **Total**             | **67** | **All passing in MOCK_MODE**          |
+- [README.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/README.md)
+- [docs/README.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/README.md)
+- [architecture.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/architecture.md)
+- [task_status.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/task_status.md)

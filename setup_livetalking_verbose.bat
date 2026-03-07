@@ -116,7 +116,7 @@ uv pip list | findstr /i "torch fastapi pydantic opencv"
 echo.
 echo Next steps:
 echo 1. Clone LiveTalking: git submodule update --init
-echo 2. Download models (see LIVETALKING_QUICKSTART.md)
+echo 2. Download models (see docs\guides\LIVETALKING_QUICKSTART.md)
 echo 3. Test: uv run python -m src.main
 echo.
 pause

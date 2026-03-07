@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.5.1 — 2026-03-07 (Documentation Cleanup + Truth Alignment)
+
+### ✅ Documentation Cleanup
+- Move root guides into structured locations:
+  - `docs/guides/LIVETALKING_QUICKSTART.md`
+  - `docs/guides/MODEL_COMPARISON.md`
+  - `docs/archive/COMPLETE_SETUP_GUIDE.md`
+- Add `docs/README.md` as the documentation index and placement policy
+
+### ✅ Truth Alignment
+- Rewrite `docs/task_status.md` to reflect actual implementation status instead of blanket `complete` claims
+- Update `README.md` so target stack and active runtime are no longer conflated
+- Refresh `docs/workflow.md` to use current `uv` commands and current verification snapshot
+
+### ✅ Reference Fixes
+- Update active docs and scripts that still pointed to root-level `LIVETALKING_QUICKSTART.md`
+- Clarify that `/dashboard` is the operator UI and `localhost:8010/*.html` are vendor debug pages
+
+### 📊 Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `89 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers PASS`
+
 ## v0.5.0 — 2026-03-04 (LiteLLM Migration + Menu Overhaul)
 
 ### 🔥 Breaking Changes

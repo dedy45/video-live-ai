@@ -187,11 +187,135 @@ async def test_livetalking_error_handling_missing_reference():
         reference_video="nonexistent.mp4",
         reference_audio="nonexistent.wav",
     )
-    
+
     # Should fail gracefully
     success = await engine.initialize()
-    
+
     # In mock mode, should still succeed
     # In real mode, should fail
     # Either way, should not crash
     assert isinstance(success, bool)
+
+
+# === LiveTalking Manager Tests ===
+
+def test_livetalking_manager_init():
+    """Test LiveTalkingManager initialization."""
+    from src.face.livetalking_manager import LiveTalkingManager
+    mgr = LiveTalkingManager()
+    assert mgr.port == 8010
+    assert mgr.model in ("wav2lip", "musetalk", "ultralight")
+    assert mgr.app_py.name == "app.py"
+
+
+def test_livetalking_manager_build_command():
+    """Test launch command construction."""
+    from src.face.livetalking_manager import LiveTalkingManager
+    mgr = LiveTalkingManager()
+    cmd = mgr.build_launch_command()
+    assert "app.py" in " ".join(cmd)
+    assert "--transport" in cmd
+    assert "--model" in cmd
+    assert "--avatar_id" in cmd
+    assert "--listenport" in cmd
+
+
+def test_livetalking_manager_status():
+    """Test engine status reporting."""
+    from src.face.livetalking_manager import LiveTalkingManager
+    mgr = LiveTalkingManager()
+    status = mgr.get_status()
+    assert status.state.value == "stopped"
+    assert status.app_py_exists is True  # external/livetalking/app.py exists
+    d = status.to_dict()
+    assert "state" in d
+    assert "port" in d
+    assert "model" in d
+
+
+def test_livetalking_manager_config_dict():
+    """Test engine config dict."""
+    from src.face.livetalking_manager import LiveTalkingManager
+    mgr = LiveTalkingManager()
+    cfg = mgr.get_config_dict()
+    assert "port" in cfg
+    assert "transport" in cfg
+    assert "launch_command" in cfg
+    assert "supported_transports" in cfg
+    assert "supported_models" in cfg
+
+
+def test_livetalking_manager_mock_start_stop(monkeypatch):
+    """Test start/stop in mock mode."""
+    monkeypatch.setenv("MOCK_MODE", "true")
+    from src.face.livetalking_manager import LiveTalkingManager
+    mgr = LiveTalkingManager()
+
+    status = mgr.start()
+    assert status.state.value == "running"
+
+    assert mgr.is_running() is True
+
+    status = mgr.stop()
+    assert status.state.value == "stopped"
+
+
+def test_livetalking_manager_singleton():
+    """Test global singleton."""
+    from src.face.livetalking_manager import get_livetalking_manager
+    m1 = get_livetalking_manager()
+    m2 = get_livetalking_manager()
+    assert m1 is m2
+
+
+# === Readiness Tests ===
+
+def test_readiness_checks_run():
+    """Test readiness checks execute without error."""
+    from src.dashboard.readiness import run_readiness_checks
+    result = run_readiness_checks()
+    assert result.overall_status in ("ready", "not_ready", "degraded")
+    assert len(result.checks) > 0
+    d = result.to_dict()
+    assert "overall_status" in d
+    assert "checks" in d
+    assert "blocking_issues" in d
+    assert "recommended_next_action" in d
+
+
+def test_readiness_check_structure():
+    """Test readiness check data structure."""
+    from src.dashboard.readiness import ReadinessCheck
+    check = ReadinessCheck(name="test", passed=True, status="ok", message="good")
+    d = check.to_dict()
+    assert d["name"] == "test"
+    assert d["passed"] is True
+    assert d["status"] == "ok"
+
+
+# === Adapter Constants Tests ===
+
+def test_adapter_constants():
+    """Test adapter module constants."""
+    from src.face.livetalking_adapter import (
+        SUPPORTED_TRANSPORTS, SUPPORTED_MODELS,
+        DEFAULT_PORT, DEFAULT_MODEL, DEFAULT_AVATAR_ID,
+    )
+    assert "webrtc" in SUPPORTED_TRANSPORTS
+    assert "rtmp" in SUPPORTED_TRANSPORTS
+    assert "wav2lip" in SUPPORTED_MODELS
+    assert "musetalk" in SUPPORTED_MODELS
+    assert DEFAULT_PORT == 8010
+    assert DEFAULT_MODEL == "wav2lip"
+
+
+def test_engine_transport_determination():
+    """Test transport mode is determined correctly from flags."""
+    engine_webrtc = LiveTalkingEngine(use_webrtc=True, use_rtmp=False)
+    assert engine_webrtc.transport == "webrtc"
+
+    engine_rtmp = LiveTalkingEngine(use_webrtc=False, use_rtmp=True)
+    assert engine_rtmp.transport == "rtmp"
+
+    engine_default = LiveTalkingEngine(use_webrtc=False, use_rtmp=False)
+    assert engine_default.transport == "webrtc"

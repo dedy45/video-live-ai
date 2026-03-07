@@ -4,40 +4,19 @@
 [![UV](https://img.shields.io/badge/package%20manager-UV-orange.svg)](https://github.com/astral-sh/uv)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-AI-powered live commerce platform for automated livestreaming with hyper-realistic AI avatars on TikTok and Shopee.
+AI-powered live commerce platform for automated livestreaming on TikTok and Shopee, built around a Python control plane plus a vendor avatar sidecar.
 
 ## 🎯 Features
 
 - **Multi-LLM Brain**: Gemini, Claude, GPT-4o, Groq with intelligent routing
-- **Voice Cloning**: CosyVoice 2 & Edge-TTS for natural speech
-- **Hyper-Realistic Avatar**: LiveTalking integration (MuseTalk 1.5 + ER-NeRF + GFPGAN)
+- **Voice Layer**: FishSpeech and Edge-TTS validated locally, with GPT-SoVITS/CosyVoice adapter paths for external TTS servers
+- **Avatar Runtime**: LiveTalking sidecar with MuseTalk active, Wav2Lip legacy fallback, and ER-NeRF/GFPGAN still as target paths
 - **Real-time Streaming**: RTMP to TikTok/Shopee, WebRTC for browser
 - **Live Chat Integration**: Real-time comment monitoring and response
 - **Commerce Management**: Product catalog, order tracking, analytics
 - **State Machine Orchestrator**: SELLING → REACTING → ENGAGING → IDLE
 
 ## 🚀 Quick Start
-
-### ⚡ First Time Setup (Complete Installation)
-
-**START HERE:** See [START_HERE.md](START_HERE.md) for step-by-step guide.
-
-```bash
-# 1. Run the interactive menu
-livetalking_menu.bat
-
-# 2. Select: 1 (Install FULL Dependencies)
-#    This installs PyTorch with CUDA + all dependencies (~5-8 GB, 10-20 min)
-
-# 3. Select: 3 (Download Models Guide)
-#    Download MuseTalk, ER-NeRF, GFPGAN models (~5 GB)
-
-# 4. Select: 4 (Run Web Interface)
-#    Test at http://localhost:8010/webrtcapi.html
-
-# 5. Select: 6 (Run Production)
-#    Start the full system
-```
 
 ### Prerequisites
 
@@ -54,7 +33,7 @@ git clone https://github.com/dedy45/video-live-ai.git
 cd video-live-ai
 
 # Install dependencies with UV
-uv pip install -e ".[livetalking]"
+uv sync --extra dev
 
 # Copy environment file
 cp .env.example .env
@@ -65,22 +44,22 @@ cp .env.example .env
 
 ```bash
 # Windows
-set MOCK_MODE=true
-uv run python -m src.main
+set MOCK_MODE=true && uv run python -m src.main
 
 # Linux/Mac
 MOCK_MODE=true uv run python -m src.main
 ```
 
-### Production Mode
+### Dashboard
 
-```bash
-# Setup LiveTalking integration
-python scripts/setup_livetalking.py
+| URL | Purpose | Who |
+|-----|---------|-----|
+| `http://localhost:8000/dashboard` | **Operator dashboard** (primary UI) | Operators |
+| `http://localhost:8000/docs` | API documentation | Developers |
+| `http://localhost:8000/diagnostic/` | System diagnostics | Operators/Devs |
+| `http://localhost:8010/*.html` | LiveTalking debug pages | Developers only |
 
-# Run production
-uv run python -m src.main
-```
+> **Rule:** `/dashboard` is the only operator UI. Vendor pages at port 8010 are debug tools only.
 
 ## 📊 Architecture
 
@@ -90,14 +69,14 @@ uv run python -m src.main
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
-│  Voice: CosyVoice 2 / Edge-TTS      │
+│  Voice: FishSpeech / Edge-TTS       │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
-│  Face: LiveTalking (60fps)          │
-│  ├── MuseTalk 1.5 (lip-sync)        │
-│  ├── ER-NeRF (3D avatar)            │
-│  └── GFPGAN (enhancement)           │
+│  Face: LiveTalking Sidecar          │
+│  ├── MuseTalk (active)              │
+│  ├── Wav2Lip (legacy fallback)      │
+│  └── ER-NeRF / GFPGAN (target)      │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
@@ -175,28 +154,32 @@ uv run pytest tests/test_livetalking_integration.py -v
 # Skip GPU tests
 uv run pytest tests/ -v -m "not integration"
 
-# Quick test with batch file (Windows)
-test_livetalking.bat
+# Quick validation (Windows)
+cmd /c verify_livetalking.bat
 ```
 
 ## 📚 Documentation
 
-- [LiveTalking Quick Start](LIVETALKING_QUICKSTART.md)
-- [Integration Plan](docs/02-LIVE-STREAMING-AI/tech-stack/INTEGRATION_PLAN.md)
-- [Final Stack Decision](docs/02-LIVE-STREAMING-AI/tech-stack/FINAL_STACK_DECISION.md)
-- [Project Summary](PROJECT_SUMMARY.md)
-- [Agents Documentation](AGENTS.md)
+- [Docs Index](docs/README.md)
+- [Architecture](docs/architecture.md)
+- [Task Status](docs/task_status.md)
+- [LiveTalking Quick Start](docs/guides/LIVETALKING_QUICKSTART.md)
+- [Runtime Model Comparison](docs/guides/MODEL_COMPARISON.md)
 
 ## 🎯 LiveTalking Integration
 
-This project uses **LiveTalking** for hyper-realistic avatar rendering:
+This project uses **LiveTalking** as a vendor sidecar for avatar rendering and realtime output.
 
-- **Real-time 60fps** rendering
-- **95%+ realism** - viewers can't distinguish from real humans
-- **RTMP/WebRTC native** streaming
-- **Production-ready** for 24/7 livestreaming
+Current vendor copy is best treated as:
 
-See [LIVETALKING_QUICKSTART.md](LIVETALKING_QUICKSTART.md) for setup instructions.
+- **MuseTalk** for the primary lip-sync path
+- **Wav2Lip** as a legacy fallback path
+- **Ultralight** as a low-resource option
+- **WebRTC / rtcpush / virtualcam** for vendor-side output
+
+`ER-NeRF` and `GFPGAN` still appear in project target docs, but should not be assumed active in the current vendor runtime.
+
+See [docs/guides/LIVETALKING_QUICKSTART.md](docs/guides/LIVETALKING_QUICKSTART.md) for the current integration boundary.
 
 ## 🔥 Performance
 
@@ -216,8 +199,8 @@ See [LIVETALKING_QUICKSTART.md](LIVETALKING_QUICKSTART.md) for setup instruction
 - **Package Manager**: UV (not conda!)
 - **Backend**: Python 3.10+, FastAPI, asyncio
 - **LLM**: LiteLLM (multi-provider)
-- **TTS**: CosyVoice 2, Edge-TTS
-- **Avatar**: LiveTalking (MuseTalk 1.5, ER-NeRF, GFPGAN)
+- **TTS**: FishSpeech / Edge-TTS active, GPT-SoVITS / CosyVoice via external adapters
+- **Avatar**: LiveTalking sidecar (MuseTalk active, Wav2Lip/Ultralight available, ER-NeRF/GFPGAN target)
 - **Streaming**: FFmpeg, RTMP
 - **Database**: SQLite (aiosqlite)
 - **Monitoring**: Prometheus, Structlog

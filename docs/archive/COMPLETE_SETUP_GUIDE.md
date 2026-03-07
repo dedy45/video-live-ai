@@ -1,5 +1,9 @@
 # Complete Setup Guide - LiveTalking Integration
 
+> Archived legacy guide.
+> Scope: older Wav2Lip-first setup flow kept for historical reference only.
+> Do not use this file as the current source of truth. Use `docs/guides/LIVETALKING_QUICKSTART.md` instead.
+
 ## ✅ Current Status
 
 **Good News:** Your setup is almost complete! The server runs successfully, you just need to download the model files.

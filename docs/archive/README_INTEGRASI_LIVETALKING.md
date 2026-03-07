@@ -14,7 +14,7 @@ Semua file sudah dibuat dan ready untuk dijalankan. Anda bisa langsung test seka
 ### 2. Documentation
 - ✅ `docs/02-LIVE-STREAMING-AI/tech-stack/INTEGRATION_PLAN.md`
 - ✅ `docs/02-LIVE-STREAMING-AI/tech-stack/FINAL_STACK_DECISION.md`
-- ✅ `videoliveai/LIVETALKING_QUICKSTART.md`
+- ✅ `videoliveai/docs/guides/LIVETALKING_QUICKSTART.md`
 - ✅ `INTEGRASI_LIVETALKING_SUMMARY.md`
 
 ### 3. Configuration
@@ -186,7 +186,7 @@ Dengan stack LiveTalking:
 
 Semua dokumentasi sudah dibuat:
 
-1. **Quick Start**: `videoliveai/LIVETALKING_QUICKSTART.md`
+1. **Quick Start**: `videoliveai/docs/guides/LIVETALKING_QUICKSTART.md`
 2. **Integration Plan**: `docs/02-LIVE-STREAMING-AI/tech-stack/INTEGRATION_PLAN.md`
 3. **Final Decision**: `docs/02-LIVE-STREAMING-AI/tech-stack/FINAL_STACK_DECISION.md`
 4. **Summary**: `INTEGRASI_LIVETALKING_SUMMARY.md`

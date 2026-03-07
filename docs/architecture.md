@@ -1,194 +1,326 @@
-# AI Live Commerce Platform — Architecture
+# VideoLiveAI Architecture
 
-> **Version**: 0.3.7
-> **Last Updated**: 2026-03-06 14:00
-> **Updated By**: Agent (Documentation Sync)
+> Version: 0.4.0  
+> Last Updated: 2026-03-07  
+> Target: Internal live system first  
+> Package Manager Policy: UV only
 
-## System Overview
+## Ringkasan
 
-AI Live Commerce Platform menggunakan arsitektur **7-layer** yang dirancang untuk live streaming commerce otomatis dengan AI avatar. Sistem dilengkapi with Dashboard API, Analytics Engine, Centralized Health System, dan Robust Resilience Layer.
+`videoliveai` adalah **control plane utama** untuk sistem live internal.  
+`external/livetalking` adalah **sidecar engine vendor** untuk avatar, lip sync, preview, dan output realtime.
 
-## Layer Architecture
+Arsitektur ini sengaja **tidak** mengikuti `fullstack.md` untuk fase sekarang. Fokus saat ini adalah:
 
-```
-┌─────────────────────────────────────────────────┐
-│          DASHBOARD (REST API + WebSocket)        │
-│  13 endpoints | Svelte UI | Analytics           │
-├─────────────────────────────────────────────────┤
-│              ORCHESTRATOR (State Machine)        │
-│  SELLING ↔ REACTING ↔ ENGAGING                  │
-├─────────────────────────────────────────────────┤
-│  Layer 1: INTELLIGENCE (LiteLLM Brain)           │
-│  LiteLLM → Gemini|Claude|GPT-4o|Groq|Chutes   │
-│  Local Gemini Proxy (8091) | Ollama (11434)     │
-├─────────────────────────────────────────────────┤
-│  Layer 2: VOICE (TTS Engines)                   │
-│  Fish Speech (GPU) | Edge TTS (cloud backup)    │
-├─────────────────────────────────────────────────┤
-│  Layer 3: FACE (Avatar Rendering)               │
-│  LiveTalking (MuseTalk 1.5 + ER-NeRF + GFPGAN)  │
-│  60fps real-time | RTMP/WebRTC native           │
-├─────────────────────────────────────────────────┤
-│  Layer 4: COMPOSITION (Video Compositor)        │
-│  FFmpeg 7-layer composition | NVENC encoding    │
-├─────────────────────────────────────────────────┤
-│  Layer 5: STREAMING (RTMP Manager)              │
-│  FFmpeg RTMP | Auto-reconnect | Multi-platform  │
-├─────────────────────────────────────────────────┤
-│  Layer 6: INTERACTION (Chat Monitoring)         │
-│  TikTok + Shopee (Observer) | Priority Queue    │
-├─────────────────────────────────────────────────┤
-│  Layer 7: COMMERCE (Product + Analytics)        │
-│  ProductManager | ScriptEngine | AnalyticsEngine│
-└─────────────────────────────────────────────────┘
-```
+- satu backend utama
+- satu dashboard operator utama
+- satu engine vendor untuk wajah/lip sync/output
+- alur live minimal yang stabil dan mudah dipindah ke Ubuntu server
 
-## Cross-Cutting Concerns & Resilience
+## Keputusan Arsitektur
 
-```
-┌──────────────────────────────────────┐
-│  CONFIG     │ YAML + .env + Pydantic │
-│  DATABASE   │ SQLite (WAL mode)      │
-│  OBSERVE    │ structlog, Sentry, Prometheus  │
-│  RESILIENCE │ Circuit Breaker, Async Retry   │
-│  RESOURCES  │ GPU Memory Manager (6-levels)  │
-│  HEALTH     │ Centralized Manager    │
-│  MOCK MODE  │ GPU-less development   │
-│  VALIDATORS │ Asset validation       │
-│  ANALYTICS  │ P50/P95 + ring buffer  │
-└──────────────────────────────────────┘
-```
+| Komponen | Peran | Status |
+|----------|------|--------|
+| `videoliveai/src/main.py` | Entry point FastAPI | Main runtime |
+| `videoliveai/src/dashboard` | Dashboard operator utama | Source of truth UI |
+| `videoliveai/src/brain` | LLM routing dan behavior | Owned by project |
+| `videoliveai/src/voice` | TTS orchestration | Owned by project |
+| `videoliveai/src/stream` | RTMP stream management | Owned by project |
+| `videoliveai/src/data` | SQLite dan state lokal | Owned by project |
+| `videoliveai/external/livetalking` | Face engine vendor | Sidecar |
+| `videoliveai/external/livetalking/web` | Debug pages vendor | Debug only |
 
-## Key Design Decisions
+## Diagram Sistem
 
-| Decision        | Choice                                   | Rationale                     |
-| --------------- | ---------------------------------------- | ----------------------------- |
-| Package Manager | UV                                       | Fast, reproducible builds     |
-| Rendering       | Hybrid (Pre-rendered + Real-time)        | GPU efficiency                |
-| Architecture    | Pure Python (no ComfyUI)                 | Better debugging              |
-| Development     | Distributed (Local → Remote GPU)         | Cost savings                  |
-| Avatar Layout   | Smart Anchor (30%) + Product Focus (60%) | Viewer attention              |
-| LLM Fast Path   | Groq (sub-100ms)                         | Ultra-fast chat responses     |
-| LLM Backend     | **LiteLLM** (proven, 100+ providers)     | Replace all custom adapters   |
-| Dashboard       | HTML/JS (zero-dep)                       | No build step needed          |
-| Analytics       | Ring buffer (deque)                      | O(1) memory-bounded metrics   |
-| Health          | Centralized HealthManager                | Timeout per check, concurrent |
-
-## LiteLLM Brain — Provider Configuration
-
-> **LiteLLM** (https://github.com/BerriAI/litellm) adalah universal LLM proxy yang menggantikan semua custom adapter.
-> Satu `LiteLLMAdapter` class untuk semua provider — reliable, proven, no more "Sistem sedang sibuk".
-
-### Provider Table
-
-| Name | LiteLLM Model String | Endpoint | Env Var | Task Priority |
-|------|---------------------|----------|---------|--------------|
-| `gemini` | `gemini/gemini-2.0-flash` | Google API | `GEMINI_API_KEY` | Chat, Emotion |
-| `claude` | `anthropic/claude-sonnet-4-5` | Anthropic API | `ANTHROPIC_API_KEY` | Script |
-| `gpt4o` | `openai/gpt-4o-mini` | OpenAI API | `OPENAI_API_KEY` | Emotion, Safety |
-| `groq` | `groq/llama-3.3-70b-versatile` | Groq API | `GROQ_API_KEY` | Chat (fastest) |
-| `chutes` | `openai/MiniMaxAI/MiniMax-M2.5` | `https://llm.chutes.ai/v1` | `CHUTES_API_TOKEN` | Script, QA |
-| `gemini_local_pro` | `openai/gemini-3.1-pro-high` | `http://127.0.0.1:8091/v1` | `LOCAL_GEMINI_API_KEY` | Script, Safety (FREE) |
-| `gemini_local_flash` | `openai/gemini-3-flash` | `http://127.0.0.1:8091/v1` | `LOCAL_GEMINI_API_KEY` | Chat, Filler (FREE) |
-| `local` | `openai/qwen2.5:7b` | `http://localhost:11434/v1` | `LOCAL_API` | Filler (FREE) |
-
-### Routing Table (Task → Provider Chain)
-
-| Task | Priority Chain |
-|------|---------------|
-| `CHAT_REPLY` | groq → gemini_local_flash → gemini → chutes → gpt4o → local |
-| `SELLING_SCRIPT` | gemini_local_pro → chutes → claude → gpt4o → gemini |
-| `HUMOR` | groq → gemini_local_flash → gemini → chutes → local |
-| `PRODUCT_QA` | gemini_local_pro → chutes → gemini → groq → gpt4o |
-| `EMOTION_DETECT` | groq → gemini_local_flash → gpt4o → chutes → gemini |
-| `FILLER` | local → gemini_local_flash → groq → gemini |
-| `SAFETY_CHECK` | gemini_local_pro → gpt4o → chutes → gemini |
-
-### Key Files
-- `src/brain/adapters/litellm_adapter.py` — Universal LiteLLM adapter
-- `src/brain/router.py` — Routing table + fallback chain + budget tracking
-
-## Startup Sequence
-
-```
-1. Config Loader (.env + config.yaml)
-2. Structured Logging (structlog)
-3. Database Init (SQLite WAL)
-4. Mock Mode Check
-5. Health Manager Registration
-6. Commerce Components (ProductManager, AffiliateTracker)
-7. Analytics Engine
-8. Dashboard API (13 REST + 2 WS)
-9. Static File Serving (/dashboard)
-10. Diagnostic Endpoint (/diagnostic)
-11. FastAPI App Ready
+```text
+                           +-----------------------+
+                           |   Operator Browser    |
+                           |  /dashboard (utama)   |
+                           +-----------+-----------+
+                                       |
+                                       v
+                     +----------------------------------------+
+                     |        VideoLiveAI FastAPI             |
+                     |----------------------------------------|
+                     | - config + env loader                  |
+                     | - readiness + diagnostics              |
+                     | - dashboard API                        |
+                     | - orchestrator                         |
+                     | - stream control                       |
+                     | - LiveTalking process bridge           |
+                     +---+----------------+-------------------+
+                         |                | 
+             +-----------+---+        +---+------------------+
+             |   Brain Layer |        |  Voice Layer         |
+             |---------------|        |----------------------|
+             | LiteLLM       |        | FishSpeech / EdgeTTS |
+             | Persona       |        | humanization policy  |
+             | Safety        |        | audio routing        |
+             +-----------+---+        +---+------------------+
+                         |                |
+                         +--------+-------+
+                                  |
+                                  v
+                     +----------------------------------------+
+                     |      Live Output Coordination          |
+                     |----------------------------------------|
+                     | - script/text dispatch                 |
+                     | - face engine control                  |
+                     | - preview links                        |
+                     | - RTMP dry-run / live run              |
+                     +----------------+-----------------------+
+                                      |
+                                      v
+                  +-----------------------------------------------+
+                  |      external/livetalking (vendor sidecar)    |
+                  |-----------------------------------------------|
+                  | - app.py                                      |
+                  | - wav2lip / musetalk runtime                  |
+                  | - WebRTC preview                              |
+                  | - RTMP / rtcpush transport                    |
+                  | - vendor web debug pages                      |
+                  +----------------+------------------------------+
+                                   |
+                        +----------+----------+
+                        |                     |
+                        v                     v
+              +----------------+    +------------------------+
+              | Preview Debug   |    | RTMP / platform output |
+              | localhost:8010  |    | TikTok / Shopee / test |
+              +----------------+    +------------------------+
 ```
 
-## API Endpoints
+## Operator UI vs Vendor UI
 
-| Method | Path                          | Auth | Description              |
-| ------ | ----------------------------- | ---- | ------------------------ |
-| GET    | `/`                           | ✗    | Root info + links        |
-| GET    | `/diagnostic/`                | ✗    | Full system diagnostic   |
-| GET    | `/diagnostic/health`          | ✗    | Simple health check      |
-| GET    | `/diagnostic/health/detailed` | ✗    | Per-component health     |
-| GET    | `/api/status`                 | ✓    | System state             |
-| GET    | `/api/metrics`                | ✓    | Latency P50/P95, revenue |
-| GET    | `/api/products`               | ✓    | Product list             |
-| POST   | `/api/products/{id}/switch`   | ✓    | Switch product           |
-| GET    | `/api/chat/recent`            | ✓    | Recent chat events       |
-| POST   | `/api/stream/start`           | ✓    | Start stream             |
-| POST   | `/api/stream/stop`            | ✓    | Stop stream              |
-| POST   | `/api/emergency-stop`         | ✓    | Emergency kill           |
-| POST   | `/api/emergency-reset`        | ✓    | Recover from emergency   |
-| GET    | `/api/health/summary`         | ✗    | Public health            |
-| GET    | `/api/analytics/revenue`      | ✓    | Revenue report           |
-| WS     | `/api/ws/dashboard`           | ✗    | Real-time metrics (1s)   |
-| WS     | `/api/ws/chat`                | ✗    | Real-time chat           |
-| GET    | `/dashboard`                  | ✗    | Interactive UI           |
-| GET    | `/docs`                       | ✗    | Swagger API docs         |
+Ini pemisahan paling penting agar tidak bingung:
 
-## Directory Structure
+| UI | URL | Fungsi |
+|----|-----|--------|
+| Operator Dashboard | `http://localhost:8000/dashboard` | Dashboard utama untuk validasi dan kontrol sistem |
+| Vendor Debug Pages | `http://localhost:8010/*.html` | Halaman debug LiveTalking, bukan dashboard operator |
 
+### Aturan penggunaan
+
+- Operator harian harus mulai dari `/dashboard`
+- Vendor pages hanya dipakai saat:
+  - test engine langsung
+  - cek preview WebRTC
+  - debug input text ke LiveTalking
+  - verifikasi apakah masalah ada di engine vendor atau di orchestration layer
+
+## Siapa Menangani Apa
+
+### Tanggung jawab `videoliveai`
+
+- load config
+- load env
+- health checks
+- diagnostics
+- readiness validation
+- LLM routing
+- TTS orchestration
+- stream orchestration
+- dashboard API
+- dashboard UI
+- process manager untuk LiveTalking
+- logging dan run history
+
+### Tanggung jawab `LiveTalking`
+
+- avatar runtime
+- lip sync runtime
+- preview realtime
+- transport output (`webrtc`, `rtcpush`, sebagian `rtmp`)
+- vendor debug UI
+
+### Bukan tugas utama `LiveTalking`
+
+- database
+- dashboard utama
+- LLM router
+- voice cloning strategy project-wide
+- TTS humanizer layer
+- scene renderer penuh
+- reliability supervisor 18 jam
+
+## Pemetaan ke Phase Build
+
+| Phase | Owner utama | Peran LiveTalking |
+|-------|-------------|-------------------|
+| Phase 0: Foundation & Environment | `videoliveai` | dependency dan engine readiness |
+| Phase 1: Database & API Foundation | `videoliveai` | none |
+| Phase 2: Voice Cloning Setup | `videoliveai` | none |
+| Phase 3: TTS Humanizer Layer | `videoliveai` | none |
+| Phase 4: Face Animation | project integration | optional / outside core vendor role |
+| Phase 5: Lip Sync | LiveTalking | core responsibility |
+| Phase 6: Face Compositor & Humanizer | shared | partial support only |
+| Phase 7: LLM Brain & Router | `videoliveai` | none |
+| Phase 8: Stream Pipeline | shared | strong support on engine side |
+| Phase 9: Scene Renderer | `videoliveai` | none or partial |
+| Phase 10: Control Panel UI | `videoliveai` | none |
+| Phase 11: 18-Hour Stability Layer | `videoliveai` | engine must be supervised |
+| Phase 12: Integration & Testing | shared | one subsystem being verified |
+
+## Jalur Data Operasional
+
+```text
+Dashboard operator
+  -> FastAPI API
+  -> Orchestrator / controller
+  -> Brain decides text/script
+  -> Voice layer creates audio
+  -> LiveTalking receives text/audio/runtime command
+  -> LiveTalking renders avatar output
+  -> Preview and/or RTMP output
+  -> Dashboard displays health, logs, readiness
 ```
+
+## Runtime Topology
+
+### Port utama
+
+| Komponen | Port | Catatan |
+|----------|------|---------|
+| FastAPI main app | `8000` | dashboard operator, API, diagnostic |
+| LiveTalking vendor engine | `8010` | preview dan debug vendor |
+
+### Entry points
+
+| Entry point | Fungsi |
+|-------------|--------|
+| `uv run python -m src.main` | Menjalankan FastAPI utama |
+| `external/livetalking/app.py` | Entry point engine vendor |
+
+### Source of truth yang dipakai
+
+Arsitektur target internal harus menuju satu kebijakan path yang tegas:
+
+- model runtime LiveTalking: `external/livetalking/models/`
+- avatar runtime LiveTalking: `external/livetalking/data/avatars/`
+- dashboard frontend build: `src/dashboard/frontend/`
+
+Catatan:
+- root-level `models/` dan `data/avatars/` masih ada di repo saat ini karena warisan script lama
+- untuk fase berikutnya, path ini harus disederhanakan agar tidak ganda
+
+## Struktur Direktori Arsitektur
+
+```text
 videoliveai/
 ├── src/
-│   ├── brain/              # Layer 1: Intelligence
-│   │   ├── adapters/       # Gemini, Claude, GPT4o, Groq, Local
-│   │   ├── router.py       # Task-based routing + fallback
-│   │   ├── persona.py      # AI host personality
-│   │   └── safety.py       # Content safety filter
-│   ├── voice/              # Layer 2: Voice
-│   │   └── engine.py       # FishSpeech + EdgeTTS + cache + router
-│   ├── face/               # Layer 3: Face
-│   │   ├── pipeline.py     # MuseTalk + GFPGAN + smoother (basic)
-│   │   └── livetalking_adapter.py  # LiveTalking integration (production)
-│   ├── composition/        # Layer 4: Composition
-│   │   └── compositor.py   # FFmpeg 7-layer filter graph
-│   ├── stream/             # Layer 5: Streaming
-│   │   └── rtmp.py         # RTMP + auto-reconnect
-│   ├── chat/               # Layer 6: Interaction
-│   │   └── monitor.py      # Platform Abstraction + connectors
-│   ├── commerce/           # Layer 7: Commerce
-│   │   ├── manager.py      # Products + scripts + affiliate
-│   │   └── analytics.py    # Metrics engine (P50/P95)
-│   ├── orchestrator/       # State Machine
-│   │   └── state_machine.py
-│   ├── config/             # Pydantic config loader
-│   ├── utils/              # Logging, mock, validators, health
-│   ├── data/               # SQLite database + schema
-│   ├── dashboard/          # REST API + frontend
-│   │   ├── api.py          # 13 REST + 2 WS endpoints
-│   │   ├── diagnostic.py   # Health diagnostic
-│   │   └── frontend/       # HTML/JS dashboard UI
-│   └── main.py             # Entry point
-├── tests/                  # 8 test files, ~67 tests
-│   └── test_livetalking_integration.py  # LiveTalking tests
-├── scripts/                # verify_pipeline.py, setup_livetalking.py
-├── external/               # Git submodules
-│   └── livetalking/        # LiveTalking repository
-├── docs/                   # Architecture, workflow, changelogs
-├── config.yaml             # System configuration
-├── .env.example            # Environment template
-└── pyproject.toml          # UV package manager
+│   ├── main.py
+│   ├── brain/
+│   ├── voice/
+│   ├── face/
+│   │   ├── pipeline.py
+│   │   ├── livetalking_adapter.py
+│   │   └── livetalking_manager.py          # target
+│   ├── stream/
+│   ├── dashboard/
+│   │   ├── api.py
+│   │   ├── diagnostic.py
+│   │   └── frontend/
+│   ├── data/
+│   ├── config/
+│   └── utils/
+├── scripts/
+├── tests/
+├── docs/
+├── external/
+│   └── livetalking/
+│       ├── app.py
+│       ├── web/
+│       ├── models/
+│       └── data/
+├── config/
+├── .env.example
+└── pyproject.toml
 ```
+
+## Startup Flow
+
+```text
+1. FastAPI starts
+2. Config and env loaded
+3. Database initialized
+4. Dashboard API registered
+5. Health manager registered
+6. LiveTalking bridge checks readiness
+7. Operator opens /dashboard
+8. Operator validates readiness
+9. Operator starts LiveTalking if needed
+10. Preview tested
+11. RTMP path validated
+12. Internal live slice executed
+```
+
+## Dashboard Strategy
+
+### Sekarang
+
+- dashboard utama masih HTML statis
+- sudah cukup untuk baseline observability
+
+### Target
+
+- frontend diganti ke Svelte ringan
+- tetap static build
+- tetap disajikan oleh FastAPI
+- tidak memakai Next.js
+
+Alasan:
+
+- lebih ringan
+- tidak perlu SSR
+- cocok untuk panel operator internal
+- minim friction saat dipindah ke Ubuntu server
+
+## Environment Policy
+
+Semua dokumentasi aktif harus mengikuti aturan ini:
+
+- gunakan `uv sync`
+- gunakan `uv run`
+- gunakan `uv pip`
+- jangan gunakan conda
+- jangan jadikan environment Windows-specific sebagai sumber kebenaran
+
+### Command resmi
+
+```bash
+uv sync --extra dev
+uv run pytest tests -q -p no:cacheprovider
+uv run python scripts/verify_pipeline.py --verbose
+uv run python -m src.main
+```
+
+## Status Saat Ini
+
+### Sudah ada
+
+- FastAPI control plane
+- dashboard API
+- diagnostic endpoints
+- SQLite
+- LiteLLM router
+- RTMP manager baseline
+- LiveTalking vendor repo
+- batch scripts untuk run dan setup awal
+
+### Belum selesai
+
+- process bridge LiveTalking yang rapi
+- satu source of truth model/avatar path
+- readiness API yang lengkap
+- dashboard Svelte
+- vertical slice live yang benar-benar terpaku
+- reliability layer untuk penggunaan panjang
+
+## Dokumen Terkait
+
+- `docs/README.md`
+- `docs/decisions/architecture_internal_live.md`
+- `docs/audits/AUDIT_CONTEXT_2026-03-07.md`
+- `docs/plans/2026-03-07-unified-dashboard-livetalking-plan.md`
+- `docs/guides/LIVETALKING_WEB_ACCESS_ID.md`
+- `docs/guides/LIVETALKING_QUICKSTART.md`

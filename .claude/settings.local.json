@@ -16,7 +16,8 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(rm:*)",
       "Bash(cp:*)",
-      "Bash(tar xzf:*)"
+      "Bash(tar xzf:*)",
+      "Bash(ls:*)"
     ]
   }
 }
