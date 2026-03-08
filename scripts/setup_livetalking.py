@@ -4,9 +4,10 @@
 This script will:
 1. Clone LiveTalking as a git submodule
 2. Install required dependencies
-3. Download model weights (MuseTalk, ER-NeRF, GFPGAN)
-4. Verify GPU availability
-5. Create necessary directories
+3. Setup project-local FFmpeg
+4. Normalize MuseTalk asset paths
+5. Verify GPU availability
+6. Create necessary directories
 
 Usage:
     python scripts/setup_livetalking.py
@@ -116,9 +117,10 @@ def create_directories(project_root: Path) -> bool:
     print("\n=== Creating directories ===")
     
     dirs = [
-        project_root / "models" / "musetalk",
-        project_root / "models" / "er-nerf",
-        project_root / "models" / "gfpgan",
+        project_root / "external" / "livetalking" / "models" / "musetalk",
+        project_root / "external" / "livetalking" / "models" / "gfpgan",
+        project_root / "external" / "livetalking" / "data" / "avatars",
+        project_root / "tools" / "ffmpeg" / "bin",
         project_root / "assets" / "avatar",
     ]
     
@@ -132,28 +134,23 @@ def create_directories(project_root: Path) -> bool:
 
 def download_models(project_root: Path) -> bool:
     """Download model weights."""
-    print("\n=== Downloading models ===")
-    print("Note: This will download ~5GB of model weights")
-    print("Models needed:")
-    print("  - MuseTalk 1.5 (~1.5GB)")
-    print("  - ER-NeRF (~2GB)")
-    print("  - GFPGAN (~1.5GB)")
-    
-    response = input("\nProceed with download? (y/n): ")
-    if response.lower() != "y":
-        print("Skipping model download")
-        return True
-    
-    # TODO: Implement actual model download
-    # This would typically use huggingface_hub or direct wget/curl
-    
-    print("\n⚠ Model download not yet implemented")
-    print("Please download models manually:")
-    print("  1. MuseTalk: https://github.com/TMElyralab/MuseTalk")
-    print("  2. ER-NeRF: https://github.com/Fictionarry/ER-NeRF")
-    print("  3. GFPGAN: https://github.com/TencentARC/GFPGAN")
-    
-    return True
+    print("\n=== Downloading MuseTalk models ===")
+    return run_command(
+        [sys.executable, "scripts/setup_musetalk_assets.py", "--download-models"],
+        cwd=project_root,
+    )
+
+
+def setup_ffmpeg(project_root: Path) -> bool:
+    """Ensure FFmpeg is installed in the project-local tools directory."""
+    print("\n=== Setting up FFmpeg ===")
+    return run_command([sys.executable, "scripts/setup_ffmpeg.py"], cwd=project_root)
+
+
+def normalize_musetalk_assets(project_root: Path) -> bool:
+    """Normalize existing MuseTalk assets into canonical vendor paths."""
+    print("\n=== Normalizing MuseTalk assets ===")
+    return run_command([sys.executable, "scripts/setup_musetalk_assets.py", "--sync-only"], cwd=project_root)
 
 
 def check_gpu() -> bool:
@@ -201,6 +198,7 @@ LIVETALKING_USE_WEBRTC=false
 LIVETALKING_USE_RTMP=true
 LIVETALKING_FPS=30
 LIVETALKING_RESOLUTION=512,512
+FFMPEG_BIN=tools/ffmpeg/bin/ffmpeg.exe
 """
     
     if env_file.exists():
@@ -245,8 +243,10 @@ def main() -> int:
         ("Setup submodule", lambda: setup_submodule(project_root)),
         ("Install dependencies", lambda: install_dependencies(project_root)),
         ("Create directories", lambda: create_directories(project_root)),
-        ("Check GPU", check_gpu),
+        ("Setup FFmpeg", lambda: setup_ffmpeg(project_root)),
+        ("Normalize MuseTalk assets", lambda: normalize_musetalk_assets(project_root)),
         ("Update .env", lambda: update_env_file(project_root)),
+        ("Check GPU", check_gpu),
     ]
     
     if not args.skip_models:
@@ -266,11 +266,11 @@ def main() -> int:
     print("   - Record 5-minute video of avatar (assets/avatar/reference.mp4)")
     print("   - Record 3-10 second audio sample (assets/avatar/reference.wav)")
     print("\n2. Download models (if skipped):")
-    print("   - Run: python scripts/setup_livetalking.py")
-    print("\n3. Test the integration:")
+    print("   - Run: uv run python scripts/setup_musetalk_assets.py --download-models")
+    print("\n3. Generate MuseTalk avatar when reference media is ready:")
+    print("   - Run: uv run python scripts/setup_musetalk_assets.py --generate-avatar")
+    print("\n4. Test the integration:")
     print("   - Run: set MOCK_MODE=true && uv run python -m src.main")
-    print("\n4. Train ER-NeRF avatar:")
-    print("   - Run: python external/livetalking/train_avatar.py")
     print("\n5. Start production:")
     print("   - Run: uv run python -m src.main")
     

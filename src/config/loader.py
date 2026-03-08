@@ -70,8 +70,8 @@ class LiveTalkingConfig(BaseModel):
     livetalking_resolution: list[int] = Field(default_factory=lambda: [512, 512])
     port: int = 8010
     transport: str = "webrtc"
-    model: str = "wav2lip"
-    avatar_id: str = "wav2lip256_avatar1"
+    model: str = "musetalk"
+    avatar_id: str = "musetalk_avatar1"
 
 
 class AvatarConfig(BaseModel):

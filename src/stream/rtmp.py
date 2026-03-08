@@ -14,6 +14,7 @@ from enum import Enum
 from typing import Any
 
 from src.config import get_config, get_env, is_mock_mode
+from src.utils.ffmpeg import find_ffmpeg
 from src.utils.logging import get_logger
 
 logger = get_logger("stream")
@@ -101,8 +102,14 @@ class RTMPStreamer:
     def _build_ffmpeg_command(self, rtmp_url: str) -> list[str]:
         """Build FFmpeg command for RTMP output."""
         cfg = self.config
+        ffmpeg_bin = find_ffmpeg()
+        if ffmpeg_bin is None:
+            raise FileNotFoundError(
+                "ffmpeg not found on PATH or known install locations. "
+                "Install FFmpeg and ensure it is accessible."
+            )
         return [
-            "ffmpeg",
+            str(ffmpeg_bin),
             "-re",
             "-i", "pipe:0",
             "-c:v", cfg.video_codec,

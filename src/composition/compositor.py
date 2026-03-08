@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import get_config, is_mock_mode
+from src.utils.ffmpeg import find_ffmpeg
 from src.utils.logging import get_logger
 
 logger = get_logger("composition")
@@ -142,9 +143,12 @@ class FFmpegCompositor:
 
     async def health_check(self) -> bool:
         """Check if FFmpeg is available."""
+        ffmpeg_bin = find_ffmpeg()
+        if ffmpeg_bin is None:
+            return False
         try:
             result = subprocess.run(
-                ["ffmpeg", "-version"],
+                [str(ffmpeg_bin), "-version"],
                 capture_output=True,
                 timeout=5,
             )

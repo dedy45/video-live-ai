@@ -27,8 +27,13 @@ from fastapi.staticfiles import StaticFiles
 # Add src to path for clean imports
 project_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 for d in sys.path:
-    if os.path.samefile(project_dir, d):
-        break
+    if not d:
+        continue
+    try:
+        if os.path.samefile(project_dir, d):
+            break
+    except FileNotFoundError:
+        continue
 else:
     sys.path.insert(0, str(project_dir))
 
@@ -40,8 +45,9 @@ from src.data.database import check_database_health, init_database
 from src.utils.health import HealthStatus, get_health_manager
 from src.utils.logging import get_logger, setup_logging
 
-# Frontend path
-FRONTEND_DIR = Path(__file__).parent / "dashboard" / "frontend"
+# Frontend paths — prefer Svelte build output, fallback to legacy
+FRONTEND_DIST_DIR = Path(__file__).parent / "dashboard" / "frontend" / "dist"
+FRONTEND_LEGACY_DIR = Path(__file__).parent / "dashboard" / "frontend"
 
 
 def create_app() -> FastAPI:
@@ -197,10 +203,17 @@ def create_app() -> FastAPI:
     except Exception as e:
         logger.warning("prometheus_metrics_failed", error=str(e))
 
-    # Serve frontend static files
-    if FRONTEND_DIR.exists():
-        app.mount("/dashboard", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-        logger.info("frontend_mounted", path=str(FRONTEND_DIR))
+    # Serve frontend static files — prefer Svelte dist/, fallback to legacy
+    _frontend_dir = None
+    if FRONTEND_DIST_DIR.exists():
+        _frontend_dir = FRONTEND_DIST_DIR
+        logger.info("frontend_svelte_mounted", path=str(FRONTEND_DIST_DIR))
+    elif FRONTEND_LEGACY_DIR.exists():
+        _frontend_dir = FRONTEND_LEGACY_DIR
+        logger.info("frontend_legacy_mounted", path=str(FRONTEND_LEGACY_DIR))
+
+    if _frontend_dir:
+        app.mount("/dashboard", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
 
     @app.get("/")
     async def root() -> dict[str, str]:
@@ -209,7 +222,7 @@ def create_app() -> FastAPI:
             "version": config.app.version,
             "status": "running",
             "mock_mode": str(is_mock_mode()),
-            "dashboard": "/dashboard" if FRONTEND_DIR.exists() else "not available",
+            "dashboard": "/dashboard" if _frontend_dir else "not available",
             "api_docs": "/docs",
             "diagnostic": "/diagnostic/",
         }

@@ -1,0 +1,23 @@
+import { defineConfig } from 'vite';
+import { svelte } from '@sveltejs/vite-plugin-svelte';
+import { svelteTesting } from '@testing-library/svelte/vite';
+
+export default defineConfig({
+  plugins: [svelte(), svelteTesting()],
+  base: '/dashboard/',
+  build: {
+    outDir: 'dist',
+    emptyOutDir: true,
+  },
+  server: {
+    proxy: {
+      '/api': 'http://localhost:8000',
+    },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./vitest.setup.ts'],
+    include: ['src/**/*.test.ts'],
+  },
+});

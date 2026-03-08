@@ -1,5 +1,186 @@
 # Changelog
 
+## v0.5.6 — 2026-03-08 (Realtime Dashboard Stabilization + Checkpoint C Verification)
+
+### ✅ Frontend: Realtime Panel Stabilization
+- Fix Svelte realtime update loops in Overview, Monitor, and Diagnostics panels
+- Realtime snapshot merging now uses `untrack(...)` to avoid self-triggered `$effect` recursion
+- Browser runtime no longer throws `effect_update_depth_exceeded`
+- Tab switching between Overview, Validation, and Stream works again in real browser validation
+
+### ✅ Browser Verification Expanded
+- `e2e/dashboard.spec.ts` now covers:
+  - Validation tab navigation
+  - running `Real-Mode Readiness`
+  - validation history visibility
+  - realtime source indicator
+  - pipeline transition receipt
+- `cd src/dashboard/frontend && npm run test:e2e` -> `8 passed`
+
+### ✅ Real-Mode Gate JSON Output Fixed
+- `scripts/check_real_mode_readiness.py --json` now emits machine-readable JSON on stdout without breaking `json.loads(...)`
+- Gate remains intentionally strict:
+  - current result is `BLOCKED`
+  - current blocker is missing real product data source
+
+### 📊 Verification
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test` -> `40 passed`
+- `cd src/dashboard/frontend && npx playwright test` -> `8 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `132 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- manual Playwright browser check confirms:
+  - no page errors
+  - tab switching works
+  - Validation and Stream panels render correctly
+  - realtime source appears in Overview
+
+### ⚠️ Remaining Blocker Before REAL VERIFIED
+- `uv run python scripts/check_real_mode_readiness.py --json` still returns `BLOCKED`
+- Remaining blocker: `Product data source exists`
+- Current runtime truth still reports face fallback path:
+  - requested: `musetalk / musetalk_avatar1`
+  - resolved: `wav2lip / wav2lip256_avatar1`
+
+## v0.5.5 — 2026-03-08 (Svelte Dashboard Verification Remediation)
+
+### ✅ Backend: Requested vs Resolved LiveTalking State
+- `EngineStatus` dataclass now includes `requested_model` and `requested_avatar_id` fields
+- `EngineStatus.to_dict()` returns `requested_model`, `resolved_model`, `requested_avatar_id`, `resolved_avatar_id`
+- `LiveTalkingManager` stores requested values as instance attributes (previously local variables)
+- `get_config_dict()` includes all four requested/resolved fields
+- API endpoints `GET /api/engine/livetalking/status` and `GET /api/engine/livetalking/config` now expose both requested and resolved values
+
+### ✅ Frontend: Engine Panel Requested vs Resolved UI
+- Updated `EngineStatus` and `EngineConfig` TypeScript types with requested/resolved fields
+- Engine panel now explicitly shows: Requested Model, Resolved Model, Requested Avatar, Resolved Avatar
+- Fallback warning indicator appears when requested differs from resolved (e.g. musetalk → wav2lip)
+
+### ✅ Frontend Test Suite Established
+- Added `vitest.setup.ts` with `@testing-library/jest-dom` matchers
+- Added `@testing-library/svelte/vite` plugin for Svelte 5 browser-mode component testing
+- `src/tests/api.test.ts` — 4 tests verifying API response type shapes
+- `src/tests/App.test.ts` — 2 tests verifying App shell renders tabs including Engine
+- `src/tests/engine-panel.test.ts` — 4 tests verifying requested/resolved display and fallback warning
+- `npm run test` -> `10 passed` (3 test files)
+
+### ✅ Playwright Browser Smoke Test
+- Added `playwright.config.ts` with Chromium project and webServer config
+- `e2e/dashboard.spec.ts` — 3 smoke tests: page loads, Engine tab exists, Readiness tab exists
+- `npm run test:e2e` script added to `package.json`
+- `npx playwright test` -> `3 passed`
+
+### ✅ Backend Tests Extended
+- `tests/test_livetalking_integration.py` — 3 new tests for requested/resolved in status and config
+- `tests/test_dashboard.py` — 2 new tests for requested/resolved in API endpoint responses
+
+### 📊 Verification
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test` -> `10 passed`
+- `cd src/dashboard/frontend && npx playwright test` -> `3 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> all passing including 5 new tests
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `/dashboard` loads from Svelte build, Engine panel shows requested vs resolved state
+
+## v0.5.4 — 2026-03-08 (Svelte Dashboard Verification Audit)
+
+### ✅ Verified
+- `src/main.py` now mounts `src/dashboard/frontend/dist` at `/dashboard` when the Svelte build exists
+- `cd src/dashboard/frontend && npm run build` completes successfully
+- `uv run pytest tests -q -p no:cacheprovider` -> `115 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- manual HTTP smoke confirms `/dashboard` loads from built Svelte assets
+
+### ⚠️ Validation Gaps Found
+- `cd src/dashboard/frontend && npm run test` still fails because no frontend test files exist yet
+- Engine panel still shows only resolved LiveTalking state, not explicit requested vs resolved values
+- `docs/task_status.md` and `docs/workflow.md` were stale relative to the migrated dashboard state
+
+### 📌 Decision
+- Svelte dashboard migration is **not** `TARGET ONLY` anymore
+- Svelte dashboard migration is also **not yet fully verified**
+- Project status for this track is now `PARTIAL` until frontend tests, requested/resolved UI, and docs sync are completed
+
+### 🔜 Follow-up
+- Execute `docs/plans/2026-03-08-svelte-dashboard-verification-remediation.md`
+
+## v0.5.3 — 2026-03-08 (FFmpeg Portable Setup + MuseTalk Asset Normalization)
+
+### ✅ FFmpeg Runtime Normalization
+- Add `scripts/setup_ffmpeg.py` to install a project-local portable FFmpeg into `tools/ffmpeg/bin`
+- Extend `src/utils/ffmpeg.py` to resolve FFmpeg from:
+  - `FFMPEG_BIN`
+  - `FFMPEG_DIR`
+  - project-local `tools/ffmpeg/bin`
+  - PATH
+  - known OS install locations
+- Update dashboard and composition runtime checks to use the shared FFmpeg resolver instead of hardcoded `ffmpeg`
+- Verify local FFmpeg install on Windows:
+  - `tools/ffmpeg/bin/ffmpeg.exe`
+  - `ffmpeg version N-123196-gba38fa206e-20260306`
+
+### ✅ MuseTalk Asset Normalization
+- Add `src/face/asset_setup.py` to normalize legacy and vendor-generated MuseTalk assets into canonical runtime paths
+- Add `scripts/setup_musetalk_assets.py` for:
+  - `--sync-only`
+  - `--download-models`
+  - `--generate-avatar`
+- Update `scripts/setup_livetalking.py` to:
+  - create canonical vendor asset directories
+  - call FFmpeg setup
+  - normalize MuseTalk assets
+  - delegate MuseTalk model download to the new setup script
+- Download MuseTalk model weights into `external/livetalking/models/musetalk`
+
+### ✅ Truthful Readiness Semantics
+- Fix `src/dashboard/readiness.py` so fallback warnings now produce `overall_status=degraded` instead of incorrectly returning `ready`
+- Add regression coverage proving MuseTalk fallback to Wav2Lip degrades readiness instead of masking it
+- Smoke test now reports requested vs resolved LiveTalking runtime explicitly
+
+### ⚠️ Remaining Runtime Gap
+- MuseTalk model weights are present locally
+- MuseTalk avatar runtime asset is still missing because `assets/avatar/reference.mp4` does not exist yet
+- Current resolved runtime therefore remains:
+  - requested: `musetalk / musetalk_avatar1`
+  - resolved: `wav2lip / wav2lip256_avatar1`
+
+### 📊 Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `115 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `uv run python scripts/setup_musetalk_assets.py --sync-only` -> models ready, avatar not ready, reference missing
+- `uv run python scripts/smoke_livetalking.py` with `LIVETALKING_PORT=8011` -> smoke checks passed with truthful Wav2Lip fallback
+
+## v0.5.2 — 2026-03-08 (LiveTalking Fallback + FFmpeg Readiness Debugging)
+
+### ✅ LiveTalking Runtime Alignment
+- Change LiveTalking source-of-truth defaults to `musetalk` / `musetalk_avatar1`
+- Add runtime resolver in `src/face/engine_resolver.py` so missing MuseTalk assets now degrade cleanly to `wav2lip`
+- Fix `LiveTalkingManager` and `LiveTalkingEngine` so avatar fallback matches the resolved engine
+  - Before: resolved model could become `wav2lip` while avatar stayed `musetalk_avatar1`
+  - Now: fallback also switches avatar to `wav2lip256_avatar1`
+
+### ✅ FFmpeg Readiness Debugging
+- Add `src/utils/ffmpeg.py` as shared FFmpeg discovery helper
+- Wire RTMP streaming to shared FFmpeg resolution instead of hardcoded `ffmpeg`
+- Update dashboard readiness checks to use the shared FFmpeg helper
+- Readiness now reports `requested` vs `resolved` LiveTalking model/avatar so fallback is visible in diagnostics
+
+### ✅ Regression Tests
+- Add `tests/test_engine_resolver.py`
+- Add entrypoint regression coverage in `tests/test_entrypoints.py`
+- Extend `tests/test_livetalking_integration.py` for:
+  - FFmpeg readiness helper usage
+  - LiveTalking fallback avatar consistency
+  - updated MuseTalk defaults
+
+### 📊 Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `105 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- Local readiness remains `degraded` on this machine until:
+  - FFmpeg is installed or discoverable
+  - MuseTalk model/avatar assets are actually present
+  - runtime safely falls back to `wav2lip` in the meantime
+
 ## v0.5.1 — 2026-03-07 (Documentation Cleanup + Truth Alignment)
 
 ### ✅ Documentation Cleanup

@@ -5,6 +5,8 @@ Run with:
     pytest tests/test_livetalking_integration.py -v -m "not integration"  # Skip GPU tests
 """
 
+from unittest.mock import patch
+
 import pytest
 
 from src.face.livetalking_adapter import LiveTalkingEngine, LiveTalkingPipeline
@@ -293,6 +295,49 @@ def test_readiness_check_structure():
     assert d["status"] == "ok"
 
 
+def test_readiness_uses_ffmpeg_helper_when_path_lookup_fails():
+    """Readiness should use ffmpeg helper, not PATH lookup alone."""
+    from src.dashboard.readiness import run_readiness_checks
+
+    with patch(
+        "src.dashboard.readiness.check_ffmpeg_ready",
+        return_value={"available": True, "path": r"C:\ffmpeg\bin\ffmpeg.exe"},
+    ):
+        result = run_readiness_checks()
+
+    ffmpeg_check = next(c for c in result.checks if c.name == "ffmpeg_available")
+    assert ffmpeg_check.passed is True
+    assert "ffmpeg.exe" in ffmpeg_check.message
+
+
+def test_readiness_degrades_when_musetalk_falls_back_to_wav2lip(monkeypatch):
+    """Fallback warnings must surface as degraded, not ready."""
+    from src.dashboard.readiness import run_readiness_checks
+
+    monkeypatch.delenv("LIVETALKING_MODEL", raising=False)
+    monkeypatch.delenv("LIVETALKING_AVATAR_ID", raising=False)
+    monkeypatch.setenv("TIKTOK_RTMP_URL", "rtmp://push.example/live")
+    monkeypatch.setenv("TIKTOK_STREAM_KEY", "test-key")
+
+    with patch(
+        "src.dashboard.readiness.check_database_health",
+        return_value={"healthy": True, "message": "OK"},
+    ), patch(
+        "src.dashboard.readiness.check_ffmpeg_ready",
+        return_value={"available": True, "path": r"C:\tools\ffmpeg\bin\ffmpeg.exe"},
+    ), patch(
+        "src.dashboard.readiness.resolve_engine",
+        return_value="wav2lip",
+    ), patch(
+        "src.dashboard.readiness.resolve_avatar_id",
+        return_value="wav2lip256_avatar1",
+    ):
+        result = run_readiness_checks()
+
+    assert result.overall_status == "degraded"
+    assert any(check.status == "warning" for check in result.checks)
+
+
 # === Adapter Constants Tests ===
 
 def test_adapter_constants():
@@ -306,7 +351,20 @@ def test_adapter_constants():
     assert "wav2lip" in SUPPORTED_MODELS
     assert "musetalk" in SUPPORTED_MODELS
     assert DEFAULT_PORT == 8010
-    assert DEFAULT_MODEL == "wav2lip"
+    assert DEFAULT_MODEL == "musetalk"
+    assert DEFAULT_AVATAR_ID == "musetalk_avatar1"
+
+
+def test_livetalking_manager_fallback_avatar_matches_resolved_model():
+    """Resolved wav2lip fallback must use a wav2lip-compatible avatar."""
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    with patch("src.face.livetalking_manager.resolve_engine", return_value="wav2lip"):
+        mgr = LiveTalkingManager()
+
+    assert mgr.model == "wav2lip"
+    assert mgr.avatar_id == "wav2lip256_avatar1"
+    assert "wav2lip256_avatar1" in " ".join(mgr.build_launch_command())
 
 
 def test_engine_transport_determination():
@@ -319,3 +377,47 @@ def test_engine_transport_determination():
 
     engine_default = LiveTalkingEngine(use_webrtc=False, use_rtmp=False)
     assert engine_default.transport == "webrtc"
+
+
+# === Requested vs Resolved State Tests ===
+
+def test_manager_status_includes_requested_fields():
+    """EngineStatus.to_dict() must include requested_model and requested_avatar_id."""
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    mgr = LiveTalkingManager()
+    d = mgr.get_status().to_dict()
+
+    assert "requested_model" in d, "status missing requested_model"
+    assert "resolved_model" in d, "status missing resolved_model"
+    assert "requested_avatar_id" in d, "status missing requested_avatar_id"
+    assert "resolved_avatar_id" in d, "status missing resolved_avatar_id"
+    # resolved_model must equal the current model
+    assert d["resolved_model"] == d["model"]
+    assert d["resolved_avatar_id"] == d["avatar_id"]
+
+
+def test_manager_config_includes_requested_fields():
+    """get_config_dict() must include requested_model and requested_avatar_id."""
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    mgr = LiveTalkingManager()
+    cfg = mgr.get_config_dict()
+
+    assert "requested_model" in cfg, "config missing requested_model"
+    assert "resolved_model" in cfg, "config missing resolved_model"
+    assert "requested_avatar_id" in cfg, "config missing requested_avatar_id"
+    assert "resolved_avatar_id" in cfg, "config missing resolved_avatar_id"
+
+
+def test_manager_requested_vs_resolved_on_fallback():
+    """When engine falls back to wav2lip, requested != resolved must be visible."""
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    with patch("src.face.livetalking_manager.resolve_engine", return_value="wav2lip"):
+        mgr = LiveTalkingManager()
+
+    d = mgr.get_status().to_dict()
+    assert d["requested_model"] == "musetalk"
+    assert d["resolved_model"] == "wav2lip"
+    assert d["resolved_model"] != d["requested_model"]

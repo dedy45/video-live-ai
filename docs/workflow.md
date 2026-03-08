@@ -1,6 +1,6 @@
 # Development Workflow
 
-> Last updated: 2026-03-07
+> Last updated: 2026-03-08
 > Package manager: `uv` only
 
 ## Official Commands
@@ -14,8 +14,12 @@ MOCK_MODE=true uv run python -m src.main
 
 ## Current Validation Snapshot
 
-- `uv run pytest tests -q -p no:cacheprovider` -> `89 passed`
-- `uv run python scripts/verify_pipeline.py` -> `11/11 layers PASS`
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test` -> PASS (`40 passed`, 5 test files)
+- `cd src/dashboard/frontend && npx playwright test` -> PASS (`8 passed`)
+- `uv run pytest tests -q -p no:cacheprovider` -> `132 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `uv run python scripts/check_real_mode_readiness.py --json` -> `BLOCKED` on missing real product data source
 - `/dashboard` is the primary operator UI
 - `localhost:8010/*.html` are vendor debug pages only
 
@@ -39,9 +43,13 @@ MOCK_MODE=true uv run python -m src.main
 ## Verification
 
 ```bash
+cd src/dashboard/frontend && npm run build
+cd src/dashboard/frontend && npm run test
+cd src/dashboard/frontend && npx playwright test
 uv run pytest tests -q -p no:cacheprovider
 uv run pytest tests/test_dashboard.py -v
 uv run pytest tests/test_livetalking_integration.py -v
+uv run python scripts/check_real_mode_readiness.py --json
 uv run python scripts/verify_pipeline.py
 uv run ruff check src/
 ```

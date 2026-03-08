@@ -25,6 +25,9 @@ from src.commerce.analytics import get_analytics
 from src.commerce.manager import AffiliateTracker, Product, ProductManager
 from src.config import get_config, get_env, is_mock_mode
 from src.utils.health import get_health_manager
+from src.dashboard.truth import get_runtime_truth_snapshot
+from src.dashboard.validation_history import record_validation, get_history as get_validation_history
+from src.utils.ffmpeg import check_ffmpeg_ready
 from src.utils.logging import get_logger
 
 logger = get_logger("dashboard.api")
@@ -677,6 +680,13 @@ async def ws_dashboard(websocket: WebSocket) -> None:
                 except Exception:
                     pass
 
+            # Add runtime truth fields for realtime dashboard
+            try:
+                truth = get_runtime_truth_snapshot()
+                snapshot["truth"] = truth
+            except Exception:
+                pass
+
             await websocket.send_json(snapshot)
             await asyncio.sleep(1.0)
 
@@ -808,6 +818,22 @@ async def get_readiness() -> dict[str, Any]:
         }
 
 
+# ── Runtime Truth Endpoint ─────────────────────────────────
+
+@router.get("/runtime/truth")
+async def get_runtime_truth() -> dict[str, Any]:
+    """Get consolidated runtime truth snapshot for operator dashboard."""
+    try:
+        return get_runtime_truth_snapshot()
+    except Exception as e:
+        logger.error("runtime_truth_error", error=str(e), exc_info=True)
+        return {
+            "mock_mode": is_mock_mode(),
+            "error": str(e),
+            "timestamp": None,
+        }
+
+
 # ── Validation Workflow Endpoints ──────────────────────────
 
 @router.post("/validate/mock-stack")
@@ -859,12 +885,14 @@ async def validate_livetalking_engine() -> dict[str, Any]:
 async def validate_rtmp_target() -> dict[str, Any]:
     """Validate RTMP target configuration."""
     try:
-        import os
-        import shutil
         checks = []
 
-        ffmpeg = shutil.which("ffmpeg")
-        checks.append({"check": "ffmpeg_available", "passed": ffmpeg is not None, "message": ffmpeg or "not found"})
+        ffmpeg_status = check_ffmpeg_ready()
+        checks.append({
+            "check": "ffmpeg_available",
+            "passed": bool(ffmpeg_status["available"]),
+            "message": ffmpeg_status["path"] or "not found",
+        })
 
         rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
         stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
@@ -875,5 +903,80 @@ async def validate_rtmp_target() -> dict[str, Any]:
         return {"status": "pass" if all_pass else "fail", "checks": checks}
     except Exception as e:
         logger.error("validate_rtmp_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+# ── Validation History Endpoints ─────────────────────────────
+
+@router.get("/validation/history")
+async def validation_history(limit: int = 50) -> list[dict[str, Any]]:
+    """Get recent validation history entries."""
+    return get_validation_history(limit=limit)
+
+
+@router.post("/validate/runtime-truth")
+async def validate_runtime_truth() -> dict[str, Any]:
+    """Validate runtime truth snapshot and record evidence."""
+    try:
+        truth = get_runtime_truth_snapshot()
+        checks = [
+            {"check": "mock_mode_explicit", "passed": True, "message": f"MOCK_MODE={truth['mock_mode']}"},
+            {"check": "face_runtime_mode", "passed": truth["face_runtime_mode"] != "unknown", "message": truth["face_runtime_mode"]},
+            {"check": "voice_runtime_mode", "passed": truth["voice_runtime_mode"] != "unknown", "message": truth["voice_runtime_mode"]},
+            {"check": "stream_runtime_mode", "passed": truth["stream_runtime_mode"] != "unknown", "message": truth["stream_runtime_mode"]},
+            {"check": "provenance_complete", "passed": len(truth.get("provenance", {})) >= 3, "message": f"{len(truth.get('provenance', {}))} surfaces"},
+            {"check": "timestamp_present", "passed": truth.get("timestamp") is not None, "message": truth.get("timestamp", "missing")},
+        ]
+        all_pass = all(c["passed"] for c in checks)
+        status = "pass" if all_pass else "fail"
+        provenance = "mock" if truth["mock_mode"] else "real_local"
+        entry = record_validation("runtime-truth", status, checks, provenance=provenance)
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_truth_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/real-mode-readiness")
+async def validate_real_mode_readiness() -> dict[str, Any]:
+    """Check if system is ready for real-mode (MOCK_MODE=false) operation."""
+    try:
+        checks: list[dict[str, Any]] = []
+
+        # 1. MOCK_MODE must be false
+        mock = is_mock_mode()
+        checks.append({"check": "mock_mode_off", "passed": not mock, "message": f"MOCK_MODE={'true' if mock else 'false'}"})
+
+        # 2. Avatar reference asset
+        from pathlib import Path
+        ref_video = Path("assets/avatar/reference.mp4")
+        checks.append({"check": "avatar_reference", "passed": ref_video.exists(), "message": str(ref_video)})
+
+        # 3. RTMP target configured
+        rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
+        stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
+        rtmp_ok = bool(rtmp_url and stream_key)
+        checks.append({"check": "rtmp_configured", "passed": rtmp_ok, "message": "configured" if rtmp_ok else "not set"})
+
+        # 4. LiveTalking runtime path resolved
+        lt_path = Path("external/livetalking/app.py")
+        checks.append({"check": "livetalking_entrypoint", "passed": lt_path.exists(), "message": str(lt_path)})
+
+        # 5. Products exist
+        pm = _product_manager or ProductManager()
+        products = pm.get_all_active()
+        checks.append({"check": "products_loaded", "passed": len(products) > 0, "message": f"{len(products)} products"})
+
+        # 6. FFmpeg available
+        ffmpeg_status = check_ffmpeg_ready()
+        checks.append({"check": "ffmpeg_available", "passed": bool(ffmpeg_status["available"]), "message": ffmpeg_status["path"] or "not found"})
+
+        all_pass = all(c["passed"] for c in checks)
+        blockers = [c["check"] for c in checks if not c["passed"]]
+        status = "pass" if all_pass else "blocked"
+        entry = record_validation("real-mode-readiness", status, checks, provenance="real_local", context=f"blockers: {blockers}")
+        return {"status": status, "checks": checks, "blockers": blockers, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_real_mode_error", error=str(e), exc_info=True)
         return {"status": "error", "checks": [], "error": str(e)}
 

@@ -7,13 +7,14 @@ Answers "is the system ready to go live?" from one endpoint.
 from __future__ import annotations
 
 import os
-import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from src.config import get_config, is_mock_mode
 from src.data.database import check_database_health
+from src.face.engine_resolver import resolve_avatar_id, resolve_engine
+from src.utils.ffmpeg import check_ffmpeg_ready
 from src.utils.logging import get_logger
 
 logger = get_logger("dashboard.readiness")
@@ -57,6 +58,7 @@ def run_readiness_checks() -> ReadinessResult:
     """Run all readiness checks and return consolidated result."""
     checks: list[ReadinessCheck] = []
     blocking: list[str] = []
+    config = None
 
     # 1. Config loaded
     try:
@@ -114,41 +116,66 @@ def run_readiness_checks() -> ReadinessResult:
     if not lt_installed:
         blocking.append("LiveTalking not installed (run: git submodule update --init)")
 
+    default_model = config.avatar.livetalking.model if config else "musetalk"
+    default_avatar_id = config.avatar.livetalking.avatar_id if config else "musetalk_avatar1"
+    requested_model = os.getenv("LIVETALKING_MODEL", default_model)
+    requested_avatar_id = os.getenv("LIVETALKING_AVATAR_ID", default_avatar_id)
+    resolved_model = resolve_engine(
+        requested_model,
+        musetalk_model_dir=lt_path / "models" / "musetalk",
+        musetalk_avatar_dir=lt_path / "data" / "avatars" / requested_avatar_id,
+    )
+    resolved_avatar_id = resolve_avatar_id(
+        requested_avatar_id,
+        resolved_model,
+        avatars_dir=lt_path / "data" / "avatars",
+    )
+
     # 4. LiveTalking model ready
-    model_name = os.getenv("LIVETALKING_MODEL", "wav2lip")
-    if model_name == "wav2lip":
+    if resolved_model == "wav2lip":
         model_path = lt_path / "models" / "wav2lip.pth"
-    elif model_name == "musetalk":
+    elif resolved_model == "musetalk":
         model_path = lt_path / "models" / "musetalk"
     else:
         model_path = lt_path / "models"
     model_ready = model_path.exists()
+    model_status = "ok" if model_ready and requested_model == resolved_model else "warning"
+    model_message = f"{resolved_model}: {model_path}"
+    if requested_model != resolved_model:
+        model_message = (
+            f"requested={requested_model}, resolved={resolved_model}: {model_path}"
+        )
     checks.append(ReadinessCheck(
         name="livetalking_model_ready",
         passed=model_ready,
-        status="ok" if model_ready else "warning",
-        message=f"{model_name}: {model_path}" if model_ready else f"Model not found: {model_path}",
+        status=model_status if model_ready else "warning",
+        message=model_message if model_ready else f"Model not found: {model_path}",
     ))
 
     # 5. LiveTalking avatar ready
-    avatar_id = os.getenv("LIVETALKING_AVATAR_ID", "wav2lip256_avatar1")
-    avatar_path = lt_path / "data" / "avatars" / avatar_id
+    avatar_path = lt_path / "data" / "avatars" / resolved_avatar_id
     avatar_ready = avatar_path.exists()
+    avatar_status = "ok" if avatar_ready and requested_avatar_id == resolved_avatar_id else "warning"
+    avatar_message = f"{resolved_avatar_id}: {avatar_path}"
+    if requested_avatar_id != resolved_avatar_id:
+        avatar_message = (
+            f"requested={requested_avatar_id}, resolved={resolved_avatar_id}: {avatar_path}"
+        )
     checks.append(ReadinessCheck(
         name="livetalking_avatar_ready",
         passed=avatar_ready,
-        status="ok" if avatar_ready else "warning",
-        message=f"{avatar_id}: {avatar_path}" if avatar_ready else f"Avatar not found: {avatar_path}",
+        status=avatar_status if avatar_ready else "warning",
+        message=avatar_message if avatar_ready else f"Avatar not found: {avatar_path}",
     ))
 
     # 6. FFmpeg available
-    ffmpeg_path = shutil.which("ffmpeg")
-    ffmpeg_ok = ffmpeg_path is not None
+    ffmpeg_status = check_ffmpeg_ready()
+    ffmpeg_ok = bool(ffmpeg_status["available"])
     checks.append(ReadinessCheck(
         name="ffmpeg_available",
         passed=ffmpeg_ok,
         status="ok" if ffmpeg_ok else "warning",
-        message=ffmpeg_path or "FFmpeg not found in PATH",
+        message=ffmpeg_status["path"] or "FFmpeg not found in PATH or known install locations",
     ))
 
     # 7. RTMP target configured
@@ -172,16 +199,22 @@ def run_readiness_checks() -> ReadinessResult:
     ))
 
     # Determine overall status
+    warnings = [c.name for c in checks if c.status == "warning"]
+    soft_failures = [c.name for c in checks if not c.passed and not c.blocking]
+
     if blocking:
         overall = "not_ready"
         action = f"Fix blocking issues: {blocking[0]}"
+    elif warnings or soft_failures:
+        overall = "degraded"
+        degraded_checks = warnings + [name for name in soft_failures if name not in warnings]
+        action = f"Optional fixes: {', '.join(degraded_checks)}"
     elif all(c.passed for c in checks):
         overall = "ready"
         action = "System is ready. Start LiveTalking engine from dashboard."
     else:
         overall = "degraded"
-        warnings = [c.name for c in checks if not c.passed]
-        action = f"Optional fixes: {', '.join(warnings)}"
+        action = "Optional fixes: review readiness checks"
 
     return ReadinessResult(
         overall_status=overall,

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import subprocess
+from unittest.mock import patch
 
 import pytest
 
@@ -85,6 +87,23 @@ async def test_rtmp_streamer_mock_start() -> None:
     health = streamer.get_health()
     assert health.status == StreamStatus.LIVE
     await streamer.stop()
+
+
+@pytest.mark.asyncio
+async def test_compositor_health_check_uses_resolved_ffmpeg() -> None:
+    """Compositor health check should use the shared FFmpeg resolver."""
+    from src.composition.compositor import FFmpegCompositor
+
+    compositor = FFmpegCompositor()
+    with patch("src.composition.compositor.find_ffmpeg", return_value="C:/ffmpeg/bin/ffmpeg.exe"), \
+         patch("src.composition.compositor.subprocess.run") as run_mock:
+        run_mock.return_value = subprocess.CompletedProcess(
+            args=["ffmpeg", "-version"],
+            returncode=0,
+        )
+        healthy = await compositor.health_check()
+
+    assert healthy is True
 
 
 # === Layer 6: Chat ===
@@ -198,3 +217,31 @@ def test_orchestrator_status() -> None:
     assert status["state"] == SystemState.IDLE.value
     assert "llm_stats" in status
     assert "safety_incidents" in status
+
+
+# === Real-Mode Readiness Gate Tests ===
+
+def test_real_mode_readiness_script_exists() -> None:
+    """The real-mode readiness script must exist."""
+    from pathlib import Path
+    script = Path("scripts/check_real_mode_readiness.py")
+    assert script.exists(), "scripts/check_real_mode_readiness.py not found"
+
+
+def test_real_mode_readiness_script_runs() -> None:
+    """The real-mode readiness script should run without crash."""
+    import subprocess
+    result = subprocess.run(
+        ["uv", "run", "python", "scripts/check_real_mode_readiness.py", "--json"],
+        capture_output=True, text=True, timeout=30,
+    )
+    # In test env with MOCK_MODE=true, it should exit 1 (blocked) but not crash
+    assert result.returncode in (0, 1), f"Script crashed: {result.stderr}"
+
+    import json
+    output = json.loads(result.stdout)
+    assert "checks" in output
+    assert "overall" in output
+    assert "is_ready" in output
+    assert "truth" in output
+    assert isinstance(output["is_ready"], bool)

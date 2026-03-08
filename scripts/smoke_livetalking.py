@@ -22,16 +22,31 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+from src.face.asset_setup import sync_musetalk_assets
+from src.face.engine_resolver import resolve_avatar_id, resolve_engine
+from src.face.livetalking_adapter import DEFAULT_AVATAR_ID, DEFAULT_MODEL, DEFAULT_PORT
+from src.utils.ffmpeg import check_ffmpeg_ready
+
 # Defaults
-DEFAULT_PORT = int(os.getenv("LIVETALKING_PORT", "8010"))
-DEFAULT_MODEL = os.getenv("LIVETALKING_MODEL", "wav2lip")
-DEFAULT_AVATAR_ID = os.getenv("LIVETALKING_AVATAR_ID", "wav2lip256_avatar1")
+DEFAULT_PORT = int(os.getenv("LIVETALKING_PORT", str(DEFAULT_PORT)))
+REQUESTED_MODEL = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
+REQUESTED_AVATAR_ID = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
 DEFAULT_TRANSPORT = os.getenv("LIVETALKING_TRANSPORT", "webrtc")
 
 LIVETALKING_DIR = project_root / "external" / "livetalking"
 APP_PY = LIVETALKING_DIR / "app.py"
 MODELS_DIR = LIVETALKING_DIR / "models"
 AVATARS_DIR = LIVETALKING_DIR / "data" / "avatars"
+RESOLVED_MODEL = resolve_engine(
+    REQUESTED_MODEL,
+    musetalk_model_dir=MODELS_DIR / "musetalk",
+    musetalk_avatar_dir=AVATARS_DIR / REQUESTED_AVATAR_ID,
+)
+RESOLVED_AVATAR_ID = resolve_avatar_id(
+    REQUESTED_AVATAR_ID,
+    RESOLVED_MODEL,
+    avatars_dir=AVATARS_DIR,
+)
 
 
 def check_port_free(port: int) -> bool:
@@ -68,29 +83,37 @@ def run_smoke_test() -> bool:
     checks.append(("models directory", models_exist, model_detail))
 
     # 3. Check specific model
-    if DEFAULT_MODEL == "wav2lip":
+    if RESOLVED_MODEL == "wav2lip":
         model_file = MODELS_DIR / "wav2lip.pth"
-    elif DEFAULT_MODEL == "musetalk":
+    elif RESOLVED_MODEL == "musetalk":
         model_file = MODELS_DIR / "musetalk"
     else:
         model_file = MODELS_DIR
     model_ready = model_file.exists()
     checks.append((
-        f"model '{DEFAULT_MODEL}'",
+        f"model '{RESOLVED_MODEL}'",
         model_ready,
         str(model_file) if model_ready else f"NOT FOUND: {model_file}",
     ))
 
     # 4. Check avatar directory
-    avatar_dir = AVATARS_DIR / DEFAULT_AVATAR_ID
+    avatar_dir = AVATARS_DIR / RESOLVED_AVATAR_ID
     avatar_ready = avatar_dir.exists()
     checks.append((
-        f"avatar '{DEFAULT_AVATAR_ID}'",
+        f"avatar '{RESOLVED_AVATAR_ID}'",
         avatar_ready,
         str(avatar_dir) if avatar_ready else f"NOT FOUND: {avatar_dir}",
     ))
 
-    # 5. Check port availability
+    # 5. Check FFmpeg availability
+    ffmpeg_status = check_ffmpeg_ready()
+    checks.append((
+        "ffmpeg available",
+        bool(ffmpeg_status["available"]),
+        ffmpeg_status["path"] or "NOT FOUND",
+    ))
+
+    # 6. Check port availability
     port_free = check_port_free(DEFAULT_PORT)
     checks.append((
         f"port {DEFAULT_PORT} available",
@@ -115,13 +138,19 @@ def run_smoke_test() -> bool:
 
     print()
     print("-" * 60)
+    print(f"  Requested model/avatar: {REQUESTED_MODEL} / {REQUESTED_AVATAR_ID}")
+    print(f"  Resolved model/avatar:  {RESOLVED_MODEL} / {RESOLVED_AVATAR_ID}")
+    asset_report = sync_musetalk_assets(project_root)
+    print(f"  MuseTalk model dir:     {asset_report.model_dir}")
+    print(f"  MuseTalk avatar dir:    {asset_report.avatar_dir}")
+    print()
 
     # Print launch command
     cmd_parts = [
         "python", "app.py",
         "--transport", DEFAULT_TRANSPORT,
-        "--model", DEFAULT_MODEL,
-        "--avatar_id", DEFAULT_AVATAR_ID,
+        "--model", RESOLVED_MODEL,
+        "--avatar_id", RESOLVED_AVATAR_ID,
         "--listenport", str(DEFAULT_PORT),
     ]
     launch_cmd = " ".join(cmd_parts)

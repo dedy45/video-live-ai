@@ -17,7 +17,18 @@
       "Bash(rm:*)",
       "Bash(cp:*)",
       "Bash(tar xzf:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node:*)",
+      "Read(//C:/Users/dedy/Documents/!fast-track-income/videoliveai/src/dashboard/**)",
+      "Bash(mv index.html legacy_dashboard.html)",
+      "Bash(mkdir -p src/components/layout src/components/panels src/components/common src/lib/stores)",
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(npm ls:*)",
+      "Bash(npx playwright:*)",
+      "Bash(npx vitest:*)",
+      "Bash(mv:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }

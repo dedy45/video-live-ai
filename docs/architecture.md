@@ -258,8 +258,18 @@ videoliveai/
 
 ### Sekarang
 
-- dashboard utama masih HTML statis
-- sudah cukup untuk baseline observability
+- dashboard utama adalah Svelte SPA, diserve dari `src/dashboard/frontend/dist`
+- dashboard bukan hanya status cards — harus mengekspos runtime truth
+- setiap panel wajib menunjukkan provenance (asal data) dan tidak boleh menyembunyikannya
+
+### Truth Model
+
+Dashboard mengikuti truth model yang didefinisikan di:
+
+- `docs/specs/dashboard_truth_model.md`
+
+Setiap data surface diklasifikasikan sebagai: `mock`, `real_local`, `real_live`, `derived`, atau `unknown`.
+Backend menyediakan `GET /api/runtime/truth` sebagai consolidated truth endpoint.
 
 ### Target
 

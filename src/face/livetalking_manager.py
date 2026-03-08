@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from src.config import get_config, is_mock_mode
+from src.face.engine_resolver import resolve_avatar_id, resolve_engine
 from src.face.livetalking_adapter import (
     DEFAULT_AVATAR_ID,
     DEFAULT_MODEL,
@@ -56,6 +57,8 @@ class EngineStatus:
     app_py_exists: bool = False
     model_path_exists: bool = False
     avatar_path_exists: bool = False
+    requested_model: str = DEFAULT_MODEL
+    requested_avatar_id: str = DEFAULT_AVATAR_ID
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,6 +67,10 @@ class EngineStatus:
             "port": self.port,
             "model": self.model,
             "avatar_id": self.avatar_id,
+            "requested_model": self.requested_model,
+            "resolved_model": self.model,
+            "requested_avatar_id": self.requested_avatar_id,
+            "resolved_avatar_id": self.avatar_id,
             "transport": self.transport,
             "uptime_sec": round(self.uptime_sec, 1),
             "last_error": self.last_error,
@@ -93,14 +100,28 @@ class LiveTalkingManager:
         # Settings from env
         self.port = int(os.getenv("LIVETALKING_PORT", str(DEFAULT_PORT)))
         self.transport = os.getenv("LIVETALKING_TRANSPORT", "webrtc")
-        self.model = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
-        self.avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
+        self.requested_avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
+
+        # Resolve engine: musetalk → wav2lip fallback if models missing
+        self.requested_model = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
+        self.model = resolve_engine(
+            self.requested_model,
+            musetalk_model_dir=self.models_dir / "musetalk",
+            musetalk_avatar_dir=self.avatars_dir / self.requested_avatar_id,
+        )
+        self.avatar_id = resolve_avatar_id(
+            self.requested_avatar_id,
+            self.model,
+            avatars_dir=self.avatars_dir,
+        )
 
         logger.info(
             "livetalking_manager_init",
             port=self.port,
             transport=self.transport,
-            model=self.model,
+            requested_model=self.requested_model,
+            resolved_model=self.model,
+            requested_avatar_id=self.requested_avatar_id,
             avatar_id=self.avatar_id,
         )
 
@@ -282,6 +303,8 @@ class LiveTalkingManager:
             app_py_exists=self.app_py.exists(),
             model_path_exists=self.models_dir.exists(),
             avatar_path_exists=(self.avatars_dir / self.avatar_id).exists(),
+            requested_model=self.requested_model,
+            requested_avatar_id=self.requested_avatar_id,
         )
 
     def get_config_dict(self) -> dict[str, Any]:
@@ -291,6 +314,10 @@ class LiveTalkingManager:
             "transport": self.transport,
             "model": self.model,
             "avatar_id": self.avatar_id,
+            "requested_model": self.requested_model,
+            "resolved_model": self.model,
+            "requested_avatar_id": self.requested_avatar_id,
+            "resolved_avatar_id": self.avatar_id,
             "livetalking_dir": str(self.livetalking_dir),
             "app_py": str(self.app_py),
             "models_dir": str(self.models_dir),

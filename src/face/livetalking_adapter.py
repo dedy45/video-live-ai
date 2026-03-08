@@ -24,6 +24,7 @@ import numpy as np
 
 from src.config import get_config, is_mock_mode
 from src.face.pipeline import BaseAvatarEngine, VideoFrame
+from src.face.engine_resolver import resolve_avatar_id, resolve_engine
 from src.utils.logging import get_logger
 
 logger = get_logger("livetalking")
@@ -36,8 +37,8 @@ SUPPORTED_MODELS = ("wav2lip", "musetalk", "ultralight")
 
 # Default engine settings
 DEFAULT_PORT = 8010
-DEFAULT_MODEL = "wav2lip"
-DEFAULT_AVATAR_ID = "wav2lip256_avatar1"
+DEFAULT_MODEL = "musetalk"
+DEFAULT_AVATAR_ID = "musetalk_avatar1"
 
 
 class LiveTalkingEngine(BaseAvatarEngine):
@@ -80,12 +81,24 @@ class LiveTalkingEngine(BaseAvatarEngine):
 
         # Engine settings from env or defaults
         self.port = int(os.getenv("LIVETALKING_PORT", str(DEFAULT_PORT)))
-        self.model = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
-        self.avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
+        requested_avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
 
         # Check if LiveTalking is available
         self.livetalking_path = Path("external/livetalking")
         self.app_py = self.livetalking_path / "app.py"
+
+        # Resolve engine: musetalk → wav2lip fallback if models missing
+        requested_model = os.getenv("LIVETALKING_MODEL", DEFAULT_MODEL)
+        self.model = resolve_engine(
+            requested_model,
+            musetalk_model_dir=self.livetalking_path / "models" / "musetalk",
+            musetalk_avatar_dir=self.livetalking_path / "data" / "avatars" / requested_avatar_id,
+        )
+        self.avatar_id = resolve_avatar_id(
+            requested_avatar_id,
+            self.model,
+            avatars_dir=self.livetalking_path / "data" / "avatars",
+        )
         if not self.livetalking_path.exists():
             logger.warning(
                 "livetalking_not_found",
@@ -100,7 +113,9 @@ class LiveTalkingEngine(BaseAvatarEngine):
             resolution=resolution,
             fps=fps,
             transport=self.transport,
+            requested_model=requested_model,
             model=self.model,
+            requested_avatar_id=requested_avatar_id,
             avatar_id=self.avatar_id,
             port=self.port,
         )

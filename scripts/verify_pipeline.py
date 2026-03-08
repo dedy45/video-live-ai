@@ -268,31 +268,58 @@ class PipelineVerifier:
 
     def print_report(self) -> None:
         """Print formatted verification report."""
+        use_unicode = _stdout_supports("✅❌🎉⚠️→─")
+        pass_icon = "✅" if use_unicode else "[PASS]"
+        fail_icon = "❌" if use_unicode else "[FAIL]"
+        detail_prefix = "→" if use_unicode else "->"
+        divider = "─" * 60 if use_unicode else "-" * 60
+        title = (
+            "  AI Live Commerce — Pipeline Verification Report"
+            if use_unicode
+            else "  AI Live Commerce - Pipeline Verification Report"
+        )
+
         print("\n" + "=" * 60)
-        print("  AI Live Commerce — Pipeline Verification Report")
+        print(title)
         print("=" * 60 + "\n")
 
         passed = sum(1 for r in self.results if r.passed)
         total = len(self.results)
 
         for r in self.results:
-            icon = "✅" if r.passed else "❌"
+            icon = pass_icon if r.passed else fail_icon
             print(f"  {icon} {r.layer:<15} {r.message:<30} ({r.duration_ms:.0f}ms)")
             if self.verbose:
                 for d in r.details:
-                    print(f"     → {d}")
+                    print(f"     {detail_prefix} {d}")
                 print()
 
-        print(f"\n{'─' * 60}")
+        print(f"\n{divider}")
         print(f"  Result: {passed}/{total} layers passed")
 
         if passed == total:
-            print("  🎉 ALL LAYERS VERIFIED SUCCESSFULLY")
+            if use_unicode:
+                print("  🎉 ALL LAYERS VERIFIED SUCCESSFULLY")
+            else:
+                print("  ALL LAYERS VERIFIED SUCCESSFULLY")
         else:
             failed = [r.layer for r in self.results if not r.passed]
-            print(f"  ⚠️  Failed layers: {', '.join(failed)}")
+            if use_unicode:
+                print(f"  ⚠️  Failed layers: {', '.join(failed)}")
+            else:
+                print(f"  WARNING Failed layers: {', '.join(failed)}")
 
         print("=" * 60 + "\n")
+
+
+def _stdout_supports(text: str) -> bool:
+    """Return True when the active stdout encoding can render the given text."""
+    encoding = sys.stdout.encoding or "utf-8"
+    try:
+        text.encode(encoding)
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 async def main() -> None:
