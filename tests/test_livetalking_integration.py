@@ -215,7 +215,8 @@ def test_livetalking_manager_build_command():
     from src.face.livetalking_manager import LiveTalkingManager
     mgr = LiveTalkingManager()
     cmd = mgr.build_launch_command()
-    assert "app.py" in " ".join(cmd)
+    assert cmd[1] == "app.py"
+    assert "external/livetalking/app.py" not in " ".join(cmd)
     assert "--transport" in cmd
     assert "--model" in cmd
     assert "--avatar_id" in cmd
@@ -421,3 +422,55 @@ def test_manager_requested_vs_resolved_on_fallback():
     assert d["requested_model"] == "musetalk"
     assert d["resolved_model"] == "wav2lip"
     assert d["resolved_model"] != d["requested_model"]
+
+
+# === Milestone Truth: Fallback is NOT milestone pass ===
+
+def test_readiness_model_warning_when_fallback_active():
+    """Readiness livetalking_model_ready must show warning status when fallback is active."""
+    from src.dashboard.readiness import run_readiness_checks
+
+    with patch(
+        "src.dashboard.readiness.resolve_engine",
+        return_value="wav2lip",
+    ), patch(
+        "src.dashboard.readiness.resolve_avatar_id",
+        return_value="wav2lip256_avatar1",
+    ), patch(
+        "src.dashboard.readiness.check_database_health",
+        return_value={"healthy": True, "message": "OK"},
+    ), patch(
+        "src.dashboard.readiness.check_ffmpeg_ready",
+        return_value={"available": True, "path": "ffmpeg"},
+    ):
+        result = run_readiness_checks()
+
+    model_check = next(c for c in result.checks if c.name == "livetalking_model_ready")
+    assert model_check.status == "warning", (
+        "When fallback is active, model check must show warning"
+    )
+
+
+def test_readiness_avatar_warning_when_fallback_active():
+    """Readiness livetalking_avatar_ready must show warning status when fallback is active."""
+    from src.dashboard.readiness import run_readiness_checks
+
+    with patch(
+        "src.dashboard.readiness.resolve_engine",
+        return_value="wav2lip",
+    ), patch(
+        "src.dashboard.readiness.resolve_avatar_id",
+        return_value="wav2lip256_avatar1",
+    ), patch(
+        "src.dashboard.readiness.check_database_health",
+        return_value={"healthy": True, "message": "OK"},
+    ), patch(
+        "src.dashboard.readiness.check_ffmpeg_ready",
+        return_value={"available": True, "path": "ffmpeg"},
+    ):
+        result = run_readiness_checks()
+
+    avatar_check = next(c for c in result.checks if c.name == "livetalking_avatar_ready")
+    assert avatar_check.status == "warning", (
+        "When fallback avatar is active, avatar check must show warning"
+    )

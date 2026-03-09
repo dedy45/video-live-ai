@@ -66,3 +66,57 @@ def test_sync_musetalk_assets_copies_generated_vendor_avatar(tmp_path: Path) -> 
     assert (
         tmp_path / "external" / "livetalking" / "data" / "avatars" / "musetalk_avatar1" / "coords.pkl"
     ).exists()
+
+
+# === Stricter contract tests for LOCAL_VERTICAL_SLICE_REAL_MUSETALK ===
+
+
+def test_asset_report_not_ready_when_model_dir_empty(tmp_path: Path) -> None:
+    """Models dir exists but is empty -> models_ready must be False."""
+    from src.face.asset_setup import sync_musetalk_assets
+
+    vendor_models = tmp_path / "external" / "livetalking" / "models" / "musetalk"
+    vendor_models.mkdir(parents=True)
+
+    report = sync_musetalk_assets(tmp_path)
+
+    assert report.models_ready is False, "Empty model dir should not count as ready"
+
+
+def test_asset_report_not_ready_when_avatar_dir_empty(tmp_path: Path) -> None:
+    """Avatar dir exists but is empty -> avatar_ready must be False."""
+    from src.face.asset_setup import sync_musetalk_assets
+
+    vendor_avatar = tmp_path / "external" / "livetalking" / "data" / "avatars" / "musetalk_avatar1"
+    vendor_avatar.mkdir(parents=True)
+
+    report = sync_musetalk_assets(tmp_path)
+
+    assert report.avatar_ready is False, "Empty avatar dir should not count as ready"
+
+
+def test_asset_report_can_generate_requires_both_reference_and_models(tmp_path: Path) -> None:
+    """can_generate_avatar requires both reference media AND model weights."""
+    from src.face.asset_setup import sync_musetalk_assets
+
+    # Only reference, no models
+    ref = tmp_path / "assets" / "avatar" / "reference.mp4"
+    ref.parent.mkdir(parents=True)
+    ref.write_text("fake")
+
+    report = sync_musetalk_assets(tmp_path)
+
+    assert report.reference_media_exists is True
+    assert report.can_generate_avatar is False, "Can't generate without models"
+
+
+def test_asset_report_identifies_all_missing_fields(tmp_path: Path) -> None:
+    """On a fresh empty project, all asset fields should report not ready."""
+    from src.face.asset_setup import sync_musetalk_assets
+
+    report = sync_musetalk_assets(tmp_path)
+
+    assert report.models_ready is False
+    assert report.avatar_ready is False
+    assert report.reference_media_exists is False
+    assert report.can_generate_avatar is False

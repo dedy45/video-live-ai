@@ -123,12 +123,12 @@ class PipelineVerifier:
         router = LLMRouter()
         response = await router.route("Test system", "Halo!", task_type=TaskType.CHAT_REPLY)
         assert response.success, f"Router failed: {response.error}"
-        details.append(f"Router: {response.provider}/{response.model} → {len(response.text)} chars")
+        details.append(f"Router: {response.provider}/{response.model} -> {len(response.text)} chars")
 
         # Health check all adapters
         health = await router.health_check_all()
         for name, ok in health.items():
-            details.append(f"  Adapter {name}: {'✓' if ok else '✗'}")
+            details.append(f"  Adapter {name}: {'OK' if ok else 'FAIL'}")
 
         # Persona
         persona = PersonaEngine()
@@ -201,10 +201,10 @@ class PipelineVerifier:
         # Intent detection
         detector = IntentDetector()
         p, intent = detector.detect("Mau beli kak!")
-        details.append(f"Intent 'Mau beli kak!' → {intent} (P{p.value})")
+        details.append(f"Intent 'Mau beli kak!' -> {intent} (P{p.value})")
 
         p2, intent2 = detector.detect("Harga berapa?")
-        details.append(f"Intent 'Harga berapa?' → {intent2} (P{p2.value})")
+        details.append(f"Intent 'Harga berapa?' -> {intent2} (P{p2.value})")
 
         # Monitor registration
         monitor = ChatMonitor()
@@ -291,7 +291,8 @@ class PipelineVerifier:
             print(f"  {icon} {r.layer:<15} {r.message:<30} ({r.duration_ms:.0f}ms)")
             if self.verbose:
                 for d in r.details:
-                    print(f"     {detail_prefix} {d}")
+                    safe_d = d if use_unicode else d.encode("ascii", "replace").decode("ascii")
+                    print(f"     {detail_prefix} {safe_d}")
                 print()
 
         print(f"\n{divider}")

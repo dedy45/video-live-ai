@@ -245,3 +245,28 @@ def test_real_mode_readiness_script_runs() -> None:
     assert "is_ready" in output
     assert "truth" in output
     assert isinstance(output["is_ready"], bool)
+
+
+def test_real_product_data_source_exists() -> None:
+    """Real product data source must exist for real-mode readiness."""
+    from pathlib import Path
+    p_json = Path("data/products.json")
+    p_db = Path("data/products.db")
+    assert p_json.exists() or p_db.exists(), (
+        "Neither data/products.json nor data/products.db found — "
+        "real-mode readiness gate will fail"
+    )
+
+
+def test_real_product_data_is_valid_json() -> None:
+    """Product data source must be valid JSON with at least one product."""
+    import json
+    from pathlib import Path
+    p_json = Path("data/products.json")
+    if not p_json.exists():
+        pytest.skip("data/products.json not present")
+    data = json.loads(p_json.read_text(encoding="utf-8"))
+    assert isinstance(data, list), "products.json must be a JSON array"
+    assert len(data) > 0, "products.json must contain at least one product"
+    assert "name" in data[0], "each product must have a 'name' field"
+    assert "price" in data[0], "each product must have a 'price' field"

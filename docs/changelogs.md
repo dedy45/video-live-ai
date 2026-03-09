@@ -1,5 +1,159 @@
 # Changelog
 
+## v0.5.10 — 2026-03-09 (Docs Sync After Review)
+
+### OK Source-of-truth docs synchronized with fresh verification
+- Updated `docs/README.md` to link the active MuseTalk milestone spec, asset contract, humanization contract, and latest audit/plan docs
+- Corrected stale dashboard delivery wording that still referenced the old product-data blocker
+- Root `README.md` now describes MuseTalk as the only acceptance path and Wav2Lip as secondary fallback only
+
+### OK Current milestone gaps written explicitly
+- `docs/task_status.md` and `docs/workflow.md` now distinguish:
+  - readiness prerequisite pass (`READY FOR REAL MODE`, 11/11)
+  - milestone still partial because `resolved_model=wav2lip`
+  - official non-mock operator slice evidence still needs to be re-run and recorded
+- Added the remaining debugging targets to the immediate priorities:
+  - generate canonical `musetalk_avatar1`
+  - debug `face_runtime_mode=mock` under `MOCK_MODE=false`
+  - re-run the official `serve --real` operator slice
+
+### OK Verification counts refreshed
+- Updated active docs to the fresh suite result: `161 passed`
+- Updated the local audit snapshot to reflect the new test count and explicit Task 7 gap
+
+### Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `161 passed`
+- `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE` (11/11 checks passed)
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+
+## v0.5.9 — 2026-03-09 (MuseTalk Local Vertical Slice — Contract + Audit)
+
+### OK Milestone spec frozen
+- Created `docs/specs/local_vertical_slice_real_musetalk.md` defining acceptance truth fields
+- Active path: MuseTalk only; Wav2Lip is fallback only, never counts as milestone pass
+- Acceptance requires `requested_model=musetalk`, `resolved_model=musetalk`
+
+### OK Real-local product data gate unblocked
+- Copied `data/sample_products.json` to `data/products.json` so readiness gate no longer blocks
+- Added `test_real_product_data_source_exists` and `test_real_product_data_is_valid_json` tests
+
+### OK MuseTalk asset contract defined
+- Created `docs/specs/musetalk_asset_contract.md` with canonical paths and readiness rules
+- Stricter asset setup tests: empty dirs must not count as ready
+- Added tests for `can_generate_avatar` requiring both reference media and models
+
+### OK Fallback visibility enforced in milestone truth
+- Engine resolver fallback tests prove `requested != resolved` is visible
+- Readiness checks show `warning` status when fallback is active (not `ok`)
+- `EngineStatus.to_dict()` exposes `requested_model`, `resolved_model`, `requested_avatar_id`, `resolved_avatar_id`
+
+### OK Operator path aligned with MuseTalk-only acceptance
+- `serve --real` confirmed to include `--extra livetalking` and `MOCK_MODE=false`
+- `validate livetalking` confirmed to use `--extra livetalking`
+- Smoke test exposes `REQUESTED_MODEL` vs `RESOLVED_MODEL` for truthful reporting
+- 6 new operator-path tests in `tests/test_manage_cli.py`
+
+### OK Audit recorded
+- Created `docs/audits/AUDIT_LOCAL_VERTICAL_SLICE_REAL_MUSETALK_2026-03-09.md`
+- 11/11 readiness checks pass, 11/11 pipeline layers pass, 143+ tests pass
+- Milestone NOT YET COMPLETE: avatar not generated, runtime resolves to wav2lip
+
+### OK Humanization contract prepared
+- Created `docs/specs/humanization_minimum_contract.md`
+- Defines 5 required behaviors: blink, eye drift, idle head micro-motion, idle presence, pacing
+- Clearly separated from current MuseTalk milestone
+
+### OK Unicode crash in verify_pipeline.py fixed
+- Replaced Unicode characters with ASCII equivalents in detail strings
+- Added safety net in `print_report()` for non-Unicode consoles
+
+### Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> all tests passed
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE` (11/11)
+- Known noise: pytest temp cleanup PermissionError on Windows (does not invalidate results)
+
+## v0.5.8 — 2026-03-09 (LiveTalking UV Extra Hydration + Setup Recovery)
+
+### OK LiveTalking setup no longer dies on Windows console encoding
+- Replaced Unicode-only setup status markers with ASCII-safe output in `scripts/setup_livetalking.py`
+- Added regression coverage proving setup status output does not crash on cp1252 consoles
+
+### OK UV source of truth now covers the critical vendor runtime deps
+- Expanded `pyproject.toml` `livetalking` extra with the missing vendor web/runtime stack needed by current LiveTalking flows:
+  - `flask`
+  - `flask-sockets`
+  - `aiohttp-cors`
+  - `transformers`
+  - `diffusers`
+  - `accelerate`
+  - `omegaconf`
+  - plus related runtime packages used by the vendor stack
+- `scripts/setup_livetalking.py` now syncs `uv sync --extra dev --extra livetalking` before applying the vendor `requirements.txt` overlay
+
+### OK Manage CLI now preserves the LiveTalking extra on real-mode paths
+- `scripts/manage.py` now opts into `--extra livetalking` for:
+  - `serve --real`
+  - `setup-livetalking`
+  - `validate livetalking`
+- This avoids the old UV behavior where a plain `uv run ...` could prune vendor packages back out of the env between commands
+
+### OK Local no-GPU setup is now honest but non-blocking
+- `setup-livetalking --skip-models` now treats GPU absence as an advisory warning instead of a hard failure
+- Setup still records the warning, but finishes successfully on this local Windows box
+
+### OK Docs and operator guidance synced
+- Updated `README.md`, `docs/workflow.md`, `docs/task_status.md`, and `docs/architecture.md`
+- Direct ad hoc LiveTalking commands now document `uv run --extra livetalking ...`
+- Script next-step output now points operators back to `scripts/manage.py`
+
+### Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `143 passed`
+- `uv run python scripts/manage.py setup-livetalking --skip-models` -> PASS
+- `uv run --extra livetalking python -c "import flask, flask_sockets, aiohttp_cors, transformers, diffusers, accelerate, omegaconf"` -> PASS
+- `uv run python scripts/manage.py validate livetalking` -> PASS
+- `MOCK_MODE=false uv run --extra livetalking python -c "... LiveTalkingManager().start() ..."` -> PASS; vendor process warms up and port `8010` becomes reachable after image scan/model warmup on this box
+- Known noise remains: pytest temp cleanup warning on Windows after an otherwise green run
+## v0.5.7 — 2026-03-09 (UV Operator CLI + Windows Menu Alignment)
+
+### ✅ Operator CLI: New Cross-Platform Source of Truth
+- Added `scripts/manage.py` as the canonical operator CLI for:
+  - `serve --mock|--real`
+  - `stop`
+  - `status`
+  - `health`
+  - `validate <target>`
+  - `logs`
+  - `sync [--livetalking]`
+  - `load-products`
+  - `open <target>`
+- All Python execution now stays on the documented `uv run` path instead of direct `.venv\\Scripts\\python.exe`
+
+### ✅ Windows Menu: Reduced to a Thin Interactive Wrapper
+- Rebuilt `scripts/menu.bat` as a Windows-only convenience launcher
+- Menu now focuses on the required operator surfaces:
+  - start/stop
+  - health
+  - validation
+  - logs
+  - setup
+  - open dashboard/docs/vendor debug
+- Removed stale `Node Controller` framing and stale hardcoded test counts
+
+### ✅ Docs: Canonical CLI Path Documented
+- `README.md` now documents `uv run python scripts/manage.py ...` as the canonical cross-platform operator flow
+- `docs/workflow.md` now includes the manage CLI and keeps `scripts\\menu.bat` as a Windows shortcut only
+- `docs/task_status.md` now records the current non-mock LiveTalking blocker stack more honestly
+
+### 📊 Verification
+- `uv run pytest tests/test_manage_cli.py -q -p no:cacheprovider` -> `4 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `136 passed`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `uv run python scripts/manage.py serve --mock` -> app starts on `http://127.0.0.1:8000`
+- `uv run python scripts/manage.py health --json` -> returns status, readiness, and runtime truth while app is running
+- `uv run python scripts/manage.py stop` -> app stops cleanly
+- `MOCK_MODE=false uv run python -c "... LiveTalkingManager().start() ..."` -> duplicated `external/livetalking/external/livetalking/app.py` path issue is fixed; next blocker is missing vendor dependency `flask`
+
 ## v0.5.6 — 2026-03-08 (Realtime Dashboard Stabilization + Checkpoint C Verification)
 
 ### ✅ Frontend: Realtime Panel Stabilization

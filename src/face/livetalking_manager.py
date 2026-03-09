@@ -130,7 +130,7 @@ class LiveTalkingManager:
         python_exe = sys.executable
         cmd = [
             python_exe,
-            str(self.app_py),
+            "app.py",
             "--transport", self.transport,
             "--model", self.model,
             "--avatar_id", self.avatar_id,

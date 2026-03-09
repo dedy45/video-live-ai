@@ -1,7 +1,7 @@
 # VideoLiveAI Architecture
 
-> Version: 0.4.0  
-> Last Updated: 2026-03-07  
+> Version: 0.5.8  
+> Last Updated: 2026-03-09  
 > Target: Internal live system first  
 > Package Manager Policy: UV only
 
@@ -188,7 +188,8 @@ Dashboard operator
 
 | Entry point | Fungsi |
 |-------------|--------|
-| `uv run python -m src.main` | Menjalankan FastAPI utama |
+| `uv run python scripts/manage.py serve --mock` | Menjalankan FastAPI utama untuk local mock mode |
+| `uv run python scripts/manage.py serve --real` | Menjalankan FastAPI utama dengan LiveTalking extra ter-hydrate |
 | `external/livetalking/app.py` | Entry point engine vendor |
 
 ### Source of truth yang dipakai
@@ -292,6 +293,7 @@ Semua dokumentasi aktif harus mengikuti aturan ini:
 - gunakan `uv sync`
 - gunakan `uv run`
 - gunakan `uv pip`
+- untuk command LiveTalking langsung di luar `manage.py`, gunakan `uv run --extra livetalking ...`
 - jangan gunakan conda
 - jangan jadikan environment Windows-specific sebagai sumber kebenaran
 
@@ -299,31 +301,43 @@ Semua dokumentasi aktif harus mengikuti aturan ini:
 
 ```bash
 uv sync --extra dev
+uv run python scripts/manage.py setup-livetalking --skip-models
 uv run pytest tests -q -p no:cacheprovider
 uv run python scripts/verify_pipeline.py --verbose
-uv run python -m src.main
+uv run python scripts/manage.py serve --mock
+uv run python scripts/manage.py serve --real
 ```
+
+## Active Milestone
+
+**`LOCAL_VERTICAL_SLICE_REAL_MUSETALK`** — see `docs/specs/local_vertical_slice_real_musetalk.md`
+
+- Active face runtime: **MuseTalk** (only acceptance path)
+- Secondary fallback only: **Wav2Lip** (not counted as milestone pass)
+- Target only / not in active path: `GFPGAN`, `ER-NeRF`
+
+If `resolved_model=wav2lip`, the milestone is NOT complete.
 
 ## Status Saat Ini
 
 ### Sudah ada
 
 - FastAPI control plane
-- dashboard API
+- dashboard API + Svelte operator UI
 - diagnostic endpoints
 - SQLite
 - LiteLLM router
 - RTMP manager baseline
 - LiveTalking vendor repo
-- batch scripts untuk run dan setup awal
+- batch scripts dan manage.py CLI
+- MuseTalk model weights in vendor path
+- Real product data source
+- Real reference media
 
 ### Belum selesai
 
-- process bridge LiveTalking yang rapi
-- satu source of truth model/avatar path
-- readiness API yang lengkap
-- dashboard Svelte
-- vertical slice live yang benar-benar terpaku
+- canonical MuseTalk avatar generation
+- MuseTalk-only runtime resolution (currently falls back to wav2lip)
 - reliability layer untuk penggunaan panjang
 
 ## Dokumen Terkait

@@ -8,7 +8,8 @@ Verifies that LiveTalking is ready to run:
 - prints exact launch command
 
 Usage:
-    uv run python scripts/smoke_livetalking.py
+    uv run --extra livetalking python scripts/smoke_livetalking.py
+    uv run python scripts/manage.py validate livetalking
 """
 
 from __future__ import annotations
@@ -160,7 +161,9 @@ def run_smoke_test() -> bool:
     print(f"    {launch_cmd}")
     print()
     print("  UV-compatible command (run from project root):")
-    print(f"    cd external/livetalking && python {' '.join(cmd_parts[1:])}")
+    print(f"    uv run --extra livetalking python scripts/smoke_livetalking.py")
+    print("  Direct vendor debug command:")
+    print(f"    uv run --extra livetalking python external/livetalking/app.py {' '.join(cmd_parts[2:])}")
     print()
 
     if all_pass:

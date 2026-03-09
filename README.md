@@ -10,7 +10,7 @@ AI-powered live commerce platform for automated livestreaming on TikTok and Shop
 
 - **Multi-LLM Brain**: Gemini, Claude, GPT-4o, Groq with intelligent routing
 - **Voice Layer**: FishSpeech and Edge-TTS validated locally, with GPT-SoVITS/CosyVoice adapter paths for external TTS servers
-- **Avatar Runtime**: LiveTalking sidecar with MuseTalk active, Wav2Lip legacy fallback, and ER-NeRF/GFPGAN still as target paths
+- **Avatar Runtime**: LiveTalking sidecar with MuseTalk as the only acceptance path, Wav2Lip as secondary fallback only, and ER-NeRF/GFPGAN kept as target-only tracks
 - **Real-time Streaming**: RTMP to TikTok/Shopee, WebRTC for browser
 - **Live Chat Integration**: Real-time comment monitoring and response
 - **Commerce Management**: Product catalog, order tracking, analytics
@@ -38,16 +38,19 @@ uv sync --extra dev
 # Copy environment file
 cp .env.example .env
 # Edit .env with your API keys
+
+# Hydrate LiveTalking vendor deps into the managed UV env
+uv run python scripts/manage.py setup-livetalking --skip-models
 ```
 
 ### Test with Mock Mode (No GPU Required)
 
 ```bash
 # Windows
-set MOCK_MODE=true && uv run python -m src.main
+uv run python scripts/manage.py serve --mock
 
 # Linux/Mac
-MOCK_MODE=true uv run python -m src.main
+uv run python scripts/manage.py serve --mock
 ```
 
 ### Dashboard
@@ -60,6 +63,38 @@ MOCK_MODE=true uv run python -m src.main
 | `http://localhost:8010/*.html` | LiveTalking debug pages | Developers only |
 
 > **Rule:** `/dashboard` is the only operator UI. Vendor pages at port 8010 are debug tools only.
+
+### Local Operator Commands
+
+Canonical cross-platform operator CLI:
+
+```bash
+uv run python scripts/manage.py status
+uv run python scripts/manage.py health
+uv run python scripts/manage.py validate tests
+uv run python scripts/manage.py validate livetalking
+uv run python scripts/manage.py serve --mock
+uv run python scripts/manage.py serve --real
+uv run python scripts/manage.py setup-livetalking --skip-models
+```
+
+Windows convenience wrapper:
+
+```bat
+scripts\menu.bat
+```
+
+`menu.bat` is only a Windows launcher. The real command path stays `uv run python scripts/manage.py ...`, so the same operational flow works on Ubuntu without batch files.
+
+For direct ad hoc LiveTalking commands outside `manage.py`, use `uv run --extra livetalking ...` so UV keeps the vendor runtime packages loaded.
+
+### Current Milestone Status
+
+- Active milestone: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK`
+- Fresh verification: `uv run pytest tests -q -p no:cacheprovider` -> `161 passed`
+- Prerequisite gate: `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE` (11/11), but this is not the same as milestone completion
+- Current blocker: canonical `musetalk_avatar1` is still missing, so runtime still resolves to `wav2lip`
+- Required next proof: re-run the official non-mock operator slice and capture truthful health/runtime evidence
 
 ## 📊 Architecture
 
@@ -74,9 +109,9 @@ MOCK_MODE=true uv run python -m src.main
                │
 ┌──────────────┴──────────────────────┐
 │  Face: LiveTalking Sidecar          │
-│  ├── MuseTalk (active)              │
-│  ├── Wav2Lip (legacy fallback)      │
-│  └── ER-NeRF / GFPGAN (target)      │
+│  ├── MuseTalk (acceptance path)     │
+│  ├── Wav2Lip (secondary fallback)   │
+│  └── ER-NeRF / GFPGAN (target only) │
 └──────────────┬──────────────────────┘
                │
 ┌──────────────┴──────────────────────┐
@@ -154,6 +189,9 @@ uv run pytest tests/test_livetalking_integration.py -v
 # Skip GPU tests
 uv run pytest tests/ -v -m "not integration"
 
+# Vendor runtime smoke
+uv run python scripts/manage.py validate livetalking
+
 # Quick validation (Windows)
 cmd /c verify_livetalking.bat
 ```
@@ -173,7 +211,7 @@ This project uses **LiveTalking** as a vendor sidecar for avatar rendering and r
 Current vendor copy is best treated as:
 
 - **MuseTalk** for the primary lip-sync path
-- **Wav2Lip** as a legacy fallback path
+- **Wav2Lip** as a secondary fallback path that does not count as milestone completion
 - **Ultralight** as a low-resource option
 - **WebRTC / rtcpush / virtualcam** for vendor-side output
 
@@ -200,7 +238,7 @@ See [docs/guides/LIVETALKING_QUICKSTART.md](docs/guides/LIVETALKING_QUICKSTART.m
 - **Backend**: Python 3.10+, FastAPI, asyncio
 - **LLM**: LiteLLM (multi-provider)
 - **TTS**: FishSpeech / Edge-TTS active, GPT-SoVITS / CosyVoice via external adapters
-- **Avatar**: LiveTalking sidecar (MuseTalk active, Wav2Lip/Ultralight available, ER-NeRF/GFPGAN target)
+- **Avatar**: LiveTalking sidecar (MuseTalk acceptance path, Wav2Lip/Ultralight fallback-capable, ER-NeRF/GFPGAN target-only)
 - **Streaming**: FFmpeg, RTMP
 - **Database**: SQLite (aiosqlite)
 - **Monitoring**: Prometheus, Structlog
@@ -211,8 +249,14 @@ See [docs/guides/LIVETALKING_QUICKSTART.md](docs/guides/LIVETALKING_QUICKSTART.m
 This project uses **UV** (not conda):
 
 ```bash
-# Install dependencies
-uv pip install -e ".[livetalking]"
+# Base dev env
+uv sync --extra dev
+
+# Managed LiveTalking env
+uv sync --extra dev --extra livetalking
+
+# Direct ad hoc command with vendor extra
+uv run --extra livetalking python scripts/smoke_livetalking.py
 
 # Add new dependency
 uv pip install package-name

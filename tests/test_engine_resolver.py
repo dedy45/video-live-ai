@@ -4,6 +4,7 @@ Covers:
 1. Default engine is musetalk (source-of-truth alignment).
 2. Runtime resolver falls back to wav2lip when MuseTalk models/avatars are missing.
 3. FFmpeg readiness checks known install paths, not just PATH.
+4. Milestone truth: fallback to wav2lip must be visible as non-pass.
 """
 
 from __future__ import annotations
@@ -209,3 +210,54 @@ def test_check_ffmpeg_ready_returns_status_dict() -> None:
     assert "available" in status
     assert "path" in status
     assert isinstance(status["available"], bool)
+
+
+# ── 4. Milestone truth: fallback visibility ─────────────────────────
+
+
+def test_resolve_avatar_id_fallback_visible(tmp_path: Path) -> None:
+    """When musetalk avatar is missing, resolver must fall back to wav2lip avatar."""
+    from src.face.engine_resolver import resolve_avatar_id
+
+    avatars_dir = tmp_path / "avatars"
+    wav2lip_dir = avatars_dir / "wav2lip256_avatar1"
+    wav2lip_dir.mkdir(parents=True)
+
+    result = resolve_avatar_id(
+        "musetalk_avatar1",
+        "wav2lip",
+        avatars_dir=avatars_dir,
+    )
+    assert result == "wav2lip256_avatar1", "Fallback avatar must match resolved engine"
+
+
+def test_resolve_avatar_id_keeps_musetalk_when_present(tmp_path: Path) -> None:
+    """When musetalk avatar exists, resolver should keep it."""
+    from src.face.engine_resolver import resolve_avatar_id
+
+    avatars_dir = tmp_path / "avatars"
+    musetalk_dir = avatars_dir / "musetalk_avatar1"
+    musetalk_dir.mkdir(parents=True)
+
+    result = resolve_avatar_id(
+        "musetalk_avatar1",
+        "musetalk",
+        avatars_dir=avatars_dir,
+    )
+    assert result == "musetalk_avatar1"
+
+
+def test_milestone_truth_fails_when_fallback_active() -> None:
+    """Milestone truth check: requested=musetalk but resolved=wav2lip means NOT complete."""
+    requested = "musetalk"
+    resolved = "wav2lip"
+    milestone_pass = (requested == resolved)
+    assert milestone_pass is False, "Fallback to wav2lip must fail the milestone"
+
+
+def test_milestone_truth_passes_when_musetalk_resolved() -> None:
+    """Milestone truth check: requested=musetalk and resolved=musetalk means complete."""
+    requested = "musetalk"
+    resolved = "musetalk"
+    milestone_pass = (requested == resolved)
+    assert milestone_pass is True

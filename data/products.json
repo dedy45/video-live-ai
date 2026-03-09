@@ -1,0 +1,172 @@
+[
+  {
+    "id": "prod-001",
+    "name": "Skincare Glow Set Premium",
+    "price": 149000,
+    "original_price": 299000,
+    "description": "Set lengkap skincare 5-in-1: cleanser, toner, serum, moisturizer, sunscreen. Cocok untuk semua jenis kulit.",
+    "selling_points": [
+      "Bahan alami, tanpa paraben",
+      "Terlihat hasil dalam 7 hari",
+      "Sudah BPOM certified"
+    ],
+    "category": "beauty",
+    "stock": 50,
+    "image": "assets/products/skincare_set.png",
+    "affiliate_rate": 0.15,
+    "golden_trio_role": "hero"
+  },
+  {
+    "id": "prod-002",
+    "name": "Kaos Oversize Premium Cotton",
+    "price": 89000,
+    "original_price": 159000,
+    "description": "Kaos oversize 100% cotton combed 30s. Unisex, tersedia 8 warna.",
+    "selling_points": [
+      "Cotton premium tidak luntur",
+      "Jahitan rapi double stitch",
+      "Free sticker eksklusif"
+    ],
+    "category": "fashion",
+    "stock": 200,
+    "image": "assets/products/kaos_oversize.png",
+    "affiliate_rate": 0.1,
+    "golden_trio_role": "hook"
+  },
+  {
+    "id": "prod-003",
+    "name": "Wireless Earbuds Pro ANC",
+    "price": 249000,
+    "original_price": 499000,
+    "description": "True wireless earbuds dengan Active Noise Cancelling, 40 jam battery life, IPX5 waterproof.",
+    "selling_points": [
+      "ANC aktif, blokir suara bising",
+      "Battery 40 jam total",
+      "Waterproof untuk olahraga"
+    ],
+    "category": "electronics",
+    "stock": 75,
+    "image": "assets/products/earbuds.png",
+    "affiliate_rate": 0.12,
+    "golden_trio_role": "money"
+  },
+  {
+    "id": "prod-004",
+    "name": "Tas Selempang Anti Air",
+    "price": 69000,
+    "original_price": 129000,
+    "description": "Tas selempang waterproof material nylon. Kompartemen laptop 14 inch.",
+    "selling_points": [
+      "Anti air dan anti gores",
+      "Muat laptop 14 inch",
+      "Tali adjustable"
+    ],
+    "category": "fashion",
+    "stock": 120,
+    "image": "assets/products/sling_bag.png",
+    "affiliate_rate": 0.08,
+    "golden_trio_role": "hook"
+  },
+  {
+    "id": "prod-005",
+    "name": "Madu Hutan Asli 500ml",
+    "price": 99000,
+    "original_price": 175000,
+    "description": "Madu hutan murni dari Kalimantan. Raw, unfiltered, tanpa campuran.",
+    "selling_points": [
+      "100% madu asli bersertifikat",
+      "Khasiat tinggi, enzim aktif",
+      "Kemasan food-grade anti bocor"
+    ],
+    "category": "food",
+    "stock": 80,
+    "image": "assets/products/madu.png",
+    "affiliate_rate": 0.2,
+    "golden_trio_role": "money"
+  },
+  {
+    "id": "prod-006",
+    "name": "Ring Light 26cm + Tripod",
+    "price": 129000,
+    "original_price": 249000,
+    "description": "Ring light LED 26cm dengan 3 mode cahaya dan 10 level brightness. Tripod 160cm.",
+    "selling_points": [
+      "3 mode cahaya: warm, cool, daylight",
+      "Tripod kokoh 160cm",
+      "Free phone holder"
+    ],
+    "category": "electronics",
+    "stock": 45,
+    "image": "assets/products/ring_light.png",
+    "affiliate_rate": 0.1,
+    "golden_trio_role": "hook"
+  },
+  {
+    "id": "prod-007",
+    "name": "Parfum EDP Luxury 50ml",
+    "price": 199000,
+    "original_price": 350000,
+    "description": "Eau de Parfum premium dengan aroma woody-floral. Tahan 12 jam.",
+    "selling_points": [
+      "Tahan seharian 12+ jam",
+      "Aroma mewah unisex",
+      "Botol kaca premium"
+    ],
+    "category": "beauty",
+    "stock": 60,
+    "image": "assets/products/parfum.png",
+    "affiliate_rate": 0.18,
+    "golden_trio_role": "hero"
+  },
+  {
+    "id": "prod-008",
+    "name": "Tumbler Vacuum Flask 750ml",
+    "price": 79000,
+    "original_price": 149000,
+    "description": "Tumbler stainless steel vacuum insulated. Tahan panas 12 jam, dingin 24 jam.",
+    "selling_points": [
+      "Vacuum insulated tahan suhu",
+      "BPA-free, food-grade",
+      "Tidak mudah pecah"
+    ],
+    "category": "lifestyle",
+    "stock": 150,
+    "image": "assets/products/tumbler.png",
+    "affiliate_rate": 0.08,
+    "golden_trio_role": "hook"
+  },
+  {
+    "id": "prod-009",
+    "name": "Vitamin C Serum 30ml",
+    "price": 59000,
+    "original_price": 120000,
+    "description": "Serum vitamin C 20% dengan hyaluronic acid. Mencerahkan dan melembabkan.",
+    "selling_points": [
+      "Vitamin C 20% brightening",
+      "Hyaluronic acid melembabkan",
+      "Cocok semua jenis kulit"
+    ],
+    "category": "beauty",
+    "stock": 100,
+    "image": "assets/products/serum.png",
+    "affiliate_rate": 0.15,
+    "golden_trio_role": "money"
+  },
+  {
+    "id": "prod-010",
+    "name": "Mechanical Keyboard RGB",
+    "price": 299000,
+    "original_price": 550000,
+    "description": "Mechanical keyboard 87-key dengan switch blue. RGB backlight, USB-C hotswap.",
+    "selling_points": [
+      "Switch blue clicky satisfying",
+      "RGB per-key customizable",
+      "Hotswap — ganti switch mudah"
+    ],
+    "category": "electronics",
+    "stock": 35,
+    "image": "assets/products/keyboard.png",
+    "affiliate_rate": 0.12,
+    "golden_trio_role": "hero"
+  }
+]

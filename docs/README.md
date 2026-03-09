@@ -1,6 +1,6 @@
 # Documentation Index
 
-> Last updated: 2026-03-08
+> Last updated: 2026-03-09
 > Scope: source-of-truth map for `videoliveai`
 
 ## Root Docs Only
@@ -35,6 +35,9 @@ Root `docs/` now keeps only the project-level source of truth:
 - [acceptance_internal_live_v1.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/acceptance_internal_live_v1.md)
 - [vertical_slice_v1.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/vertical_slice_v1.md)
 - [livetalking_runtime_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/livetalking_runtime_contract.md)
+- [local_vertical_slice_real_musetalk.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/local_vertical_slice_real_musetalk.md)
+- [musetalk_asset_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/musetalk_asset_contract.md)
+- [humanization_minimum_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/humanization_minimum_contract.md)
 - [model_path_policy.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/model_path_policy.md)
 - [avatar_asset_spec.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/avatar_asset_spec.md)
 - [audio_asset_spec.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/audio_asset_spec.md)
@@ -56,15 +59,20 @@ Root `docs/` now keeps only the project-level source of truth:
 ## Audits, Plans, Archive
 
 - [AUDIT_CONTEXT_2026-03-07.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/audits/AUDIT_CONTEXT_2026-03-07.md)
+- [AUDIT_LOCAL_VERTICAL_SLICE_REAL_MUSETALK_2026-03-09.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/audits/AUDIT_LOCAL_VERTICAL_SLICE_REAL_MUSETALK_2026-03-09.md)
 - [2026-03-08-dashboard-single-truth-real-validation-plan.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-08-dashboard-single-truth-real-validation-plan.md)
+- [2026-03-09-musetalk-local-vertical-slice-real-design.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-musetalk-local-vertical-slice-real-design.md)
+- [2026-03-09-musetalk-local-vertical-slice-real-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-musetalk-local-vertical-slice-real-implementation.md)
 - [plans](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans)
 - [archive](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/archive)
 
 ## Current Delivery Status
 
 - Dashboard Svelte operator shell is `LOCAL VERIFIED`
-- Dashboard Single Truth Real Validation is `IN PROGRESS`
-- Task 1-9 are locally verified; Task 10 is still blocked by missing real product data source
+- Dashboard Single Truth Real Validation is `LOCAL VERIFIED`
+- Active milestone `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` is `PARTIAL`
+- Readiness gate passes 11/11, but current face runtime still falls back to `wav2lip`
+- Humanization contract is defined, but it stays blocked until the MuseTalk milestone is complete
 
 ## Placement Rules
 
