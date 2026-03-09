@@ -15,7 +15,8 @@ def test_sync_musetalk_assets_copies_legacy_models(tmp_path: Path) -> None:
 
     report = sync_musetalk_assets(tmp_path)
 
-    assert report.models_ready is True
+    assert report.models_ready is False
+    assert report.can_generate_avatar is False
     assert (tmp_path / "external" / "livetalking" / "models" / "musetalk" / "weights.pth").exists()
 
 

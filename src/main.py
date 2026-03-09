@@ -116,6 +116,17 @@ def create_app() -> FastAPI:
         if avatar_engine == "livetalking" or config.avatar.livetalking.enabled:
             from src.face.livetalking_adapter import LiveTalkingPipeline
             face_pipeline = LiveTalkingPipeline()
+            # Eagerly initialize so health_check reports accurate state
+            import asyncio
+            try:
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Already inside an event loop — schedule init
+                    asyncio.ensure_future(face_pipeline.engine.initialize())
+                else:
+                    loop.run_until_complete(face_pipeline.engine.initialize())
+            except RuntimeError:
+                asyncio.run(face_pipeline.engine.initialize())
             logger.info("face_pipeline_initialized", engine="livetalking")
         else:
             from src.face.pipeline import AvatarPipeline
@@ -133,9 +144,10 @@ def create_app() -> FastAPI:
     try:
         from src.commerce.manager import ProductManager, AffiliateTracker
         pm = ProductManager()
+        pm.load_from_json()  # Hydrate from canonical data/products.json
         at = AffiliateTracker()
         init_dashboard_state(product_manager=pm, affiliate_tracker=at)
-        logger.info("dashboard_state_initialized")
+        logger.info("dashboard_state_initialized", products_loaded=len(pm.get_all_active()))
     except Exception as e:
         logger.warning("dashboard_state_init_failed", error=str(e))
         init_dashboard_state()
@@ -268,17 +280,37 @@ def _register_health_checks(health_manager, face_pipeline=None) -> None:
 
         async def face_health() -> HealthStatus:
             try:
-                engine_name = getattr(_pipeline, "engine", None)
-                engine_type = type(engine_name).__name__ if engine_name else "unknown"
+                engine = getattr(_pipeline, "engine", None)
+                engine_type = type(engine).__name__ if engine else "unknown"
                 if hasattr(_pipeline, "health_check"):
                     healthy = await _pipeline.health_check()
                 else:
                     healthy = True
+
+                # Build diagnostic message
+                if healthy and engine and getattr(engine, "_initialized", False):
+                    msg = f"Engine: {engine_type} (initialized)"
+                elif healthy:
+                    msg = f"Engine: {engine_type} (ready)"
+                else:
+                    # Diagnose why unhealthy
+                    missing = []
+                    if engine:
+                        if not getattr(engine, "livetalking_path", Path(".")).exists():
+                            missing.append("livetalking_dir")
+                        if not getattr(engine, "app_py", Path(".")).exists():
+                            missing.append("app.py")
+                        if not getattr(engine, "reference_video", Path(".")).exists():
+                            missing.append("reference.mp4")
+                        if not getattr(engine, "reference_audio", Path(".")).exists():
+                            missing.append("reference.wav")
+                    msg = f"Engine: {engine_type} (missing: {', '.join(missing)})" if missing else f"Engine: {engine_type} (not ready)"
+
                 return HealthStatus(
                     name="face_pipeline",
                     healthy=healthy,
                     status="healthy" if healthy else "degraded",
-                    message=f"Engine: {engine_type}",
+                    message=msg,
                 )
             except Exception as e:
                 return HealthStatus(

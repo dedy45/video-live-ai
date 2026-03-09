@@ -245,21 +245,26 @@ class LiveTalkingEngine(BaseAvatarEngine):
 
     async def health_check(self) -> bool:
         """Check if LiveTalking engine is healthy.
-        
+
         Returns:
-            True if engine is ready to generate frames
+            True if engine is ready or can be initialized.
+            Only returns False when prerequisites are missing.
         """
         if is_mock_mode():
             return True
-        
-        if not self._initialized:
-            return False
-        
-        # TODO: Ping LiveTalking server
-        # Check if models are loaded
-        # Verify GPU is available
-        
-        return self._initialized
+
+        if self._initialized:
+            return True
+
+        # Not yet initialized — check if prerequisites exist so we can
+        # distinguish "ready to initialize" from "cannot initialize".
+        prerequisites_ok = (
+            self.livetalking_path.exists()
+            and self.app_py.exists()
+            and self.reference_video.exists()
+            and self.reference_audio.exists()
+        )
+        return prerequisites_ok
 
     async def shutdown(self) -> None:
         """Shutdown LiveTalking engine and cleanup resources."""

@@ -76,8 +76,13 @@ livetalking = [
     "imageio-ffmpeg>=0.4.9",
     "transformers==4.46.2",
     "omegaconf>=2.3.0",
-    "diffusers>=0.37.0",
+    "diffusers==0.27.2",
     "accelerate>=1.13.0",
+    # OpenMMLab stack required by MuseTalk avatar generation
+    "mmengine>=0.10.5,<1.0.0",
+    "mmcv-lite>=2.1.0,<2.2.0",
+    "mmdet>=3.3.0,<4.0.0",
+    "mmpose>=1.3.2,<2.0.0",
     "gradio-client>=2.3.0",
     "azure-cognitiveservices-speech>=1.48.0",
 ]
@@ -85,6 +90,7 @@ dev = [
     "pytest>=8.0.0",
     "pytest-asyncio>=0.23.0",
     "pytest-cov>=4.1.0",
+    "pytest-httpx>=0.30.0",
     "hypothesis>=6.98.0",
     "ruff>=0.3.0",
     "mypy>=1.8.0",
@@ -101,6 +107,20 @@ serve = "src.main:main"
 # .venv is created in: videoliveai/.venv/
 # All packages installed there, not in conda or global site-packages
 managed = true
+
+[[tool.uv.index]]
+name = "pytorch-cu126"
+url = "https://download.pytorch.org/whl/cu126"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu126", marker = "sys_platform == 'linux' or sys_platform == 'win32'" }]
+
+[tool.uv.extra-build-dependencies]
+chumpy = ["pip"]
+xtcocotools = ["numpy"]
 
 [tool.ruff]
 target-version = "py310"

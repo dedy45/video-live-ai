@@ -57,16 +57,49 @@ class BaseTTSEngine(ABC):
 
 
 class FishSpeechEngine(BaseTTSEngine):
-    """Fish Speech TTS — GPU-accelerated, high-quality voice cloning.
+    """Fish Speech TTS — local sidecar API voice cloning.
 
     Requirements: 3.1, 3.2 — Primary TTS with voice cloning from reference sample.
-    Runs on GPU server; uses MockVoiceSynthesizer in Mock Mode.
+    Calls local Fish-Speech API sidecar; uses MockVoiceSynthesizer in Mock Mode.
     """
 
     def __init__(self, voice_sample_path: str = "assets/voice/reference.wav") -> None:
         self.voice_sample_path = voice_sample_path
-        self._model: Any = None
+        self._client = None  # Lazy-init to avoid import at module level
+        self._reference_audio_b64: str | None = None
+        self._reference_text: str | None = None
         logger.info("fish_speech_init", voice_sample=voice_sample_path)
+
+    def _get_client(self):
+        """Lazy-init the Fish-Speech client from config."""
+        if self._client is None:
+            from src.voice.fish_speech_client import FishSpeechClient
+            config = get_config()
+            self._client = FishSpeechClient(
+                base_url=config.voice.fish_speech_base_url,
+                timeout_ms=config.voice.fish_speech_timeout_ms,
+            )
+        return self._client
+
+    def _load_references(self) -> None:
+        """Load clone reference assets from config paths."""
+        if self._reference_audio_b64 is not None and self._reference_text is not None:
+            return
+        from src.voice.fish_speech_client import FishSpeechClient
+        from src.voice.runtime_state import get_voice_runtime_state
+        config = get_config()
+        try:
+            self._reference_audio_b64 = FishSpeechClient.load_reference_audio_b64(
+                config.voice.clone_reference_wav
+            )
+            self._reference_text = FishSpeechClient.load_reference_text(
+                config.voice.clone_reference_text
+            )
+            get_voice_runtime_state().reference_ready = True
+        except (FileNotFoundError, ValueError) as e:
+            logger.warning("fish_speech_reference_load_failed", error=str(e))
+            get_voice_runtime_state().reference_ready = False
+            raise RuntimeError(f"Voice clone reference missing or invalid: {e}") from e
 
     async def synthesize(
         self,
@@ -91,8 +124,6 @@ class FishSpeechEngine(BaseTTSEngine):
 
         start = time.time()
         try:
-            # Production: call Fish Speech inference
-            # This will be activated when GPU models are loaded
             audio_data = await self._run_inference(text, emotion, speed)
             latency = (time.time() - start) * 1000
             duration_ms = len(audio_data) / (24000 * 2) * 1000  # 16-bit mono
@@ -111,13 +142,32 @@ class FishSpeechEngine(BaseTTSEngine):
             raise
 
     async def _run_inference(self, text: str, emotion: str, speed: float) -> bytes:
-        """Run Fish Speech GPU inference. Implemented when deployed to GPU server."""
-        raise NotImplementedError("Fish Speech GPU inference requires GPU server deployment")
+        """Run Fish Speech inference via local sidecar API."""
+        from src.voice.runtime_state import get_voice_runtime_state
+
+        state = get_voice_runtime_state()
+        client = self._get_client()
+        self._load_references()
+        try:
+            audio = await client.synthesize(
+                text=text,
+                reference_audio_b64=self._reference_audio_b64 or "",
+                reference_text=self._reference_text or "",
+            )
+            state.server_reachable = True
+            return audio
+        except Exception:
+            state.server_reachable = False
+            raise
 
     async def health_check(self) -> bool:
         if is_mock_mode():
             return True
-        return self._model is not None
+        try:
+            client = self._get_client()
+            return await client.health_check()
+        except Exception:
+            return False
 
 
 class EdgeTTSEngine(BaseTTSEngine):
@@ -226,6 +276,7 @@ class VoiceRouter:
     """Voice synthesis router with primary/backup TTS and caching.
 
     Routes to Fish Speech (primary) with Edge TTS fallback.
+    Updates voice runtime state after each synthesis attempt.
     """
 
     def __init__(self) -> None:
@@ -247,7 +298,11 @@ class VoiceRouter:
         """Synthesize speech with caching and fallback.
 
         1. Check cache → 2. Try primary (Fish Speech) → 3. Fallback to Edge TTS.
+        Updates voice runtime state after each attempt.
         """
+        from src.voice.runtime_state import get_voice_runtime_state
+        state = get_voice_runtime_state()
+
         # Check cache first
         cached = self.cache.get(text, emotion, speed)
         if cached:
@@ -259,18 +314,23 @@ class VoiceRouter:
             speed *= em.speed
 
         # Try primary
+        primary_error = ""
         try:
             result = await self.primary.synthesize(text, emotion, speed, trace_id)
             self.cache.put(result, speed)
+            state.update_success("fish_speech", result.latency_ms)
             return result
         except Exception as e:
-            logger.warning("primary_tts_failed", error=str(e), trace_id=trace_id)
+            primary_error = str(e)
+            logger.warning("primary_tts_failed", error=primary_error, trace_id=trace_id)
 
         # Fallback to backup
         try:
             result = await self.backup.synthesize(text, emotion, speed, trace_id)
             self.cache.put(result, speed)
+            state.update_fallback_success("edge_tts", result.latency_ms, primary_error)
             return result
         except Exception as e:
+            state.update_failure("none", f"all engines failed: {e}")
             logger.error("all_tts_failed", error=str(e), trace_id=trace_id)
             raise RuntimeError(f"All TTS engines failed: {e}")

@@ -1,5 +1,107 @@
 # Changelog
 
+## v0.5.14 — 2026-03-10 (Fish-Speech Local Direct-Test Verification + Docs Sync)
+
+### OK Fish-Speech client now matches the real sidecar contract
+- `src/voice/fish_speech_client.py` now accepts Kui-based Fish-Speech health probes via `GET /json`
+- Fish-Speech synthesis requests now send binary clone references as `application/msgpack` instead of JSON strings, so the sidecar receives real WAV bytes
+- Local Fish-Speech timeout contract is raised from `10s` to `120s` to match the measured direct-test path on this machine
+
+### OK Local non-mock voice clone validation is now verified
+- `assets/voice/reference.wav` and `assets/voice/reference.txt` are present and used by the validation path
+- `uv run python scripts/check_real_mode_readiness.py --json` now returns `READY FOR REAL MODE`
+- `uv run python scripts/manage.py validate fish-speech` now passes prerequisite checks
+- `POST /api/validate/voice-local-clone` now passes with `resolved_engine=fish_speech`, `fallback_active=false`, and `voice_runtime_mode=fish_speech_local`
+
+### OK Current limitation is now performance, not correctness
+- Verified local Indonesian smoke synthesis returns real audio bytes, but measured latency remains around `31-40s` on the current GTX 1650 setup
+- This means the local audio slice is ready for direct functional testing, but not yet at live-stream latency targets
+
+### OK Docs and tests are synchronized again
+- Updated `README.md`, `docs/task_status.md`, `docs/workflow.md`, `docs/architecture.md`, `docs/README.md`, and the Fish-Speech implementation plan review status
+- Added regression coverage for Kui `/json` health probing and msgpack clone payload delivery
+
+### Verification
+- `uv run pytest tests/test_fish_speech_client.py -q -p no:cacheprovider` -> `13 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `219 passed, 1 skipped`
+- `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE`
+- `uv run python scripts/manage.py validate fish-speech` -> PASS
+- `MOCK_MODE=false uv run python -c "import asyncio, json; from src.dashboard.api import validate_voice_local_clone; print(json.dumps(asyncio.run(validate_voice_local_clone()), indent=2))"` -> PASS with synthesis latency observed at `~31-40s`
+
+## v0.5.13 — 2026-03-09 (Fish-Speech Truth Fixes + Audio Status Sync)
+
+### OK Fish-Speech runtime contract is now stricter and more honest
+- `src/voice/fish_speech_client.py` now sends the official `references` payload to `POST /v1/tts`
+- Fish-Speech health probes now require real success responses instead of treating `404` as healthy
+- `src/voice/engine.py` now fails explicitly when clone references are missing instead of silently attempting unconditioned synthesis
+- `src/dashboard/truth.py` now reports `voice_runtime_mode=unknown` until the voice engine is actually resolved by real synthesis
+
+### OK Verification surfaced the real local audio blockers
+- `uv run python scripts/check_real_mode_readiness.py --json` is now honestly blocked by:
+  - missing `assets/voice/reference.wav`
+  - missing `assets/voice/reference.txt`
+  - unreachable Fish-Speech sidecar at `http://127.0.0.1:8080`
+- `uv run python scripts/manage.py validate fish-speech` reports the same blocking prerequisites
+- Local face validation remains intact; the audio slice is still `IN PROGRESS`
+
+### OK Docs and tests are synchronized with the current workspace state
+- Updated `README.md`, `docs/task_status.md`, `docs/workflow.md`, `docs/architecture.md`, `docs/README.md`, and runtime truth specs
+- Added regression tests for Fish-Speech request payload, strict health probing, missing clone assets, and cold-start voice truth
+- Vendor MuseTalk compatibility tests now skip cleanly when optional `livetalking` dependencies are not present in the base env
+- One vendor VAE import probe remains skipped under the current env because `diffusers` still raises an upstream `huggingface_hub` import error
+
+### Verification
+- `uv run pytest tests/test_fish_speech_client.py -q -p no:cacheprovider` -> `13 passed`
+- `uv run pytest tests/test_voice_engine.py -q -p no:cacheprovider` -> `9 passed`
+- `uv run pytest tests/test_dashboard.py -q -p no:cacheprovider` -> `37 passed`
+- `uv run pytest tests/test_manage_cli.py -q -p no:cacheprovider` -> `19 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `218 passed, 1 skipped`
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `MOCK_MODE=false uv run python -c "import json; from src.dashboard.truth import get_runtime_truth_snapshot; print(json.dumps(get_runtime_truth_snapshot(), indent=2))"` -> `voice_runtime_mode=unknown`
+
+## v0.5.12 — 2026-03-09 (Health Summary Alignment Verified + Docs Sync)
+
+### OK `face_pipeline=degraded` issue is resolved in current local baseline
+- `GET /api/health/summary` now returns `status=healthy`
+- `components.face_pipeline` now returns `healthy` on readiness-complete non-mock local setup
+- Root cause in the earlier behavior: face health relied on strict init state; updated runtime now evaluates readiness prerequisites and eager init path
+
+### OK Source-of-truth docs now match runtime behavior
+- Updated `README.md`, `docs/task_status.md`, `docs/workflow.md`, and `docs/architecture.md`
+- Updated this changelog and the local milestone audit to remove stale "health summary still degraded" status
+
+### Verification
+- `MOCK_MODE=false uv run python -c "import asyncio, json; from src.main import create_app; from src.dashboard.api import health_summary; create_app(); print(json.dumps(asyncio.run(health_summary()), indent=2))"` -> `status=healthy`, `components.face_pipeline=healthy`
+- `MOCK_MODE=false uv run pytest tests/test_livetalking_integration.py -q -p no:cacheprovider` -> `29 passed`
+- `MOCK_MODE=false uv run pytest tests/test_dashboard.py -q -p no:cacheprovider` -> `31 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `183 passed`
+
+## v0.5.11 — 2026-03-09 (MuseTalk Local Validation + Docs Sync)
+
+### OK MuseTalk local vertical slice verified
+- Canonical `musetalk_avatar1` now exists under `external/livetalking/data/avatars/musetalk_avatar1`
+- Official local operator slice resolves `requested_model=musetalk` to `resolved_model=musetalk`
+- Official local operator slice resolves `requested_avatar_id=musetalk_avatar1` to `resolved_avatar_id=musetalk_avatar1`
+- Validation Console now reports `Real-Mode Readiness: PASS`
+- Vendor process command line is confirmed as `app.py --transport webrtc --model musetalk --avatar_id musetalk_avatar1 --listenport 8010`
+
+### OK Source-of-truth docs promoted from partial to verified local state
+- Updated `README.md`, `docs/task_status.md`, `docs/workflow.md`, `docs/architecture.md`, and `docs/README.md`
+- Rewrote the local MuseTalk audit to reflect the completed local vertical slice instead of the old wav2lip fallback snapshot
+- Updated active verification counts from `161 passed` to `182 passed`
+
+### OK Residual issue kept explicit
+- `GET /api/health/summary` still reports `face_pipeline=degraded`
+- Humanization and real live test remain next-phase work, not part of the completed local MuseTalk slice
+
+### Verification
+- `uv run pytest tests -q -p no:cacheprovider` -> `182 passed`
+- `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE` (11/11 checks passed)
+- `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- `uv run --extra livetalking python scripts/setup_musetalk_assets.py --sync-only` -> `Models ready: True`, `Avatar ready: True`
+- `uv run python scripts/manage.py validate livetalking` -> PASS with requested/resolved `musetalk / musetalk_avatar1`
+- `uv run python scripts/manage.py health --json` while app is running -> runtime truth shows `face_runtime_mode=livetalking_local`, `fallback_active=false`
+
 ## v0.5.10 — 2026-03-09 (Docs Sync After Review)
 
 ### OK Source-of-truth docs synchronized with fresh verification

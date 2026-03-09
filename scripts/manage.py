@@ -313,8 +313,10 @@ def validate_target(target: str) -> int:
         return run_command(
             ["uv", "run", "--extra", "livetalking", "python", "scripts/smoke_livetalking.py"]
         )
+    if target == "fish-speech":
+        return run_command(["uv", "run", "python", "scripts/setup_fish_speech.py", "--check"])
     if target == "all":
-        for step in ("tests", "pipeline", "readiness", "livetalking"):
+        for step in ("tests", "pipeline", "readiness", "livetalking", "fish-speech"):
             exit_code = validate_target(step)
             if exit_code != 0:
                 return exit_code
@@ -359,6 +361,11 @@ def setup_livetalking(skip_models: bool) -> int:
     return run_command(command)
 
 
+def setup_fish_speech() -> int:
+    """Run the dedicated Fish-Speech setup flow."""
+    return run_command(["uv", "run", "python", "scripts/setup_fish_speech.py"])
+
+
 def open_target(target: str) -> int:
     """Open a local browser target."""
     snapshot = get_runtime_snapshot()
@@ -395,7 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
     validate_parser = subparsers.add_parser("validate", help="Run validation flows")
     validate_parser.add_argument(
         "target",
-        choices=["tests", "pipeline", "readiness", "livetalking", "all"],
+        choices=["tests", "pipeline", "readiness", "livetalking", "fish-speech", "all"],
         help="Validation target",
     )
 
@@ -415,6 +422,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-models",
         action="store_true",
         help="Skip model download and only setup deps/assets/layout",
+    )
+
+    subparsers.add_parser(
+        "setup-fish-speech",
+        help="Check Fish-Speech voice clone prerequisites and print startup guidance",
     )
 
     open_parser = subparsers.add_parser("open", help="Open a local URL in the browser")
@@ -446,6 +458,8 @@ def main(argv: list[str] | None = None) -> int:
         return load_products()
     if args.command == "setup-livetalking":
         return setup_livetalking(skip_models=bool(args.skip_models))
+    if args.command == "setup-fish-speech":
+        return setup_fish_speech()
     if args.command == "open":
         return open_target(str(args.target))
 

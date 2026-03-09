@@ -50,13 +50,14 @@ Each subsystem reports its runtime mode independently:
 |-------|--------|--------|
 | `mock_mode` | `true` / `false` | `MOCK_MODE` env var via `is_mock_mode()` |
 | `face_runtime_mode` | `mock` / `livetalking_local` / `livetalking_live` | LiveTalking manager state |
-| `voice_runtime_mode` | `mock` / `fish_speech` / `edge_tts` | Voice router active engine |
+| `voice_runtime_mode` | `mock` / `fish_speech_local` / `edge_tts_fallback` / `voice_error` / `unknown` | Voice router active engine |
 | `stream_runtime_mode` | `mock` / `idle` / `live` | RTMP streamer state |
 
 ### Rules
 
 - If `mock_mode=true`, all subsystem modes should reflect `mock`.
 - If `mock_mode=false` but a subsystem falls back to mock behavior, it must report honestly.
+- `voice_runtime_mode=unknown` is the correct cold-start state before the first real non-mock synthesis resolves the engine.
 
 ## 4. Operator Action Receipt Schema
 
@@ -114,7 +115,24 @@ Response shape:
 {
   "mock_mode": true,
   "face_runtime_mode": "mock",
+  "face_engine": {
+    "requested_model": "musetalk",
+    "resolved_model": "musetalk",
+    "requested_avatar_id": "musetalk_avatar1",
+    "resolved_avatar_id": "musetalk_avatar1",
+    "engine_state": "running",
+    "fallback_active": false
+  },
   "voice_runtime_mode": "mock",
+  "voice_engine": {
+    "requested_engine": "fish_speech",
+    "resolved_engine": "unknown",
+    "fallback_active": false,
+    "server_reachable": false,
+    "reference_ready": false,
+    "last_latency_ms": null,
+    "last_error": null
+  },
   "stream_runtime_mode": "idle",
   "validation_state": "unvalidated",
   "last_validated_at": null,

@@ -1,16 +1,29 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { getRuntimeTruth } from '../../lib/api';
+  import { onMount, onDestroy } from 'svelte';
+  import { useDashboardRealtime } from '../../lib/stores/dashboard.svelte';
   import type { RuntimeTruth } from '../../lib/types';
+
+  const rt = useDashboardRealtime();
 
   let truth: RuntimeTruth | null = $state(null);
   let error: string | null = $state(null);
+  let source: string = $state('');
 
-  onMount(async () => {
-    try {
-      truth = await getRuntimeTruth() as RuntimeTruth;
-    } catch (e: any) {
-      error = e.message || 'Failed to load runtime truth';
+  onMount(() => {
+    rt.start();
+  });
+
+  onDestroy(() => {
+    rt.stop();
+  });
+
+  // Sync truth from realtime store snapshot
+  $effect(() => {
+    const snap = rt.snapshot;
+    if (snap?.truth) {
+      truth = snap.truth as RuntimeTruth;
+      source = snap.source;
+      error = null;
     }
   });
 
@@ -85,7 +98,7 @@
     <span class="truth-sep">|</span>
     <span class="truth-item">
       <span class="truth-label">Face:</span>
-      <span class="truth-value">{truth.face_runtime_mode}</span>
+      <span class="truth-value" data-testid="truth-face-mode">{truth.face_runtime_mode}</span>
     </span>
     <span class="truth-item">
       <span class="truth-label">Voice:</span>
@@ -95,6 +108,13 @@
       <span class="truth-label">Stream:</span>
       <span class="truth-value">{truth.stream_runtime_mode}</span>
     </span>
+    {#if source}
+      <span class="truth-sep">|</span>
+      <span class="truth-item">
+        <span class="truth-label">Src:</span>
+        <span class="truth-value truth-source" data-testid="truth-source">{source}</span>
+      </span>
+    {/if}
   {:else if error}
     <span class="badge badge-error">ERROR</span>
     <span class="truth-item truth-error">{error}</span>
@@ -154,6 +174,10 @@
   }
   .truth-error {
     color: var(--red, #ef4444);
+  }
+  .truth-source {
+    color: var(--text-secondary, #888);
+    font-style: italic;
   }
   .validation-passed { color: var(--green, #10b981); }
   .validation-partial { color: var(--yellow, #f59e0b); }

@@ -42,6 +42,11 @@ voice:
   sample_rate: 24000
   bitrate: 128000
   cache_max_mb: 1024
+  fish_speech_base_url: "http://127.0.0.1:8080"
+  fish_speech_timeout_ms: 120000
+  clone_reference_wav: "assets/voice/reference.wav"
+  clone_reference_text: "assets/voice/reference.txt"
+  indonesian_smoke_text: "Halo kak, selamat datang di live streaming kami hari ini."
   emotion_mapping:
     happy: { pitch: 1.05, speed: 1.10, energy: 1.15 }
     excited: { pitch: 1.10, speed: 1.15, energy: 1.25 }

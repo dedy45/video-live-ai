@@ -20,6 +20,8 @@ _DEFAULT_AVATARS = {
     "musetalk": "musetalk_avatar1",
     "wav2lip": "wav2lip256_avatar1",
 }
+_MUSE_SENTINELS = ("latents.pt", "mask_coords.pkl")
+_WAV2LIP_SENTINELS = ("face_imgs", "coords.pkl")
 
 
 def resolve_engine(
@@ -78,7 +80,7 @@ def resolve_avatar_id(
     """
     avatar_root = avatars_dir or _DEFAULT_MUSETALK_AVATAR_DIR
     requested_path = avatar_root / requested_avatar_id
-    if requested_path.exists():
+    if requested_path.exists() and _avatar_matches_model(requested_path, resolved_model):
         return requested_avatar_id
 
     fallback_avatar = _DEFAULT_AVATARS.get(resolved_model, requested_avatar_id)
@@ -90,3 +92,29 @@ def resolve_avatar_id(
             fallback_avatar_id=fallback_avatar,
         )
     return fallback_avatar
+
+
+def _avatar_matches_model(avatar_path: Path, resolved_model: str) -> bool:
+    """Reject obvious cross-engine avatar reuse when both avatar types exist."""
+    has_musetalk_artifact = any((avatar_path / name).exists() for name in _MUSE_SENTINELS)
+    has_wav2lip_artifact = all((avatar_path / name).exists() for name in _WAV2LIP_SENTINELS)
+
+    if resolved_model == "wav2lip" and has_musetalk_artifact and not has_wav2lip_artifact:
+        logger.warning(
+            "avatar_incompatible_with_engine",
+            resolved_model=resolved_model,
+            avatar_id=avatar_path.name,
+            reason="musetalk_artifacts_detected",
+        )
+        return False
+
+    if resolved_model == "musetalk" and has_wav2lip_artifact and not has_musetalk_artifact:
+        logger.warning(
+            "avatar_incompatible_with_engine",
+            resolved_model=resolved_model,
+            avatar_id=avatar_path.name,
+            reason="wav2lip_artifacts_detected",
+        )
+        return False
+
+    return True

@@ -334,3 +334,219 @@ async def test_validation_history_endpoint() -> None:
 
     result = await validation_history()
     assert isinstance(result, list)
+
+
+# === Product Hydration + Readiness Contract Tests ===
+
+
+def test_product_manager_load_from_json() -> None:
+    """ProductManager.load_from_json() should hydrate products from canonical file."""
+    from src.commerce.manager import ProductManager
+
+    pm = ProductManager()
+    count = pm.load_from_json()
+
+    assert count > 0, "data/products.json should load at least one product"
+    assert len(pm.get_all_active()) == count
+    first = pm.get_all_active()[0]
+    assert first.name != "", "loaded product must have a name"
+    assert first.price > 0, "loaded product must have a positive price"
+
+
+def test_product_manager_load_from_missing_file(tmp_path) -> None:
+    """ProductManager.load_from_json() should return 0 for missing file."""
+    from pathlib import Path
+    from src.commerce.manager import ProductManager
+
+    pm = ProductManager()
+    count = pm.load_from_json(path=tmp_path / "nonexistent.json")
+
+    assert count == 0
+    assert len(pm.get_all_active()) == 0
+
+
+def test_app_startup_hydrates_products() -> None:
+    """After create_app(), the dashboard product manager must have products loaded."""
+    from src.main import create_app
+    import src.dashboard.api as dashboard_api
+
+    create_app()
+
+    pm = dashboard_api._product_manager
+    assert pm is not None, "dashboard must have a product manager"
+    products = pm.get_all_active()
+    assert len(products) > 0, (
+        "After app startup, ProductManager must be hydrated from data/products.json"
+    )
+
+
+@pytest.mark.asyncio
+async def test_api_products_returns_hydrated_data() -> None:
+    """GET /api/products must return products from hydrated manager, not empty."""
+    from src.main import create_app
+    from src.dashboard.api import list_products
+
+    create_app()
+    result = await list_products()
+
+    assert isinstance(result, list)
+    assert len(result) > 0, "/api/products must return non-empty after app startup"
+    assert "name" in result[0]
+    assert "price" in result[0]
+
+
+@pytest.mark.asyncio
+async def test_api_real_mode_readiness_products_pass_after_hydration() -> None:
+    """After app startup with data/products.json, real-mode-readiness must not fail on products."""
+    from src.main import create_app
+    from src.dashboard.api import validate_real_mode_readiness
+
+    create_app()
+    result = await validate_real_mode_readiness()
+
+    product_source = next(
+        (c for c in result["checks"] if c["check"] == "product_data_source"), None
+    )
+    products_loaded = next(
+        (c for c in result["checks"] if c["check"] == "products_loaded"), None
+    )
+
+    assert product_source is not None, "readiness must check product_data_source"
+    assert product_source["passed"] is True, "data/products.json must exist"
+    assert products_loaded is not None, "readiness must check products_loaded"
+    assert products_loaded["passed"] is True, (
+        "products must be loaded into runtime after app startup"
+    )
+
+
+@pytest.mark.asyncio
+async def test_runtime_truth_has_face_engine_fields() -> None:
+    """Runtime truth must include face_engine with requested/resolved fields."""
+    from src.dashboard.api import get_runtime_truth
+
+    result = await get_runtime_truth()
+
+    assert "face_engine" in result, "truth must include face_engine"
+    fe = result["face_engine"]
+    assert "requested_model" in fe
+    assert "resolved_model" in fe
+    assert "requested_avatar_id" in fe
+    assert "resolved_avatar_id" in fe
+    assert "fallback_active" in fe
+    assert isinstance(fe["fallback_active"], bool)
+
+
+@pytest.mark.asyncio
+async def test_health_summary_face_pipeline_healthy_with_ready_prerequisites(monkeypatch) -> None:
+    """Health summary should report healthy face_pipeline on readiness-complete non-mock local setup."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+    from src.main import create_app
+    from src.dashboard.api import health_summary
+
+    create_app()
+    result = await health_summary()
+
+    assert "components" in result
+    assert result["components"].get("face_pipeline") == "healthy"
+
+
+@pytest.mark.asyncio
+async def test_runtime_truth_face_mode_not_mock_when_mock_false(monkeypatch) -> None:
+    """When MOCK_MODE=false, face_runtime_mode must NOT be 'mock'."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+
+    from src.dashboard.truth import _get_face_runtime_mode
+    mode = _get_face_runtime_mode()
+
+    assert mode != "mock", (
+        f"face_runtime_mode must not be 'mock' when MOCK_MODE=false, got '{mode}'"
+    )
+    assert "livetalking" in mode, (
+        f"face_runtime_mode should indicate livetalking state, got '{mode}'"
+    )
+
+
+# === Voice Engine Runtime Truth Tests ===
+
+
+@pytest.mark.asyncio
+async def test_runtime_truth_has_voice_engine_fields() -> None:
+    """Runtime truth must include voice_engine with requested/resolved fields."""
+    from src.dashboard.api import get_runtime_truth
+
+    result = await get_runtime_truth()
+
+    assert "voice_engine" in result, "truth must include voice_engine"
+    ve = result["voice_engine"]
+    assert "requested_engine" in ve
+    assert "resolved_engine" in ve
+    assert "fallback_active" in ve
+    assert "server_reachable" in ve
+    assert "reference_ready" in ve
+    assert "last_latency_ms" in ve
+    assert "last_error" in ve
+    assert isinstance(ve["fallback_active"], bool)
+
+
+@pytest.mark.asyncio
+async def test_runtime_truth_voice_mode_is_mock_in_mock_mode() -> None:
+    """When MOCK_MODE=true, voice_runtime_mode must be 'mock'."""
+    from src.dashboard.api import get_runtime_truth
+
+    result = await get_runtime_truth()
+    assert result["voice_runtime_mode"] == "mock"
+
+
+@pytest.mark.asyncio
+async def test_runtime_truth_voice_mode_not_mock_when_mock_false(monkeypatch) -> None:
+    """When MOCK_MODE=false, voice_runtime_mode must NOT be 'mock'."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+
+    from src.dashboard.truth import _get_voice_runtime_mode
+    mode = _get_voice_runtime_mode()
+
+    assert mode != "mock", (
+        f"voice_runtime_mode must not be 'mock' when MOCK_MODE=false, got '{mode}'"
+    )
+    valid_modes = {"fish_speech_local", "edge_tts_fallback", "voice_error", "unknown"}
+    assert mode in valid_modes, f"voice_runtime_mode must be one of {valid_modes}, got '{mode}'"
+
+
+def test_runtime_truth_voice_mode_unknown_until_engine_is_resolved(monkeypatch) -> None:
+    """Non-mock runtime truth must not claim Fish-Speech is active before first resolution."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+
+    from src.dashboard.truth import _get_voice_runtime_mode
+    from src.voice.runtime_state import get_voice_runtime_state, reset_voice_runtime_state
+
+    reset_voice_runtime_state()
+    state = get_voice_runtime_state()
+    state.resolved_engine = "unknown"
+    state.fallback_active = False
+    state.server_reachable = False
+    state.reference_ready = False
+    state.last_error = None
+
+    assert _get_voice_runtime_mode() == "unknown"
+    reset_voice_runtime_state()
+
+
+@pytest.mark.asyncio
+async def test_validate_voice_local_clone_endpoint_exists() -> None:
+    """POST /api/validate/voice-local-clone must return a valid response."""
+    from src.dashboard.api import validate_voice_local_clone
+
+    result = await validate_voice_local_clone()
+    assert result["status"] in ("pass", "fail", "blocked", "error")
+    assert "checks" in result
+
+
+def test_readiness_includes_voice_checks() -> None:
+    """Readiness checks must include voice clone readiness."""
+    from src.dashboard.readiness import run_readiness_checks
+
+    result = run_readiness_checks()
+    check_names = [c.name for c in result.checks]
+    assert "voice_reference_wav_ready" in check_names
+    assert "voice_reference_text_ready" in check_names
+    assert "fish_speech_server_reachable" in check_names

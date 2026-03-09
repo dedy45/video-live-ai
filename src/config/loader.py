@@ -48,6 +48,11 @@ class VoiceConfig(BaseModel):
     bitrate: int = 128000
     cache_max_mb: int = 1024
     emotion_mapping: dict[str, EmotionParams] = Field(default_factory=dict)
+    fish_speech_base_url: str = "http://127.0.0.1:8080"
+    fish_speech_timeout_ms: int = 120000
+    clone_reference_wav: str = "assets/voice/reference.wav"
+    clone_reference_text: str = "assets/voice/reference.txt"
+    indonesian_smoke_text: str = "Halo kak, selamat datang di live streaming kami hari ini."
 
 
 class TemporalSmootherConfig(BaseModel):

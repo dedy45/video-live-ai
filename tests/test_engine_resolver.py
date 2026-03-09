@@ -247,6 +247,26 @@ def test_resolve_avatar_id_keeps_musetalk_when_present(tmp_path: Path) -> None:
     assert result == "musetalk_avatar1"
 
 
+def test_resolve_avatar_id_rejects_musetalk_avatar_for_wav2lip_runtime(tmp_path: Path) -> None:
+    """An existing MuseTalk avatar path must not be reused when runtime fell back to wav2lip."""
+    from src.face.engine_resolver import resolve_avatar_id
+
+    avatars_dir = tmp_path / "avatars"
+    musetalk_dir = avatars_dir / "musetalk_avatar1"
+    musetalk_dir.mkdir(parents=True)
+    (musetalk_dir / "latents.pt").write_text("fake")
+    wav2lip_dir = avatars_dir / "wav2lip256_avatar1"
+    wav2lip_dir.mkdir(parents=True)
+
+    result = resolve_avatar_id(
+        "musetalk_avatar1",
+        "wav2lip",
+        avatars_dir=avatars_dir,
+    )
+
+    assert result == "wav2lip256_avatar1"
+
+
 def test_milestone_truth_fails_when_fallback_active() -> None:
     """Milestone truth check: requested=musetalk but resolved=wav2lip means NOT complete."""
     requested = "musetalk"

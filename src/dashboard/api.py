@@ -947,10 +947,12 @@ async def validate_real_mode_readiness() -> dict[str, Any]:
         mock = is_mock_mode()
         checks.append({"check": "mock_mode_off", "passed": not mock, "message": f"MOCK_MODE={'true' if mock else 'false'}"})
 
-        # 2. Avatar reference asset
+        # 2. Avatar reference assets (video + audio)
         from pathlib import Path
         ref_video = Path("assets/avatar/reference.mp4")
-        checks.append({"check": "avatar_reference", "passed": ref_video.exists(), "message": str(ref_video)})
+        ref_audio = Path("assets/avatar/reference.wav")
+        checks.append({"check": "avatar_reference_video", "passed": ref_video.exists(), "message": str(ref_video)})
+        checks.append({"check": "avatar_reference_audio", "passed": ref_audio.exists(), "message": str(ref_audio) if ref_audio.exists() else "reference.wav missing (run: ffmpeg -i reference.mp4 -vn -ar 16000 -ac 1 reference.wav)"})
 
         # 3. RTMP target configured
         rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
@@ -962,7 +964,19 @@ async def validate_real_mode_readiness() -> dict[str, Any]:
         lt_path = Path("external/livetalking/app.py")
         checks.append({"check": "livetalking_entrypoint", "passed": lt_path.exists(), "message": str(lt_path)})
 
-        # 5. Products exist
+        # 5. Product data source exists (canonical file check — same as CLI readiness)
+        from pathlib import Path as _Path
+        p_json = _Path("data/products.json")
+        p_db = _Path("data/products.db")
+        found_products = [p.name for p in (p_json, p_db) if p.exists()]
+        products_file_ok = len(found_products) > 0
+        checks.append({
+            "check": "product_data_source",
+            "passed": products_file_ok,
+            "message": f"Found: {', '.join(found_products)}" if found_products else "Neither products.json nor products.db found",
+        })
+
+        # 5b. Products hydrated into runtime manager
         pm = _product_manager or ProductManager()
         products = pm.get_all_active()
         checks.append({"check": "products_loaded", "passed": len(products) > 0, "message": f"{len(products)} products"})
@@ -978,5 +992,103 @@ async def validate_real_mode_readiness() -> dict[str, Any]:
         return {"status": status, "checks": checks, "blockers": blockers, "evidence_id": entry["id"]}
     except Exception as e:
         logger.error("validate_real_mode_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/voice-local-clone")
+async def validate_voice_local_clone() -> dict[str, Any]:
+    """Validate local Fish-Speech voice clone readiness and run synthesis smoke test.
+
+    Checks:
+    1. Voice clone reference WAV exists
+    2. Voice clone reference text exists and is non-empty
+    3. Fish-Speech sidecar is reachable
+    4. Indonesian synthesis smoke test succeeds (if sidecar available)
+    """
+    import time as _time
+    from pathlib import Path
+
+    try:
+        config = get_config()
+        checks: list[dict[str, Any]] = []
+
+        # 1. Reference WAV
+        ref_wav = Path(config.voice.clone_reference_wav)
+        wav_ok = ref_wav.exists()
+        checks.append({"check": "voice_reference_wav", "passed": wav_ok, "message": str(ref_wav) if wav_ok else f"not found: {ref_wav}"})
+
+        # 2. Reference text
+        ref_txt = Path(config.voice.clone_reference_text)
+        txt_ok = ref_txt.exists()
+        txt_nonempty = False
+        if txt_ok:
+            txt_nonempty = len(ref_txt.read_text(encoding="utf-8").strip()) > 0
+        checks.append({
+            "check": "voice_reference_text",
+            "passed": txt_ok and txt_nonempty,
+            "message": str(ref_txt) if (txt_ok and txt_nonempty) else f"missing or empty: {ref_txt}",
+        })
+
+        # 3. Fish-Speech server reachable
+        from src.voice.fish_speech_client import FishSpeechClient
+        client = FishSpeechClient(
+            base_url=config.voice.fish_speech_base_url,
+            timeout_ms=config.voice.fish_speech_timeout_ms,
+        )
+        server_reachable = await client.health_check()
+        checks.append({
+            "check": "fish_speech_server_reachable",
+            "passed": server_reachable,
+            "message": f"reachable at {config.voice.fish_speech_base_url}" if server_reachable else f"not reachable at {config.voice.fish_speech_base_url}",
+        })
+
+        # 4. Indonesian synthesis smoke test
+        synthesis_ok = False
+        latency_ms = 0.0
+        synthesis_message = "skipped (prerequisites not met)"
+        if wav_ok and txt_nonempty and server_reachable:
+            try:
+                ref_audio_b64 = FishSpeechClient.load_reference_audio_b64(config.voice.clone_reference_wav)
+                ref_text = FishSpeechClient.load_reference_text(config.voice.clone_reference_text)
+                smoke_text = config.voice.indonesian_smoke_text
+
+                start = _time.time()
+                audio_bytes = await client.synthesize(
+                    text=smoke_text,
+                    reference_audio_b64=ref_audio_b64,
+                    reference_text=ref_text,
+                )
+                latency_ms = (_time.time() - start) * 1000
+                synthesis_ok = len(audio_bytes) > 0
+                synthesis_message = f"synthesized {len(audio_bytes)} bytes in {latency_ms:.0f}ms"
+
+                # Update voice runtime state
+                from src.voice.runtime_state import get_voice_runtime_state
+                state = get_voice_runtime_state()
+                state.update_success("fish_speech", latency_ms)
+                state.server_reachable = True
+                state.reference_ready = True
+            except Exception as synth_err:
+                synthesis_message = f"synthesis failed: {synth_err}"
+
+        checks.append({
+            "check": "indonesian_synthesis_smoke",
+            "passed": synthesis_ok,
+            "message": synthesis_message,
+        })
+
+        all_pass = all(c["passed"] for c in checks)
+        if not (wav_ok and txt_nonempty):
+            status = "blocked"
+        elif all_pass:
+            status = "pass"
+        else:
+            status = "fail"
+
+        provenance = "mock" if is_mock_mode() else "real_local"
+        entry = record_validation("voice-local-clone", status, checks, provenance=provenance)
+        return {"status": status, "checks": checks, "evidence_id": entry["id"], "latency_ms": latency_ms}
+    except Exception as e:
+        logger.error("validate_voice_clone_error", error=str(e), exc_info=True)
         return {"status": "error", "checks": [], "error": str(e)}
 

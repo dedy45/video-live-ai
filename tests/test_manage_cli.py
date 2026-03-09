@@ -182,6 +182,90 @@ def test_validate_target_accepts_all_surfaces() -> None:
         assert args.target == target
 
 
+# === Task 7: Fish-Speech operator CLI hooks ===
+
+
+def test_parser_accepts_setup_fish_speech_command() -> None:
+    """CLI should expose a dedicated Fish-Speech setup command."""
+    manage = load_manage_module()
+
+    parser = manage.build_parser()
+    args = parser.parse_args(["setup-fish-speech"])
+
+    assert args.command == "setup-fish-speech"
+
+
+def test_setup_fish_speech_runs_setup_script() -> None:
+    """setup-fish-speech must invoke scripts/setup_fish_speech.py via uv run."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.setup_fish_speech()
+
+    assert exit_code == 0
+    assert captured["command"] == [
+        "uv", "run", "python", "scripts/setup_fish_speech.py",
+    ]
+
+
+def test_validate_target_accepts_fish_speech() -> None:
+    """validate command must accept fish-speech as a target."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    args = parser.parse_args(["validate", "fish-speech"])
+    assert args.target == "fish-speech"
+
+
+def test_validate_fish_speech_runs_setup_script_with_check_flag() -> None:
+    """validate fish-speech must run setup_fish_speech.py --check for validation."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+    manage.validate_target("fish-speech")
+
+    assert captured["command"] == [
+        "uv", "run", "python", "scripts/setup_fish_speech.py", "--check",
+    ]
+
+
+def test_main_dispatches_setup_fish_speech() -> None:
+    """main(['setup-fish-speech']) must dispatch to setup_fish_speech()."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+    exit_code = manage.main(["setup-fish-speech"])
+
+    assert exit_code == 0
+    assert "setup_fish_speech.py" in captured["command"][-1]
+
+
+def test_validate_target_accepts_all_including_fish_speech() -> None:
+    """validate command must accept fish-speech alongside existing targets."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    for target in ("tests", "pipeline", "readiness", "livetalking", "fish-speech", "all"):
+        args = parser.parse_args(["validate", target])
+        assert args.target == target
+
+
 def test_smoke_livetalking_reports_requested_vs_resolved() -> None:
     """smoke_livetalking.py must expose requested vs resolved model/avatar."""
     import importlib.util

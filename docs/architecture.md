@@ -1,7 +1,7 @@
 # VideoLiveAI Architecture
 
-> Version: 0.5.8  
-> Last Updated: 2026-03-09  
+> Version: 0.5.13
+> Last Updated: 2026-03-10  
 > Target: Internal live system first  
 > Package Manager Policy: UV only
 
@@ -308,15 +308,28 @@ uv run python scripts/manage.py serve --mock
 uv run python scripts/manage.py serve --real
 ```
 
-## Active Milestone
+## Active Milestones
 
-**`LOCAL_VERTICAL_SLICE_REAL_MUSETALK`** — see `docs/specs/local_vertical_slice_real_musetalk.md`
+### Face: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` — `LOCAL VERIFIED`
+
+See `docs/specs/local_vertical_slice_real_musetalk.md`
 
 - Active face runtime: **MuseTalk** (only acceptance path)
 - Secondary fallback only: **Wav2Lip** (not counted as milestone pass)
 - Target only / not in active path: `GFPGAN`, `ER-NeRF`
 
-If `resolved_model=wav2lip`, the milestone is NOT complete.
+Current local verdict: **complete for the local vertical slice**. Official operator evidence now resolves to `musetalk / musetalk_avatar1` without fallback.
+
+### Audio: `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` — `LOCAL VERIFIED`
+
+See `docs/specs/local_audio_vertical_slice_fish_speech.md`
+
+- Active voice runtime: **Fish-Speech** via local sidecar API (only acceptance path)
+- Emergency fallback only: **Edge TTS** (does NOT count as acceptance pass)
+- Voice clone assets required: `assets/voice/reference.wav` + `assets/voice/reference.txt`
+- Runtime truth must expose requested/resolved voice engine with fallback visibility
+- `voice_runtime_mode` stays `unknown` until the engine is actually resolved by a real synthesis
+- Current local caveat: the direct-test slice now resolves `fish_speech_local` without fallback, but observed smoke latency on the current GTX 1650 setup is still around `31-40s`
 
 ## Status Saat Ini
 
@@ -331,14 +344,17 @@ If `resolved_model=wav2lip`, the milestone is NOT complete.
 - LiveTalking vendor repo
 - batch scripts dan manage.py CLI
 - MuseTalk model weights in vendor path
+- canonical MuseTalk avatar in vendor path
+- local non-mock operator slice verified with MuseTalk resolved runtime
 - Real product data source
 - Real reference media
 
 ### Belum selesai
 
-- canonical MuseTalk avatar generation
-- MuseTalk-only runtime resolution (currently falls back to wav2lip)
+- latency reduction / chunking discipline for the now-working Fish-Speech direct-test path
+- humanization layer di atas output MuseTalk
 - reliability layer untuk penggunaan panjang
+- validasi GPU host Ubuntu untuk real live run
 
 ## Dokumen Terkait
 

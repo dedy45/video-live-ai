@@ -61,6 +61,8 @@ class ProductManager:
     Requirements: 7.1-7.4 — CRUD, search, categorization.
     """
 
+    CANONICAL_PRODUCTS_PATH = Path("data/products.json")
+
     def __init__(self) -> None:
         self._products: list[Product] = []
         self._current_index = 0
@@ -68,6 +70,38 @@ class ProductManager:
         self._last_rotation = time.time()
 
         logger.info("product_manager_init")
+
+    def load_from_json(self, path: Path | None = None) -> int:
+        """Load products from a JSON file. Returns count of products loaded."""
+        source = path or self.CANONICAL_PRODUCTS_PATH
+        if not source.exists():
+            logger.warning("product_json_not_found", path=str(source))
+            return 0
+        try:
+            import json
+            data = json.loads(source.read_text(encoding="utf-8"))
+            if not isinstance(data, list):
+                logger.warning("product_json_invalid", path=str(source), reason="not a list")
+                return 0
+            count = 0
+            for item in data:
+                product = Product(
+                    name=item.get("name", ""),
+                    price=float(item.get("price", 0)),
+                    description=item.get("description", ""),
+                    category=item.get("category", "general"),
+                    stock=int(item.get("stock", 0)),
+                    image_path=item.get("image", ""),
+                    features=item.get("selling_points", []),
+                    is_active=True,
+                )
+                self.add_product(product)
+                count += 1
+            logger.info("products_loaded_from_json", path=str(source), count=count)
+            return count
+        except Exception as e:
+            logger.error("product_json_load_error", path=str(source), error=str(e))
+            return 0
 
     def add_product(self, product: Product) -> Product:
         """Add product to catalog."""

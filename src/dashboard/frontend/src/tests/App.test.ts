@@ -2,9 +2,36 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/svelte';
 import App from '../App.svelte';
 
-// Mock the realtime module to prevent WebSocket creation in jsdom
+// Mock the realtime module — feed TruthBar with snapshot data via callback
 vi.mock('../lib/realtime', () => ({
-  startRealtime: vi.fn(),
+  startRealtime: vi.fn((cb: (snap: any) => void) => {
+    // Simulate a realtime snapshot arriving immediately
+    setTimeout(() => {
+      cb({
+        stream_running: false,
+        emergency_stopped: false,
+        mock_mode: true,
+        pipeline_state: 'IDLE',
+        current_product: null,
+        received_at: new Date().toISOString(),
+        source: 'polling',
+        truth: {
+          mock_mode: true,
+          face_runtime_mode: 'mock',
+          voice_runtime_mode: 'mock',
+          stream_runtime_mode: 'mock',
+          validation_state: 'unvalidated',
+          last_validated_at: null,
+          provenance: {
+            system_status: 'mock',
+            engine_status: 'mock',
+            stream_status: 'mock',
+          },
+          timestamp: '2026-03-08T10:00:00Z',
+        },
+      });
+    }, 0);
+  }),
   stopRealtime: vi.fn(),
 }));
 

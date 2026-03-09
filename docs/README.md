@@ -1,6 +1,6 @@
 # Documentation Index
 
-> Last updated: 2026-03-09
+> Last updated: 2026-03-10
 > Scope: source-of-truth map for `videoliveai`
 
 ## Root Docs Only
@@ -36,6 +36,7 @@ Root `docs/` now keeps only the project-level source of truth:
 - [vertical_slice_v1.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/vertical_slice_v1.md)
 - [livetalking_runtime_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/livetalking_runtime_contract.md)
 - [local_vertical_slice_real_musetalk.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/local_vertical_slice_real_musetalk.md)
+- [local_audio_vertical_slice_fish_speech.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/local_audio_vertical_slice_fish_speech.md)
 - [musetalk_asset_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/musetalk_asset_contract.md)
 - [humanization_minimum_contract.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/humanization_minimum_contract.md)
 - [model_path_policy.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/specs/model_path_policy.md)
@@ -63,6 +64,8 @@ Root `docs/` now keeps only the project-level source of truth:
 - [2026-03-08-dashboard-single-truth-real-validation-plan.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-08-dashboard-single-truth-real-validation-plan.md)
 - [2026-03-09-musetalk-local-vertical-slice-real-design.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-musetalk-local-vertical-slice-real-design.md)
 - [2026-03-09-musetalk-local-vertical-slice-real-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-musetalk-local-vertical-slice-real-implementation.md)
+- [2026-03-09-fish-speech-local-real-audio-design.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-fish-speech-local-real-audio-design.md)
+- [2026-03-09-fish-speech-local-real-audio-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-fish-speech-local-real-audio-implementation.md)
 - [plans](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans)
 - [archive](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/archive)
 
@@ -70,9 +73,10 @@ Root `docs/` now keeps only the project-level source of truth:
 
 - Dashboard Svelte operator shell is `LOCAL VERIFIED`
 - Dashboard Single Truth Real Validation is `LOCAL VERIFIED`
-- Active milestone `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` is `PARTIAL`
-- Readiness gate passes 11/11, but current face runtime still falls back to `wav2lip`
-- Humanization contract is defined, but it stays blocked until the MuseTalk milestone is complete
+- Active milestone `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` is `LOCAL VERIFIED`
+- Active milestone `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` is `LOCAL VERIFIED` for direct local testing
+- Face operator slice resolves to `musetalk / musetalk_avatar1`, and the voice slice now resolves to `fish_speech_local` without fallback after real synthesis
+- Humanization remains next because the remaining audio issue is latency on current local hardware, not basic correctness
 
 ## Placement Rules
 

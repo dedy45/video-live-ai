@@ -28,7 +28,8 @@
       "Bash(npx playwright:*)",
       "Bash(npx vitest:*)",
       "Bash(mv:*)",
-      "Bash(npx vite:*)"
+      "Bash(npx vite:*)",
+      "Bash(tools/ffmpeg/bin/ffmpeg.exe:*)"
     ]
   }
 }

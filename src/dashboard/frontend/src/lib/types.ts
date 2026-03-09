@@ -68,9 +68,19 @@ export interface ValidationResult {
   error?: string;
 }
 
+export interface FaceEngineTruth {
+  requested_model: string;
+  resolved_model: string;
+  requested_avatar_id: string;
+  resolved_avatar_id: string;
+  engine_state: string;
+  fallback_active: boolean;
+}
+
 export interface RuntimeTruth {
   mock_mode: boolean;
   face_runtime_mode: string;
+  face_engine?: FaceEngineTruth;
   voice_runtime_mode: string;
   stream_runtime_mode: string;
   validation_state: string;

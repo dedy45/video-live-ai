@@ -9,7 +9,7 @@ AI-powered live commerce platform for automated livestreaming on TikTok and Shop
 ## 🎯 Features
 
 - **Multi-LLM Brain**: Gemini, Claude, GPT-4o, Groq with intelligent routing
-- **Voice Layer**: FishSpeech and Edge-TTS validated locally, with GPT-SoVITS/CosyVoice adapter paths for external TTS servers
+- **Voice Layer**: Fish-Speech local sidecar direct-test path verified locally, Edge-TTS emergency fallback available, with GPT-SoVITS/CosyVoice adapter paths for external TTS servers
 - **Avatar Runtime**: LiveTalking sidecar with MuseTalk as the only acceptance path, Wav2Lip as secondary fallback only, and ER-NeRF/GFPGAN kept as target-only tracks
 - **Real-time Streaming**: RTMP to TikTok/Shopee, WebRTC for browser
 - **Live Chat Integration**: Real-time comment monitoring and response
@@ -73,9 +73,11 @@ uv run python scripts/manage.py status
 uv run python scripts/manage.py health
 uv run python scripts/manage.py validate tests
 uv run python scripts/manage.py validate livetalking
+uv run python scripts/manage.py validate fish-speech
 uv run python scripts/manage.py serve --mock
 uv run python scripts/manage.py serve --real
 uv run python scripts/manage.py setup-livetalking --skip-models
+uv run python scripts/manage.py setup-fish-speech
 ```
 
 Windows convenience wrapper:
@@ -90,11 +92,17 @@ For direct ad hoc LiveTalking commands outside `manage.py`, use `uv run --extra 
 
 ### Current Milestone Status
 
-- Active milestone: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK`
-- Fresh verification: `uv run pytest tests -q -p no:cacheprovider` -> `161 passed`
-- Prerequisite gate: `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE` (11/11), but this is not the same as milestone completion
-- Current blocker: canonical `musetalk_avatar1` is still missing, so runtime still resolves to `wav2lip`
-- Required next proof: re-run the official non-mock operator slice and capture truthful health/runtime evidence
+- Face milestone: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` -> `LOCAL VERIFIED`
+- Audio milestone: `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` -> `LOCAL VERIFIED` for direct local test
+- Fresh verification: `uv run pytest tests -q -p no:cacheprovider` -> `219 passed, 1 skipped`
+- Pipeline verification: `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
+- MuseTalk assets: `uv run --extra livetalking python scripts/setup_musetalk_assets.py --sync-only` -> `Models ready: True`, `Avatar ready: True`
+- Official face operator slice: `uv run python scripts/manage.py serve --real` + engine start/validation resolve to `musetalk / musetalk_avatar1` with `fallback_active=false`
+- Audio readiness gate: `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE`
+- Audio prerequisite validation: `uv run python scripts/manage.py validate fish-speech` -> PASS
+- Audio smoke validation: `MOCK_MODE=false uv run python -c "..."` -> PASS with `voice_runtime_mode=fish_speech_local`, `resolved_engine=fish_speech`, `fallback_active=false`
+- Verified local audio smoke latency on this GTX 1650 setup is still high (`~31-40s`), so the slice is functionally verified for direct test but not yet live-latency-ready
+- Next-phase work: latency reduction / chunking discipline, humanization minimum, then RTMP dry-run and short real live test
 
 ## 📊 Architecture
 
@@ -313,7 +321,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 - [MuseTalk](https://github.com/TMElyralab/MuseTalk) - Lip-sync technology
 - [ER-NeRF](https://github.com/Fictionarry/ER-NeRF) - 3D avatar rendering
 - [GFPGAN](https://github.com/TencentARC/GFPGAN) - Face enhancement
-- [CosyVoice](https://github.com/FunAudioLLM/CosyVoice) - Voice cloning
+- [fishspeech](https://github.com/fishaudio/fish-speech) - Voice cloning
 
 ## 📞 Support
 

@@ -116,6 +116,30 @@ def run_readiness_checks() -> ReadinessResult:
     if not lt_installed:
         blocking.append("LiveTalking not installed (run: git submodule update --init)")
 
+    # 3b. Avatar reference assets (video + audio)
+    ref_video = Path("assets/avatar/reference.mp4")
+    ref_audio = Path("assets/avatar/reference.wav")
+    ref_video_ok = ref_video.exists()
+    ref_audio_ok = ref_audio.exists()
+    checks.append(ReadinessCheck(
+        name="avatar_reference_video",
+        passed=ref_video_ok,
+        status="ok" if ref_video_ok else "fail",
+        message=str(ref_video) if ref_video_ok else "reference.mp4 not found",
+        blocking=not ref_video_ok,
+    ))
+    if not ref_video_ok:
+        blocking.append("Avatar reference video missing: assets/avatar/reference.mp4")
+    checks.append(ReadinessCheck(
+        name="avatar_reference_audio",
+        passed=ref_audio_ok,
+        status="ok" if ref_audio_ok else "fail",
+        message=str(ref_audio) if ref_audio_ok else "reference.wav not found (extract from reference.mp4 with ffmpeg -i reference.mp4 -vn -ar 16000 -ac 1 reference.wav)",
+        blocking=not ref_audio_ok,
+    ))
+    if not ref_audio_ok:
+        blocking.append("Avatar reference audio missing: assets/avatar/reference.wav")
+
     default_model = config.avatar.livetalking.model if config else "musetalk"
     default_avatar_id = config.avatar.livetalking.avatar_id if config else "musetalk_avatar1"
     requested_model = os.getenv("LIVETALKING_MODEL", default_model)
@@ -197,6 +221,60 @@ def run_readiness_checks() -> ReadinessResult:
         status="ok",
         message=f"MOCK_MODE={'true' if mock else 'false'}",
     ))
+
+    # 9. Voice clone reference WAV
+    voice_cfg = config.voice if config else None
+    voice_ref_wav = Path(voice_cfg.clone_reference_wav if voice_cfg else "assets/voice/reference.wav")
+    voice_wav_ok = voice_ref_wav.exists()
+    checks.append(ReadinessCheck(
+        name="voice_reference_wav_ready",
+        passed=voice_wav_ok,
+        status="ok" if voice_wav_ok else "warning",
+        message=str(voice_ref_wav) if voice_wav_ok else f"Voice clone reference WAV not found: {voice_ref_wav}",
+    ))
+
+    # 10. Voice clone reference text
+    voice_ref_txt = Path(voice_cfg.clone_reference_text if voice_cfg else "assets/voice/reference.txt")
+    voice_txt_ok = voice_ref_txt.exists()
+    voice_txt_nonempty = False
+    if voice_txt_ok:
+        voice_txt_nonempty = len(voice_ref_txt.read_text(encoding="utf-8").strip()) > 0
+    checks.append(ReadinessCheck(
+        name="voice_reference_text_ready",
+        passed=voice_txt_ok and voice_txt_nonempty,
+        status="ok" if (voice_txt_ok and voice_txt_nonempty) else "warning",
+        message=str(voice_ref_txt) if (voice_txt_ok and voice_txt_nonempty) else f"Voice clone reference text missing or empty: {voice_ref_txt}",
+    ))
+
+    # 11. Fish-Speech server reachable (non-blocking, advisory)
+    fish_speech_reachable = False
+    fish_speech_url = voice_cfg.fish_speech_base_url if voice_cfg else "http://127.0.0.1:8080"
+    try:
+        import socket
+        from urllib.parse import urlparse
+        parsed = urlparse(fish_speech_url)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 8080
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.settimeout(1.0)
+            fish_speech_reachable = sock.connect_ex((host, port)) == 0
+    except Exception:
+        pass
+    checks.append(ReadinessCheck(
+        name="fish_speech_server_reachable",
+        passed=fish_speech_reachable,
+        status="ok" if fish_speech_reachable else "warning",
+        message=f"Fish-Speech at {fish_speech_url}" if fish_speech_reachable else f"Fish-Speech not reachable at {fish_speech_url} (start sidecar for real voice)",
+    ))
+
+    # Update voice runtime state with readiness info
+    try:
+        from src.voice.runtime_state import get_voice_runtime_state
+        vrs = get_voice_runtime_state()
+        vrs.server_reachable = fish_speech_reachable
+        vrs.reference_ready = voice_wav_ok and voice_txt_ok and voice_txt_nonempty
+    except Exception:
+        pass
 
     # Determine overall status
     warnings = [c.name for c in checks if c.status == "warning"]
