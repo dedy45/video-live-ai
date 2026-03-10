@@ -32,6 +32,13 @@ class Product:
     is_active: bool = True
     features: list[str] = field(default_factory=list)
 
+    # Affiliate fields
+    affiliate_links: dict[str, str] = field(default_factory=dict)  # platform -> link
+    selling_points: list[str] = field(default_factory=list)
+    commission_rate: float = 0.0  # percentage
+    objection_handling: dict[str, str] = field(default_factory=dict)  # objection -> response
+    compliance_notes: str = ""
+
     @property
     def price_formatted(self) -> str:
         return f"Rp {self.price:,.0f}"

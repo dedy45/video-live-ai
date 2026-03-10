@@ -217,6 +217,11 @@ async def list_products() -> list[dict[str, Any]]:
                 "id": p.id, "name": p.name, "price": p.price,
                 "price_formatted": p.price_formatted,
                 "category": p.category, "is_active": p.is_active,
+                "affiliate_links": p.affiliate_links,
+                "selling_points": p.selling_points,
+                "commission_rate": p.commission_rate,
+                "objection_handling": p.objection_handling,
+                "compliance_notes": p.compliance_notes,
             }
             for p in pm.get_all_active()
         ]

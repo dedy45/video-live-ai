@@ -312,6 +312,21 @@ async def test_voice_test_speak_receipt_shape() -> None:
     assert result["text"] == "halo operator"
 
 
+def test_products_api_exposes_affiliate_fields() -> None:
+    """Products API should expose affiliate-friendly fields."""
+    import asyncio
+    from src.dashboard.api import list_products
+
+    result = asyncio.run(list_products())
+    if len(result) > 0:
+        first = result[0]
+        assert "affiliate_links" in first
+        assert "selling_points" in first
+        assert "commission_rate" in first
+        assert "objection_handling" in first
+        assert "compliance_notes" in first
+
+
 @pytest.mark.asyncio
 async def test_audio_chunking_smoke_endpoint_shape() -> None:
     """Audio chunking smoke endpoint should return validation receipt shape."""
