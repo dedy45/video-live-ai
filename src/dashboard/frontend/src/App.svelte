@@ -5,17 +5,16 @@
   import PageShell from './components/layout/PageShell.svelte';
 
   const tabs = [
-    'Overview',
-    'Voice',
-    'Face Engine',
-    'Stream',
-    'Validation',
-    'Monitor',
-    'Commerce',
+    'Live Console',
+    'Products & Offers',
+    'Voice & Face',
+    'Stream & Platform',
+    'Validation & Readiness',
+    'Monitor & Incidents',
     'Diagnostics',
   ];
 
-  let activeTab = $state('Overview');
+  let activeTab = $state('Live Console');
 
   function handleTabChange(tab: string) {
     activeTab = tab;

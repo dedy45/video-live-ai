@@ -20,31 +20,32 @@
 </script>
 
 <main class="page-shell">
-  {#if activeTab === 'Overview'}
+  {#if activeTab === 'Live Console'}
     <div class="overview-stack">
       <OpsSummaryPanel />
       <OverviewPanel />
     </div>
-  {:else if activeTab === 'Voice'}
-    <VoicePanel />
-  {:else if activeTab === 'Face Engine'}
-    <EnginePanel />
-  {:else if activeTab === 'Stream'}
-    <StreamPanel />
-  {:else if activeTab === 'Commerce'}
+  {:else if activeTab === 'Products & Offers'}
     <CommercePanel />
-  {:else if activeTab === 'Monitor'}
+  {:else if activeTab === 'Voice & Face'}
+    <div class="overview-stack">
+      <VoicePanel />
+      <EnginePanel />
+    </div>
+  {:else if activeTab === 'Stream & Platform'}
+    <StreamPanel />
+  {:else if activeTab === 'Validation & Readiness'}
+    <div class="overview-stack">
+      <ReadinessPanel />
+      <ValidationPanel />
+    </div>
+  {:else if activeTab === 'Monitor & Incidents'}
     <div class="overview-stack">
       <IncidentsPanel />
       <MonitorPanel />
     </div>
   {:else if activeTab === 'Diagnostics'}
     <DiagnosticsPanel />
-  {:else if activeTab === 'Validation'}
-    <div class="overview-stack">
-      <ReadinessPanel />
-      <ValidationPanel />
-    </div>
   {/if}
 </main>
 

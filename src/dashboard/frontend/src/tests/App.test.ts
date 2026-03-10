@@ -115,16 +115,16 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('App shell', () => {
-  it('renders ops cockpit navigation tabs', () => {
+  it('renders affiliate live cockpit navigation tabs', () => {
     render(App);
 
-    expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Face Engine' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Stream' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Validation' })).toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Readiness' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('tab', { name: 'Preview' })).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Live Console' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Products & Offers' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Voice & Face' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Stream & Platform' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Validation & Readiness' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Monitor & Incidents' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Diagnostics' })).toBeInTheDocument();
   });
 
   it('renders the header', () => {
