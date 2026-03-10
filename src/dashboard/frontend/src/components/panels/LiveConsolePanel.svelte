@@ -12,27 +12,31 @@
   let loading = $state(true);
   let error = $state('');
 
-  function handleSnapshot(snapshot: RealtimeSnapshot) {
-    status = {
-      ...status,
-      state: snapshot.pipeline_state || status.state,
-      stream_running: snapshot.stream_running,
-      emergency_stopped: snapshot.emergency_stopped,
-      mock_mode: snapshot.mock_mode,
-      current_product: snapshot.current_product,
-    };
-  }
-
+  // Direct snapshot subscription - only update when snapshot actually changes
+  let lastSnapshotId = $state('');
+  
   $effect(() => {
-    if (rt.snapshot) {
-      handleSnapshot(rt.snapshot);
+    const snap = rt.snapshot;
+    if (snap) {
+      // Create simple ID to detect changes
+      const snapId = `${snap.pipeline_state}-${snap.stream_running}-${snap.mock_mode}`;
+      if (snapId !== lastSnapshotId) {
+        lastSnapshotId = snapId;
+        status = {
+          state: snap.pipeline_state,
+          stream_running: snap.stream_running,
+          emergency_stopped: snap.emergency_stopped,
+          mock_mode: snap.mock_mode,
+          current_product: snap.current_product,
+        };
+      }
     }
   });
 
   onMount(async () => {
     try {
       const [s, ops] = await Promise.all([getStatus(), getOpsSummary()]);
-      status = s;
+      status = { ...status, ...s };
       opsSummary = ops;
     } catch (e: any) {
       error = e.message;
@@ -47,32 +51,32 @@
 
 <div class="live-console-panel">
   <div class="panel-header">
-    <h2 class="panel-title">Live Console</h2>
+    <h2 class="panel-title">Konsol Live</h2>
     <ProvenanceBadge source="realtime" />
   </div>
 
   {#if loading}
-    <div class="loading">Loading live console...</div>
+    <div class="loading">Memuat konsol live...</div>
   {:else if error}
     <div class="error">Error: {error}</div>
   {:else}
     <div class="console-grid">
       <!-- Current Product Section -->
       <section class="console-section current-product">
-        <h3>Current Product</h3>
+        <h3>Produk Saat Ini</h3>
         {#if currentProduct}
           <div class="product-card">
-            <div class="product-name">{currentProduct.name || 'Unknown Product'}</div>
+            <div class="product-name">{currentProduct.name || 'Produk Tidak Diketahui'}</div>
             <div class="product-price">{currentProduct.price_formatted || 'N/A'}</div>
           </div>
         {:else}
-          <div class="empty-state">No active product</div>
+          <div class="empty-state">Belum ada produk aktif</div>
         {/if}
       </section>
 
       <!-- Operator Alert Section -->
       <section class="console-section operator-alert">
-        <h3>Operator Alert</h3>
+        <h3>Status Operator</h3>
         <div class="alert-badge status-{operatorAlert}">
           {operatorAlert.toUpperCase()}
         </div>
@@ -80,31 +84,31 @@
 
       <!-- Script Rail Section -->
       <section class="console-section script-rail">
-        <h3>Script Rail</h3>
+        <h3>Panduan Skrip</h3>
         <div class="placeholder">
-          <p>Opening hook, pitch block, proof/benefit line</p>
-          <p class="note">Script assistance coming in next phase</p>
+          <p>Pembukaan, pitch produk, bukti manfaat</p>
+          <p class="note">Asistensi skrip akan datang di fase berikutnya</p>
         </div>
       </section>
 
       <!-- Next Best Action Section -->
       <section class="console-section next-action">
-        <h3>Next Best Action</h3>
+        <h3>Aksi Berikutnya</h3>
         <div class="placeholder">
-          <p>Guidance: what to say next, what to check next</p>
-          <p class="note">Action rail coming in next phase</p>
+          <p>Panduan: apa yang harus dikatakan, apa yang harus dicek</p>
+          <p class="note">Panduan aksi akan datang di fase berikutnya</p>
         </div>
       </section>
 
       <!-- Quick Actions Section -->
       <section class="console-section quick-actions">
-        <h3>Quick Actions</h3>
+        <h3>Aksi Cepat</h3>
         <div class="action-buttons">
-          <button class="action-btn" disabled>Voice Test</button>
-          <button class="action-btn" disabled>Switch Product</button>
-          <button class="action-btn" disabled>Run Validation</button>
+          <button class="action-btn" disabled>Tes Suara</button>
+          <button class="action-btn" disabled>Ganti Produk</button>
+          <button class="action-btn" disabled>Jalankan Validasi</button>
         </div>
-        <p class="note">Quick actions wired in next phases</p>
+        <p class="note">Aksi cepat akan aktif di fase berikutnya</p>
       </section>
     </div>
   {/if}

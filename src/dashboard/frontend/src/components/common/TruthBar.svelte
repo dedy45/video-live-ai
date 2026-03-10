@@ -35,7 +35,7 @@
     truth?.mock_mode ? 'MOCK' : 'LIVE'
   );
 
-  const validationClass = $derived(() => {
+  const validationClass = $derived.by(() => {
     if (!truth) return 'validation-unknown';
     switch (truth.validation_state) {
       case 'passed': return 'validation-passed';
@@ -47,7 +47,7 @@
     }
   });
 
-  const dataOriginLabel = $derived(() => {
+  const dataOriginLabel = $derived.by(() => {
     if (!truth?.provenance) return 'unknown';
     const values = Object.values(truth.provenance);
     if (values.every(v => v === 'mock')) return 'mock';
@@ -57,8 +57,8 @@
     return 'mixed';
   });
 
-  const dataOriginClass = $derived(() => {
-    const origin = dataOriginLabel();
+  const dataOriginClass = $derived.by(() => {
+    const origin = dataOriginLabel;
     switch (origin) {
       case 'mock': return 'origin-mock';
       case 'real_local': return 'origin-real-local';
@@ -68,7 +68,7 @@
     }
   });
 
-  const lastValidatedDisplay = $derived(() => {
+  const lastValidatedDisplay = $derived.by(() => {
     if (!truth) return 'never';
     if (!truth.last_validated_at) return 'never';
     try {
@@ -85,15 +85,15 @@
     <span class={modeBadgeClass}>{modeLabel}</span>
     <span class="truth-item">
       <span class="truth-label">Validation:</span>
-      <span class="truth-value {validationClass()}">{truth.validation_state}</span>
+      <span class="truth-value {validationClass}">{truth.validation_state}</span>
     </span>
     <span class="truth-item">
       <span class="truth-label">Origin:</span>
-      <span class="truth-value {dataOriginClass()}" data-testid="truth-origin">{dataOriginLabel()}</span>
+      <span class="truth-value {dataOriginClass}" data-testid="truth-origin">{dataOriginLabel}</span>
     </span>
     <span class="truth-item">
       <span class="truth-label">Validated:</span>
-      <span class="truth-value" data-testid="truth-last-validated">{lastValidatedDisplay()}</span>
+      <span class="truth-value" data-testid="truth-last-validated">{lastValidatedDisplay}</span>
     </span>
     {#if truth.host?.name}
       <span class="truth-item">

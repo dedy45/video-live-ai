@@ -57,10 +57,10 @@ uv run python scripts/manage.py serve --mock
 
 | URL | Purpose | Who |
 |-----|---------|-----|
-| `http://localhost:8000/dashboard` | **Operator dashboard** (primary UI in local lab) | Operators |
+| `http://localhost:8181/dashboard` | **Operator dashboard** (primary UI in local lab) | Operators |
 | `http://SERVER_IP_OR_DOMAIN/dashboard` | **Server-hosted ops controller** for production/browser access | Operators |
-| `http://localhost:8000/docs` | API documentation | Developers |
-| `http://localhost:8000/diagnostic/` | System diagnostics | Operators/Devs |
+| `http://localhost:8181/docs` | API documentation | Developers |
+| `http://localhost:8181/diagnostic/` | System diagnostics | Operators/Devs |
 | `http://localhost:8010/*.html` | LiveTalking debug pages | Developers only |
 
 > **Rule:** `/dashboard` stays the only operator UI. In production it is hosted on the server behind a reverse proxy, and browser disconnects must not stop the live process. Vendor pages at port 8010 stay debug tools only.
@@ -310,7 +310,7 @@ git submodule update --init --recursive
 cat data/logs/app.log
 
 # Run diagnostic
-curl http://localhost:8000/diagnostic/health
+curl http://localhost:8181/diagnostic/health
 ```
 
 ## 🤝 Contributing

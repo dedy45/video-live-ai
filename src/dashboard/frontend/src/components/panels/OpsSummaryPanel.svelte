@@ -24,23 +24,23 @@
 
 <div class="panel" data-testid="ops-summary-panel">
   <div class="panel-header">
-    <h2 class="panel-title">Ops Summary</h2>
+    <h2 class="panel-title">Ringkasan Operasional</h2>
   </div>
 
   {#if loading}
-    <p class="muted">Loading ops summary...</p>
+    <p class="muted">Memuat ringkasan operasional...</p>
   {:else if error}
     <p class="error">{error}</p>
   {:else if !summary}
-    <p class="muted">No ops summary available.</p>
+    <p class="muted">Ringkasan operasional tidak tersedia.</p>
   {:else}
     <div class="grid">
-      <div class="card"><div class="label">Overall Status</div><div class="value">{summary.overall_status}</div></div>
-      <div class="card"><div class="label">Deployment Mode</div><div class="value">{summary.deployment_mode}</div></div>
-      <div class="card"><div class="label">Restart Count</div><div class="value">{restartCount}</div></div>
-      <div class="card"><div class="label">Incident Severity</div><div class="value">{summary.incident_summary.highest_severity}</div></div>
-      <div class="card"><div class="label">Voice / Face / Stream</div><div class="value">{summary.voice_status} / {summary.face_status} / {summary.stream_status}</div></div>
-      <div class="card"><div class="label">Resource Pressure</div><div class="value">CPU {summary.resource_metrics.cpu_pct}% · RAM {summary.resource_metrics.ram_pct}% · Disk {summary.resource_metrics.disk_pct}%</div></div>
+      <div class="card"><div class="label">Status Keseluruhan</div><div class="value">{summary.overall_status}</div></div>
+      <div class="card"><div class="label">Mode Deployment</div><div class="value">{summary.deployment_mode}</div></div>
+      <div class="card"><div class="label">Jumlah Restart</div><div class="value">{restartCount}</div></div>
+      <div class="card"><div class="label">Tingkat Insiden</div><div class="value">{summary.incident_summary.highest_severity}</div></div>
+      <div class="card"><div class="label">Suara / Wajah / Stream</div><div class="value">{summary.voice_status} / {summary.face_status} / {summary.stream_status}</div></div>
+      <div class="card"><div class="label">Tekanan Resource</div><div class="value">CPU {summary.resource_metrics.cpu_pct}% · RAM {summary.resource_metrics.ram_pct}% · Disk {summary.resource_metrics.disk_pct}%</div></div>
     </div>
   {/if}
 </div>

@@ -5,7 +5,7 @@
 
   let { provenance }: Props = $props();
 
-  const colorClass = $derived(() => {
+  const colorClass = $derived.by(() => {
     switch (provenance) {
       case 'mock': return 'prov-mock';
       case 'real_local': return 'prov-real-local';
@@ -16,7 +16,7 @@
   });
 </script>
 
-<span class="provenance-badge {colorClass()}" data-testid="provenance-badge">{provenance}</span>
+<span class="provenance-badge {colorClass}" data-testid="provenance-badge">{provenance}</span>
 
 <style>
   .provenance-badge {

@@ -1,11 +1,14 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getProducts, getStatus } from '../../lib/api';
+  import { getProducts, getStatus, switchProduct } from '../../lib/api';
+  import ActionReceipt from '../common/ActionReceipt.svelte';
+  import type { ActionReceipt as ReceiptType } from '../../lib/stores/actions';
 
   let products = $state<any[]>([]);
   let currentProduct = $state<any>(null);
   let loading = $state(true);
   let error = $state('');
+  let receipt = $state<ReceiptType | null>(null);
 
   async function loadData() {
     loading = true;
@@ -18,6 +21,27 @@
       error = e.message;
     } finally {
       loading = false;
+    }
+  }
+
+  async function handleSwitchProduct(productId: number) {
+    receipt = null;
+    try {
+      const result = await switchProduct(productId);
+      receipt = {
+        action: 'product.switch',
+        status: 'success',
+        message: `Switched to: ${result.product}`,
+        timestamp: Date.now(),
+      };
+      await loadData();
+    } catch (e: any) {
+      receipt = {
+        action: 'product.switch',
+        status: 'error',
+        message: e.message,
+        timestamp: Date.now(),
+      };
     }
   }
 
@@ -34,13 +58,16 @@
 <div class="panel" data-testid="products-offers-panel">
   <div class="panel-header">
     <div>
-      <h2 class="panel-title">Products & Offers</h2>
-      <p class="panel-subtitle">Affiliate product catalog with selling points, commission, and platform links.</p>
+      <h2 class="panel-title">Produk & Penawaran</h2>
+      <p class="panel-subtitle">Katalog produk affiliate dengan poin penjualan, komisi, dan link platform.</p>
     </div>
+    <button class="btn btn-ghost btn-sm" onclick={loadData}>Muat Ulang</button>
   </div>
 
+  <ActionReceipt {receipt} />
+
   {#if loading}
-    <p class="muted">Loading products...</p>
+    <p class="muted">Memuat produk...</p>
   {:else if error}
     <p class="error">{error}</p>
   {:else}
@@ -48,7 +75,7 @@
       <!-- Active Product Section -->
       <section class="product-card active">
         <div class="card-header">
-          <h3 class="card-title">Active Product</h3>
+          <h3 class="card-title">Produk Aktif</h3>
           <span class="badge badge-active">LIVE</span>
         </div>
         {#if activeProduct}
@@ -59,12 +86,12 @@
           </div>
 
           <div class="section">
-            <h4 class="section-title">Commission</h4>
+            <h4 class="section-title">Komisi</h4>
             <div class="commission-rate">{activeProduct.commission_rate}%</div>
           </div>
 
           <div class="section">
-            <h4 class="section-title">Affiliate Links</h4>
+            <h4 class="section-title">Link Affiliate</h4>
             <div class="links-list">
               {#each Object.entries(activeProduct.affiliate_links || {}) as [platform, link]}
                 <div class="link-item">
@@ -76,7 +103,7 @@
           </div>
 
           <div class="section">
-            <h4 class="section-title">Selling Points</h4>
+            <h4 class="section-title">Poin Penjualan</h4>
             <ul class="selling-points">
               {#each activeProduct.selling_points || [] as point}
                 <li>{point}</li>
@@ -86,30 +113,33 @@
 
           {#if activeProduct.compliance_notes}
             <div class="section">
-              <h4 class="section-title">Compliance</h4>
+              <h4 class="section-title">Catatan Compliance</h4>
               <p class="compliance-note">{activeProduct.compliance_notes}</p>
             </div>
           {/if}
         {:else}
-          <p class="muted">No active product</p>
+          <p class="muted">Belum ada produk aktif</p>
         {/if}
       </section>
 
       <!-- Product Queue Section -->
       <section class="product-card queue">
         <div class="card-header">
-          <h3 class="card-title">Product Queue</h3>
+          <h3 class="card-title">Antrian Produk</h3>
           <span class="badge badge-count">{queuedProducts.length}</span>
         </div>
         <div class="queue-list">
           {#each queuedProducts as product}
             <div class="queue-item">
-              <div class="queue-name">{product.name}</div>
-              <div class="queue-price">{product.price_formatted}</div>
-              <div class="queue-commission">{product.commission_rate}%</div>
+              <div class="queue-info">
+                <div class="queue-name">{product.name}</div>
+                <div class="queue-price">{product.price_formatted}</div>
+                <div class="queue-commission">{product.commission_rate}%</div>
+              </div>
+              <button class="btn btn-switch" onclick={() => handleSwitchProduct(product.id)}>Ganti</button>
             </div>
           {:else}
-            <p class="muted">No queued products</p>
+            <p class="muted">Tidak ada produk dalam antrian</p>
           {/each}
         </div>
       </section>
@@ -146,10 +176,16 @@
   .selling-points li { margin-bottom: 6px; font-size: 14px; }
   .compliance-note { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
   .queue-list { display: flex; flex-direction: column; gap: 10px; }
-  .queue-item { padding: 12px; background: rgba(255,255,255,.02); border-radius: 4px; border: 1px solid rgba(255,255,255,.05); }
+  .queue-item { padding: 12px; background: rgba(255,255,255,.02); border-radius: 4px; border: 1px solid rgba(255,255,255,.05); display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .queue-info { flex: 1; }
   .queue-name { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
   .queue-price { font-size: 16px; font-weight: 700; color: var(--accent); margin-bottom: 2px; }
   .queue-commission { font-size: 12px; color: var(--success-color); }
+  .btn { padding: 8px 16px; border: 1px solid var(--border); border-radius: var(--rsm); cursor: pointer; font-weight: 700; font-family: inherit; font-size: 12px; }
+  .btn-ghost { background: rgba(255,255,255,.05); color: var(--text); }
+  .btn-sm { padding: 6px 10px; font-size: 11px; }
+  .btn-switch { background: var(--accent); color: #000; border: none; }
+  .btn-switch:hover { opacity: 0.9; }
   .muted { color: var(--muted); font-style: italic; }
   .error { color: var(--error-color); }
   @media (max-width: 1024px) { .products-grid { grid-template-columns: 1fr; } }

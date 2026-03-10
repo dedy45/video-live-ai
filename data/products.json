@@ -13,8 +13,16 @@
     "category": "beauty",
     "stock": 50,
     "image": "assets/products/skincare_set.png",
-    "affiliate_rate": 0.15,
-    "golden_trio_role": "hero"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSxxxxxxx/",
+      "shopee": "https://shp.ee/xxxxxxx"
+    },
+    "commission_rate": 15,
+    "objection_handling": {
+      "mahal": "Harga normal Rp299k, sekarang diskon 50%! Hemat Rp150k",
+      "cocok_ga": "Sudah BPOM certified dan cocok untuk semua jenis kulit"
+    },
+    "compliance_notes": "Produk kosmetik terdaftar BPOM. Tidak boleh klaim medis."
   },
   {
     "id": "prod-002",
@@ -30,8 +38,16 @@
     "category": "fashion",
     "stock": 200,
     "image": "assets/products/kaos_oversize.png",
-    "affiliate_rate": 0.1,
-    "golden_trio_role": "hook"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSkaos001/",
+      "shopee": "https://shp.ee/kaos001"
+    },
+    "commission_rate": 10,
+    "objection_handling": {
+      "ukuran": "Oversize fit, cocok untuk M-XL. Size chart ada di deskripsi",
+      "warna": "Tersedia 8 warna pilihan, stok update real-time"
+    },
+    "compliance_notes": ""
   },
   {
     "id": "prod-003",
@@ -47,8 +63,16 @@
     "category": "electronics",
     "stock": 75,
     "image": "assets/products/earbuds.png",
-    "affiliate_rate": 0.12,
-    "golden_trio_role": "money"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSearbuds/",
+      "shopee": "https://shp.ee/earbuds"
+    },
+    "commission_rate": 12,
+    "objection_handling": {
+      "kualitas": "Chipset Qualcomm, kualitas audio setara brand premium",
+      "garansi": "Garansi resmi 1 tahun, bisa klaim di service center"
+    },
+    "compliance_notes": "Produk elektronik bergaransi resmi."
   },
   {
     "id": "prod-004",
@@ -64,8 +88,16 @@
     "category": "fashion",
     "stock": 120,
     "image": "assets/products/sling_bag.png",
-    "affiliate_rate": 0.08,
-    "golden_trio_role": "hook"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZStas001/",
+      "shopee": "https://shp.ee/tas001"
+    },
+    "commission_rate": 8,
+    "objection_handling": {
+      "ukuran": "Dimensi 35x25x10cm, muat laptop 14 inch + charger + dompet",
+      "kuat": "Material nylon 1000D, tahan banting dan anti sobek"
+    },
+    "compliance_notes": ""
   },
   {
     "id": "prod-005",
@@ -81,8 +113,16 @@
     "category": "food",
     "stock": 80,
     "image": "assets/products/madu.png",
-    "affiliate_rate": 0.2,
-    "golden_trio_role": "money"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSmadu001/",
+      "shopee": "https://shp.ee/madu001"
+    },
+    "commission_rate": 20,
+    "objection_handling": {
+      "asli": "Bersertifikat lab, bisa cek QR code di kemasan",
+      "manis": "Madu asli memang manis alami, bukan gula tambahan"
+    },
+    "compliance_notes": "Produk makanan bersertifikat BPOM. Tidak boleh klaim obat."
   },
   {
     "id": "prod-006",
@@ -98,8 +138,16 @@
     "category": "electronics",
     "stock": 45,
     "image": "assets/products/ring_light.png",
-    "affiliate_rate": 0.1,
-    "golden_trio_role": "hook"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSring001/",
+      "shopee": "https://shp.ee/ring001"
+    },
+    "commission_rate": 10,
+    "objection_handling": {
+      "terang": "10 level brightness, bisa disesuaikan dari redup sampai sangat terang",
+      "kokoh": "Tripod aluminium, stabil sampai 160cm"
+    },
+    "compliance_notes": ""
   },
   {
     "id": "prod-007",
@@ -115,8 +163,16 @@
     "category": "beauty",
     "stock": 60,
     "image": "assets/products/parfum.png",
-    "affiliate_rate": 0.18,
-    "golden_trio_role": "hero"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSparfum/",
+      "shopee": "https://shp.ee/parfum"
+    },
+    "commission_rate": 18,
+    "objection_handling": {
+      "tahan": "EDP concentration 15-20%, tahan 12 jam lebih",
+      "wangi": "Aroma woody-floral unisex, cocok pria dan wanita"
+    },
+    "compliance_notes": "Produk kosmetik terdaftar BPOM."
   },
   {
     "id": "prod-008",
@@ -132,8 +188,16 @@
     "category": "lifestyle",
     "stock": 150,
     "image": "assets/products/tumbler.png",
-    "affiliate_rate": 0.08,
-    "golden_trio_role": "hook"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZStumbler/",
+      "shopee": "https://shp.ee/tumbler"
+    },
+    "commission_rate": 8,
+    "objection_handling": {
+      "bocor": "Double seal cap, anti bocor 100%",
+      "tahan": "Vacuum insulated, panas 12 jam, dingin 24 jam"
+    },
+    "compliance_notes": ""
   },
   {
     "id": "prod-009",
@@ -149,8 +213,16 @@
     "category": "beauty",
     "stock": 100,
     "image": "assets/products/serum.png",
-    "affiliate_rate": 0.15,
-    "golden_trio_role": "money"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSserum001/",
+      "shopee": "https://shp.ee/serum001"
+    },
+    "commission_rate": 15,
+    "objection_handling": {
+      "perih": "Formula gentle, tidak perih. Patch test dulu jika kulit sensitif",
+      "hasil": "Terlihat hasil dalam 2-4 minggu pemakaian rutin"
+    },
+    "compliance_notes": "Produk kosmetik terdaftar BPOM. Tidak boleh klaim medis."
   },
   {
     "id": "prod-010",
@@ -166,7 +238,15 @@
     "category": "electronics",
     "stock": 35,
     "image": "assets/products/keyboard.png",
-    "affiliate_rate": 0.12,
-    "golden_trio_role": "hero"
+    "affiliate_links": {
+      "tiktok": "https://vt.tiktok.com/ZSkeyboard/",
+      "shopee": "https://shp.ee/keyboard"
+    },
+    "commission_rate": 12,
+    "objection_handling": {
+      "berisik": "Switch blue memang clicky, cocok untuk typing. Ada pilihan switch red yang lebih senyap",
+      "hotswap": "Hotswap socket, bisa ganti switch tanpa solder"
+    },
+    "compliance_notes": ""
   }
 ]

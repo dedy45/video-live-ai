@@ -106,6 +106,9 @@ class AnalyticsEngine:
         self._counters: dict[str, int] = {}
         self._gauges: dict[str, float] = {}
         self._session_start = time.time()
+        # Dashboard snapshot cache
+        self._snapshot_cache: dict[str, Any] = {}
+        self._snapshot_time: float = 0.0
         logger.info("analytics_engine_init")
 
     def _get_buffer(self, name: str) -> MetricBuffer:
@@ -127,24 +130,20 @@ class AnalyticsEngine:
 
     def record_revenue(self, amount: float, platform: str = "tiktok") -> None:
         """Record revenue."""
-        self._get_buffer(f"revenue.{platform}").add(
-            MetricPoint(f"revenue.{platform}", amount)
-        )
+        self._get_buffer(f"revenue.{platform}").add(MetricPoint(f"revenue.{platform}", amount))
         self.record_event(f"sale.{platform}")
 
     def set_gauge(self, name: str, value: float) -> None:
         """Set a gauge value (point-in-time metric)."""
         self._gauges[name] = value
 
-    def record_llm_usage(self, provider: str, tokens: int, cost_usd: float, latency_ms: float) -> None:
+    def record_llm_usage(
+        self, provider: str, tokens: int, cost_usd: float, latency_ms: float
+    ) -> None:
         """Record LLM usage."""
         self.record_latency(f"llm.{provider}", latency_ms)
-        self._get_buffer(f"tokens.{provider}").add(
-            MetricPoint(f"tokens.{provider}", float(tokens))
-        )
-        self._get_buffer(f"cost.{provider}").add(
-            MetricPoint(f"cost.{provider}", cost_usd)
-        )
+        self._get_buffer(f"tokens.{provider}").add(MetricPoint(f"tokens.{provider}", float(tokens)))
+        self._get_buffer(f"cost.{provider}").add(MetricPoint(f"cost.{provider}", cost_usd))
 
     # ── Querying ─────────────────────────────────────────────────
 
@@ -190,16 +189,31 @@ class AnalyticsEngine:
         """Get all current gauge values."""
         return dict(self._gauges)
 
-    def get_dashboard_snapshot(self) -> dict[str, Any]:
-        """Get a complete snapshot for the dashboard."""
+    def get_dashboard_snapshot(self, force_refresh: bool = False) -> dict[str, Any]:
+        """Get a complete snapshot for the dashboard.
+
+        Uses internal caching to avoid redundant computation.
+        """
+        # Check if we can use cached value (within 2 seconds)
+        if not force_refresh and self._snapshot_cache:
+            cache_age = time.time() - self._snapshot_time
+            if cache_age < 2.0:
+                return self._snapshot_cache
+
         uptime = time.time() - self._session_start
-        return {
+        snapshot = {
             "uptime_sec": round(uptime, 0),
             "latency": self.get_all_latency_stats(60.0),
             "revenue": self.get_revenue_summary(3600.0),
             "counters": self.get_counters(),
             "gauges": self.get_gauges(),
         }
+
+        # Update cache
+        self._snapshot_cache = snapshot
+        self._snapshot_time = time.time()
+
+        return snapshot
 
 
 # Global singleton

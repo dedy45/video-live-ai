@@ -14,6 +14,11 @@
   let loadedAt = $state<string | null>(null);
   let receipt = $state<ReceiptType | null>(null);
 
+  // RTMP Configuration
+  let rtmpUrl = $state('');
+  let streamKey = $state('');
+  let rtmpConfigExpanded = $state(false);
+
   const pipelineTargets = ['IDLE', 'WARMING', 'LIVE', 'COOLDOWN'];
 
   async function refresh() {
@@ -133,6 +138,45 @@
     </div>
 
     <div class="section-grid">
+      <section class="card span-2">
+        <div class="section-title-row">
+          <div class="section-title">RTMP Configuration</div>
+          <button class="btn btn-ghost btn-sm" onclick={() => rtmpConfigExpanded = !rtmpConfigExpanded}>
+            {rtmpConfigExpanded ? 'Hide' : 'Show'}
+          </button>
+        </div>
+        {#if rtmpConfigExpanded}
+          <div class="rtmp-config-form">
+            <div class="form-group">
+              <label for="rtmp-url">RTMP URL</label>
+              <input
+                id="rtmp-url"
+                type="text"
+                class="form-input"
+                bind:value={rtmpUrl}
+                placeholder="rtmp://push.tiktokcdn.com/live/"
+              />
+              <span class="form-hint">Platform RTMP server URL (TikTok, Shopee, etc.)</span>
+            </div>
+            <div class="form-group">
+              <label for="stream-key">Stream Key</label>
+              <input
+                id="stream-key"
+                type="password"
+                class="form-input"
+                bind:value={streamKey}
+                placeholder="Your stream key"
+              />
+              <span class="form-hint">Your unique stream key from platform dashboard</span>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" disabled>Save Configuration</button>
+              <span class="form-note">Note: Configuration save will be implemented in backend</span>
+            </div>
+          </div>
+        {/if}
+      </section>
+
       <section class="card">
         <div class="section-title">Live controls</div>
         <div class="button-stack">
@@ -186,6 +230,7 @@
   .hero-card, .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px; }
   .hero-card.emergency.alert { box-shadow: inset 0 0 0 1px rgba(233,69,96,.28); }
   .eyebrow, .section-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.1px; }
+  .section-title-row { display: flex; justify-content: space-between; align-items: center; }
   .hero-value { font-size: 32px; font-weight: 900; margin: 8px 0; }
   .hero-copy { color: var(--muted); font-size: 13px; }
   .button-stack, .pipeline-grid { display: grid; gap: 10px; margin-top: 12px; }
@@ -200,6 +245,15 @@
   .btn-stop { background: var(--yellow); color: #000; }
   .btn-emergency { background: var(--accent); color: #fff; }
   .btn-reset { background: var(--blue, #3b82f6); color: #fff; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .rtmp-config-form { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { font-size: 12px; font-weight: 700; color: var(--text); }
+  .form-input { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--rsm); background: rgba(255,255,255,.03); color: var(--text); font-family: inherit; font-size: 14px; }
+  .form-input:focus { outline: none; border-color: var(--accent); }
+  .form-hint { font-size: 11px; color: var(--muted); }
+  .form-actions { display: flex; align-items: center; gap: 12px; }
+  .form-note { font-size: 11px; color: var(--muted); font-style: italic; }
   .result-box { margin-top: 12px; padding: 12px; border-radius: var(--rsm); }
   .result-box.pass { background: rgba(0,230,118,.05); }
   .result-box.fail { background: rgba(233,69,96,.05); }

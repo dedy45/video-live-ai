@@ -19,6 +19,9 @@ from src.utils.logging import get_logger
 
 logger = get_logger("dashboard.truth")
 
+# Cache for LiveTalking manager to avoid redundant initialization
+_cached_livetalking_manager = None
+
 
 def _get_face_runtime_mode() -> str:
     """Derive face runtime mode from LiveTalking manager state.
@@ -31,11 +34,15 @@ def _get_face_runtime_mode() -> str:
       - "livetalking_error"     — engine error, MOCK_MODE=false
       - "unknown"               — unexpected failure
     """
+    global _cached_livetalking_manager
     if is_mock_mode():
         return "mock"
     try:
-        from src.face.livetalking_manager import get_livetalking_manager
-        mgr = get_livetalking_manager()
+        if _cached_livetalking_manager is None:
+            from src.face.livetalking_manager import get_livetalking_manager
+
+            _cached_livetalking_manager = get_livetalking_manager()
+        mgr = _cached_livetalking_manager
         status = mgr.get_status()
         state = status.state.value
         if state == "running":
@@ -52,9 +59,13 @@ def _get_face_runtime_mode() -> str:
 
 def _get_face_engine_truth() -> dict[str, Any]:
     """Get the requested vs resolved face engine truth fields."""
+    global _cached_livetalking_manager
     try:
-        from src.face.livetalking_manager import get_livetalking_manager
-        mgr = get_livetalking_manager()
+        if _cached_livetalking_manager is None:
+            from src.face.livetalking_manager import get_livetalking_manager
+
+            _cached_livetalking_manager = get_livetalking_manager()
+        mgr = _cached_livetalking_manager
         return {
             "requested_model": mgr.requested_model,
             "resolved_model": mgr.model,
@@ -78,6 +89,7 @@ def _get_voice_engine_truth() -> dict[str, Any]:
     """Get the requested vs resolved voice engine truth fields."""
     try:
         from src.voice.runtime_state import get_voice_runtime_state
+
         state = get_voice_runtime_state()
         return state.to_dict()
     except Exception:
@@ -106,6 +118,7 @@ def _get_voice_runtime_mode() -> str:
         return "mock"
     try:
         from src.voice.runtime_state import get_voice_runtime_state
+
         state = get_voice_runtime_state()
         if state.resolved_engine == "fish_speech" and not state.fallback_active:
             return "fish_speech_local"
@@ -126,6 +139,7 @@ def _get_stream_runtime_mode() -> str:
         return "mock"
     try:
         from src.dashboard.api import _stream_running, _emergency_stopped
+
         if _emergency_stopped:
             return "idle"
         if _stream_running:
@@ -148,15 +162,31 @@ def _get_provenance() -> dict[str, str]:
     }
 
 
-def get_runtime_truth_snapshot() -> dict[str, Any]:
+# Cache for runtime truth snapshot to avoid redundant computation
+_truth_cache: dict[str, Any] = {}
+_truth_cache_ttl = 2.0  # Cache TTL in seconds
+_truth_cache_time = 0.0
+
+
+def get_runtime_truth_snapshot(force_refresh: bool = False) -> dict[str, Any]:
     """Assemble the consolidated runtime truth snapshot.
 
     This is the single source of truth for the operator dashboard.
     All fields are derived from actual runtime state.
+
+    Uses caching to avoid redundant computation - returns cached result
+    if called within TTL window unless force_refresh is True.
     """
+    global _truth_cache, _truth_cache_time
+
+    current_time = time.time()
+    # Return cached result if still valid and not forcing refresh
+    if not force_refresh and _truth_cache and (current_time - _truth_cache_time) < _truth_cache_ttl:
+        return _truth_cache
+
     face_engine = _get_face_engine_truth()
     voice_engine = _get_voice_engine_truth()
-    return {
+    result = {
         "mock_mode": is_mock_mode(),
         "host": {
             "name": socket.gethostname(),
@@ -183,3 +213,9 @@ def get_runtime_truth_snapshot() -> dict[str, Any]:
         "provenance": _get_provenance(),
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+
+    # Update cache
+    _truth_cache = result
+    _truth_cache_time = current_time
+
+    return result

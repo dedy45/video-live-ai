@@ -141,7 +141,7 @@ describe('StreamPanel — pipeline transition', () => {
   it('shows pipeline state card with current state', async () => {
     render(StreamPanel);
 
-    const pipelineLabel = await screen.findByText('Pipeline State');
+    const pipelineLabel = await screen.findByText(/Pipeline state machine/i);
     expect(pipelineLabel).toBeInTheDocument();
 
     // IDLE appears as both the metric value and the button — use getAllByText
@@ -153,7 +153,7 @@ describe('StreamPanel — pipeline transition', () => {
     render(StreamPanel);
 
     // Wait for load
-    await screen.findByText('Pipeline State');
+    await screen.findByText(/Pipeline state machine/i);
 
     for (const target of ['WARMING', 'LIVE', 'COOLDOWN']) {
       const btn = screen.getByRole('button', { name: target });
@@ -167,7 +167,7 @@ describe('StreamPanel — pipeline transition', () => {
   it('disables the button for the current pipeline state', async () => {
     render(StreamPanel);
 
-    await screen.findByText('Pipeline State');
+    await screen.findByText(/Pipeline state machine/i);
 
     // IDLE is current state, so its button should be disabled
     const idleBtn = screen.getByRole('button', { name: 'IDLE' });
@@ -181,7 +181,7 @@ describe('StreamPanel — pipeline transition', () => {
   it('calls pipelineTransition API and shows receipt on click', async () => {
     render(StreamPanel);
 
-    await screen.findByText('Pipeline State');
+    await screen.findByText(/Pipeline state machine/i);
 
     const warmingBtn = screen.getByRole('button', { name: 'WARMING' });
     await fireEvent.click(warmingBtn);
@@ -196,7 +196,7 @@ describe('StreamPanel — pipeline transition', () => {
     mockPipelineTransition.mockRejectedValue(new Error('API 400: Invalid transition'));
 
     render(StreamPanel);
-    await screen.findByText('Pipeline State');
+    await screen.findByText(/Pipeline state machine/i);
 
     const liveBtn = screen.getByRole('button', { name: 'LIVE' });
     await fireEvent.click(liveBtn);

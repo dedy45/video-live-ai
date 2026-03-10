@@ -7,7 +7,7 @@
 
   let { receipt }: Props = $props();
 
-  const timeDisplay = $derived(() => {
+  const timeDisplay = $derived.by(() => {
     if (!receipt) return '';
     const d = new Date(receipt.timestamp);
     return d.toLocaleTimeString();
@@ -19,7 +19,7 @@
     <span class="receipt-icon">{receipt.status === 'success' ? '>' : '!'}</span>
     <span class="receipt-action">{receipt.action}</span>
     <span class="receipt-message">{receipt.message}</span>
-    <span class="receipt-time">{timeDisplay()}</span>
+    <span class="receipt-time">{timeDisplay}</span>
   </div>
 {/if}
 

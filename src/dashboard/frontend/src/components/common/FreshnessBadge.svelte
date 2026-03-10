@@ -5,7 +5,7 @@
 
   let { timestamp }: Props = $props();
 
-  const display = $derived(() => {
+  const display = $derived.by(() => {
     if (!timestamp) return 'never';
     try {
       const d = new Date(timestamp);
@@ -20,7 +20,7 @@
     }
   });
 
-  const freshClass = $derived(() => {
+  const freshClass = $derived.by(() => {
     if (!timestamp) return 'stale';
     try {
       const diffSec = Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000);
@@ -33,7 +33,7 @@
   });
 </script>
 
-<span class="freshness-badge {freshClass()}" data-testid="freshness-badge">{display()}</span>
+<span class="freshness-badge {freshClass}" data-testid="freshness-badge">{display}</span>
 
 <style>
   .freshness-badge {

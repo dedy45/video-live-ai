@@ -23,7 +23,7 @@ Dashboard telah **berevolusi signifikan** — menu berubah dari 9 tab menjadi 8 
 
 ## ANALISIS PER TAB — FAKTA, BUKAN OPINI
 
-### 1. OVERVIEW — Operations Cockpit [127.0.0](http://127.0.0.1:8001/dashboard/)
+### 1. OVERVIEW — Operations Cockpit [127.0.0](http://127.0.0.1:8181/dashboard/)
 
 **Apa yang ada:**
 - Ops Summary: 6 card (Overall Status `cold`, Deployment `cold`, Restart Count `0`, Incident Severity `none`, Voice/Face/Stream, Resource Pressure)
@@ -246,7 +246,7 @@ Ini masalah fundamental — **seluruh data model produk harus diperluas** di bac
 
 ### 1. COMMERCE TAB — Butuh Transformasi Total
 
-**Kondisi saat ini:** Revenue Summary `Rp 0` + daftar 10 produk dengan tombol Switch. Semua produk `is_active: true` — tidak ada pembedaan mana yang sedang ditampilkan vs antrian. [127.0.0](http://127.0.0.1:8001/dashboard/)
+**Kondisi saat ini:** Revenue Summary `Rp 0` + daftar 10 produk dengan tombol Switch. Semua produk `is_active: true` — tidak ada pembedaan mana yang sedang ditampilkan vs antrian. [127.0.0](http://127.0.0.1:8181/dashboard/)
 
 **Masalah spesifik affiliate:**
 

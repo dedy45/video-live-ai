@@ -115,16 +115,16 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('App shell', () => {
-  it('renders affiliate live cockpit navigation tabs', () => {
+  it('renders affiliate live cockpit navigation links', () => {
     render(App);
 
-    expect(screen.getByRole('tab', { name: 'Live Console' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Products & Offers' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Voice & Face' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Stream & Platform' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Validation & Readiness' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Monitor & Incidents' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Diagnostics' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Live Console/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Products/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Performer/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Stream/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Validation/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Monitor/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Diagnostics/i })).toBeInTheDocument();
   });
 
   it('renders the header', () => {
