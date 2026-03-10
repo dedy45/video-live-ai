@@ -12,6 +12,7 @@
   import DiagnosticsPanel from '../panels/DiagnosticsPanel.svelte';
   import ValidationPanel from '../panels/ValidationPanel.svelte';
   import LiveConsolePanel from '../panels/LiveConsolePanel.svelte';
+  import PerformerPanel from '../panels/PerformerPanel.svelte';
 
   interface Props {
     activeTab: string;
@@ -29,10 +30,7 @@
   {:else if activeTab === 'Products & Offers'}
     <CommercePanel />
   {:else if activeTab === 'Voice & Face'}
-    <div class="overview-stack">
-      <VoicePanel />
-      <EnginePanel />
-    </div>
+    <PerformerPanel />
   {:else if activeTab === 'Stream & Platform'}
     <StreamPanel />
   {:else if activeTab === 'Validation & Readiness'}
