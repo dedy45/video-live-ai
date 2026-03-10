@@ -11,6 +11,7 @@
   import IncidentsPanel from '../panels/IncidentsPanel.svelte';
   import DiagnosticsPanel from '../panels/DiagnosticsPanel.svelte';
   import ValidationPanel from '../panels/ValidationPanel.svelte';
+  import LiveConsolePanel from '../panels/LiveConsolePanel.svelte';
 
   interface Props {
     activeTab: string;
@@ -22,8 +23,8 @@
 <main class="page-shell">
   {#if activeTab === 'Live Console'}
     <div class="overview-stack">
+      <LiveConsolePanel />
       <OpsSummaryPanel />
-      <OverviewPanel />
     </div>
   {:else if activeTab === 'Products & Offers'}
     <CommercePanel />
