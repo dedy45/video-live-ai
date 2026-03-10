@@ -152,4 +152,9 @@ describe('ValidationPanel', () => {
     expect(await screen.findByText(/voice local clone/i)).toBeTruthy();
     expect(await screen.findByText(/stream dry run/i)).toBeTruthy();
   });
+
+  it('renders run all checks action', async () => {
+    render(ValidationPanel);
+    expect(await screen.findByRole('button', { name: /run all checks/i })).toBeInTheDocument();
+  });
 });

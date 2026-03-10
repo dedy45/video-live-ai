@@ -23,6 +23,8 @@
   let receipt = $state<ReceiptType | null>(null);
   let activeResult = $state<Record<string, any> | null>(null);
   let loadedAt = $state<string | null>(null);
+  let runningAll = $state(false);
+  let allChecksResults = $state<any[]>([]);
 
   async function loadHistory() {
     try {
@@ -59,6 +61,49 @@
     }
   }
 
+  async function runAllChecks() {
+    runningAll = true;
+    allChecksResults = [];
+    receipt = null;
+    activeResult = null;
+
+    const checks = [
+      { name: 'Runtime Truth', fn: validateRuntimeTruth },
+      { name: 'Real-Mode Readiness', fn: validateRealModeReadiness },
+      { name: 'Mock Stack', fn: validateMockStack },
+      { name: 'Voice Local Clone', fn: validateVoiceLocalClone },
+      { name: 'Audio Chunking Smoke', fn: validateAudioChunkingSmoke },
+      { name: 'LiveTalking Engine', fn: validateLiveTalkingEngine },
+      { name: 'RTMP Target', fn: validateRtmpTarget },
+      { name: 'Stream Dry Run', fn: validateStreamDryRun },
+      { name: 'Resource Budget', fn: validateResourceBudget },
+      { name: 'Soak Sanity', fn: validateSoakSanity },
+    ];
+
+    for (const check of checks) {
+      try {
+        const result = await check.fn();
+        allChecksResults.push({ name: check.name, ...result });
+      } catch (e: any) {
+        allChecksResults.push({ name: check.name, status: 'error', error: e.message });
+      }
+    }
+
+    await loadHistory();
+
+    const passCount = allChecksResults.filter(r => r.status === 'pass').length;
+    const totalCount = allChecksResults.length;
+
+    receipt = {
+      action: 'validate.all-checks',
+      status: passCount === totalCount ? 'success' : 'error',
+      message: `Completed ${totalCount} checks: ${passCount} passed`,
+      timestamp: Date.now(),
+    };
+
+    runningAll = false;
+  }
+
   onMount(loadHistory);
 </script>
 
@@ -69,6 +114,9 @@
       <p class="panel-subtitle">Run the local-to-live gate checks before promotion, dry-run, and recovery work.</p>
     </div>
     <div class="panel-meta">
+      <button class="btn btn-primary" onclick={runAllChecks} disabled={runningAll || loading}>
+        {runningAll ? 'Running All Checks...' : 'Run All Checks'}
+      </button>
       <FreshnessBadge timestamp={loadedAt} />
     </div>
   </div>
@@ -127,6 +175,20 @@
     </div>
   {/if}
 
+  {#if allChecksResults.length > 0}
+    <div class="all-checks-summary card" data-testid="all-checks-summary">
+      <div class="card-title">All Checks Summary</div>
+      <div class="summary-grid">
+        {#each allChecksResults as result}
+          <div class="summary-item">
+            <span class="summary-name">{result.name}</span>
+            <span class="status-badge status-{result.status}">{result.status}</span>
+          </div>
+        {/each}
+      </div>
+    </div>
+  {/if}
+
   <section class="history-section" data-testid="validation-history">
     <div class="section-title">Recent validation history</div>
     <div class="history-list">
@@ -158,12 +220,14 @@
   .btn { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--rsm); cursor: pointer; font-weight: 700; font-family: inherit; }
   .btn:disabled { opacity: .45; cursor: not-allowed; }
   .btn-ghost { width: 100%; background: rgba(255,255,255,.05); color: var(--text); }
+  .btn-primary { background: var(--accent); color: #000; }
   .detail-card { margin-bottom: 20px; }
   .detail-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
   .status-badge { text-transform: uppercase; font-size: 10px; font-weight: 800; padding: 3px 8px; border-radius: 4px; }
   .status-pass { background: rgba(0,230,118,.15); color: var(--green); }
   .status-fail { background: rgba(233,69,96,.15); color: var(--accent); }
   .status-blocked { background: rgba(255,214,0,.15); color: var(--yellow); }
+  .status-error { background: rgba(233,69,96,.15); color: var(--accent); }
   .evidence { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
   .checks-list { display: flex; flex-direction: column; gap: 6px; }
   .check-item { display: flex; align-items: center; gap: 10px; font-size: 12px; }
@@ -174,6 +238,10 @@
   .blockers { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border); }
   .blockers-title { font-size: 12px; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
   .blockers ul { margin: 0; padding-left: 18px; color: var(--accent); }
+  .all-checks-summary { margin-bottom: 20px; }
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 12px; }
+  .summary-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,.02); border-radius: 4px; border: 1px solid rgba(255,255,255,.05); }
+  .summary-name { font-size: 12px; font-weight: 600; }
   .history-list { display: flex; flex-direction: column; gap: 6px; }
   .history-row { display: flex; align-items: center; gap: 14px; padding: 10px 14px; background: var(--card); border-radius: var(--rsm); border: 1px solid var(--border); font-size: 12px; }
   .hist-name { font-weight: 700; flex: 1; }
