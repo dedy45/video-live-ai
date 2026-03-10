@@ -301,6 +301,18 @@ async def test_voice_warmup_receipt_shape() -> None:
 
 
 @pytest.mark.asyncio
+async def test_voice_test_speak_receipt_shape() -> None:
+    """Voice test speak should return an explicit operator receipt."""
+    from src.dashboard.api import voice_test_speak
+
+    result = await voice_test_speak(text="halo operator")
+    assert result["status"] in {"success", "blocked", "error"}
+    assert "message" in result
+    assert "text" in result
+    assert result["text"] == "halo operator"
+
+
+@pytest.mark.asyncio
 async def test_audio_chunking_smoke_endpoint_shape() -> None:
     """Audio chunking smoke endpoint should return validation receipt shape."""
     from src.dashboard.api import validate_audio_chunking_smoke

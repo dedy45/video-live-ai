@@ -59,6 +59,11 @@ export const ackIncident = (incidentId: string) => request<Record<string, any>>(
 export const voiceWarmup = () => request<Record<string, any>>('/voice/warmup', { method: 'POST' });
 export const voiceQueueClear = () => request<Record<string, any>>('/voice/queue/clear', { method: 'POST' });
 export const voiceRestart = () => request<Record<string, any>>('/voice/restart', { method: 'POST' });
+export const voiceTestSpeak = (text: string) =>
+  request<Record<string, any>>('/voice/test/speak', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
 
 // Stream Control
 export const startStream = () => request<Record<string, any>>('/stream/start', { method: 'POST' });

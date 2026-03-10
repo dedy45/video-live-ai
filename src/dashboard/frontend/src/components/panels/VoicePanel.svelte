@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { getRuntimeTruth, voiceWarmup, voiceQueueClear, voiceRestart } from '../../lib/api';
+  import { getRuntimeTruth, voiceWarmup, voiceQueueClear, voiceRestart, voiceTestSpeak } from '../../lib/api';
   import type { RuntimeTruth } from '../../lib/types';
   import ActionReceipt from '../common/ActionReceipt.svelte';
   import type { ActionReceipt as ReceiptType } from '../../lib/stores/actions';
@@ -9,6 +9,11 @@
   let loading = $state(true);
   let error = $state('');
   let receipt = $state<ReceiptType | null>(null);
+
+  // Test speak state
+  let testText = $state('Halo operator, tes suara');
+  let testSpeaking = $state(false);
+  let testReceipt = $state<ReceiptType | null>(null);
 
   async function loadTruth() {
     loading = true;
@@ -40,6 +45,29 @@
         message: e.message,
         timestamp: Date.now(),
       };
+    }
+  }
+
+  async function runTestSpeak() {
+    testSpeaking = true;
+    testReceipt = null;
+    try {
+      const result = await voiceTestSpeak(testText);
+      testReceipt = {
+        action: 'voice.test.speak',
+        status: result.status === 'error' ? 'error' : 'success',
+        message: result.message,
+        timestamp: Date.now(),
+      };
+    } catch (e: any) {
+      testReceipt = {
+        action: 'voice.test.speak',
+        status: 'error',
+        message: e.message,
+        timestamp: Date.now(),
+      };
+    } finally {
+      testSpeaking = false;
     }
   }
 
@@ -107,6 +135,27 @@
       </section>
 
       <section class="card span-2">
+        <div class="section-title">Inline Test Speak</div>
+        <div class="test-speak-form">
+          <textarea
+            class="test-input"
+            bind:value={testText}
+            placeholder="Enter text to synthesize..."
+            rows="3"
+          ></textarea>
+          <div class="test-actions">
+            <button class="btn btn-primary" onclick={runTestSpeak} disabled={testSpeaking}>
+              {testSpeaking ? 'Testing...' : 'Test Speak'}
+            </button>
+            <span class="test-hint">Text length: {testText.length} chars</span>
+          </div>
+          {#if testReceipt}
+            <ActionReceipt receipt={testReceipt} />
+          {/if}
+        </div>
+      </section>
+
+      <section class="card span-2">
         <div class="section-title">Diagnostics</div>
         <div class="stats-grid">
           <div class="stat"><span class="label">Deployment</span><span class="value small">{truth.deployment_mode ?? 'unknown'}</span></div>
@@ -137,9 +186,15 @@
   .value.small { font-size: 14px; font-weight: 700; line-height: 1.5; }
   .button-stack { display: grid; gap: 10px; margin-top: 12px; }
   .btn { padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--rsm); background: rgba(255,255,255,.05); color: var(--text); cursor: pointer; font-weight: 700; font-family: inherit; }
+  .btn-primary { background: var(--accent); color: #000; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
   .stack-list { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
   .stack-row { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.05); }
   .muted { color: var(--muted); }
   .error { color: var(--accent); }
+  .test-speak-form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; }
+  .test-input { width: 100%; padding: 12px; border: 1px solid var(--border); border-radius: var(--rsm); background: rgba(255,255,255,.03); color: var(--text); font-family: inherit; font-size: 14px; resize: vertical; }
+  .test-actions { display: flex; align-items: center; gap: 12px; }
+  .test-hint { font-size: 12px; color: var(--muted); }
   @media (max-width: 1024px) { .section-grid { grid-template-columns: 1fr; } .span-2 { grid-column: span 1; } }
 </style>

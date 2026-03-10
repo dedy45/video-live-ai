@@ -36,6 +36,7 @@ vi.mock('../lib/api', () => ({
   voiceWarmup: vi.fn(),
   voiceQueueClear: vi.fn(),
   voiceRestart: vi.fn(),
+  voiceTestSpeak: vi.fn().mockResolvedValue({ status: 'success', message: 'Synthesized successfully' }),
 }));
 
 describe('VoicePanel', () => {
@@ -51,5 +52,12 @@ describe('VoicePanel', () => {
     expect(await screen.findByText(/load reference/i)).toBeInTheDocument();
     expect(await screen.findByText(/run clone smoke/i)).toBeInTheDocument();
     expect(await screen.findByText(/last error/i)).toBeInTheDocument();
+  });
+
+  it('renders inline test speak input and button', async () => {
+    render(VoicePanel);
+    expect(await screen.findByText(/inline test speak/i)).toBeInTheDocument();
+    expect(await screen.findByPlaceholderText(/enter text to synthesize/i)).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /test speak/i })).toBeInTheDocument();
   });
 });

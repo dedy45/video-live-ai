@@ -1118,6 +1118,60 @@ async def voice_restart() -> dict[str, Any]:
         }
 
 
+@router.post("/voice/test/speak")
+async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, Any]:
+    """Test voice synthesis with custom text and return an explicit operator receipt.
+
+    This endpoint allows operators to test voice synthesis with custom text
+    directly from the dashboard without triggering a full pipeline transition.
+    """
+    try:
+        from src.voice.fish_speech_client import synthesize_speech
+        from src.voice.runtime_state import get_voice_runtime_state
+
+        state = get_voice_runtime_state()
+
+        # Check if sidecar is reachable
+        if not state.server_reachable:
+            return {
+                "status": "blocked",
+                "message": "Voice sidecar is not reachable yet",
+                "provenance": "mock" if is_mock_mode() else "real_local",
+                "action": "voice.test.speak",
+                "text": text,
+            }
+
+        # Attempt synthesis
+        audio_data = await synthesize_speech(text)
+
+        if audio_data:
+            return {
+                "status": "success",
+                "message": f"Synthesized {len(text)} characters successfully",
+                "provenance": "mock" if is_mock_mode() else "real_local",
+                "action": "voice.test.speak",
+                "text": text,
+                "audio_length_bytes": len(audio_data),
+            }
+        else:
+            return {
+                "status": "error",
+                "message": "Synthesis returned empty audio",
+                "provenance": "mock" if is_mock_mode() else "real_local",
+                "action": "voice.test.speak",
+                "text": text,
+            }
+    except Exception as e:
+        logger.error("voice_test_speak_error", error=str(e), exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.test.speak",
+            "text": text,
+        }
+
+
 @router.post("/validate/voice-local-clone")
 async def validate_voice_local_clone() -> dict[str, Any]:
     """Validate local Fish-Speech voice clone readiness and run synthesis smoke test.
