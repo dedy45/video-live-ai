@@ -18,6 +18,11 @@ class VoiceRuntimeState:
     fallback_active: bool = False
     server_reachable: bool = False
     reference_ready: bool = False
+    queue_depth: int = 0
+    chunk_chars: int | None = None
+    time_to_first_audio_ms: float | None = None
+    latency_p50_ms: float | None = None
+    latency_p95_ms: float | None = None
     last_latency_ms: float | None = None
     last_error: str | None = None
 
@@ -28,6 +33,11 @@ class VoiceRuntimeState:
             "fallback_active": self.fallback_active,
             "server_reachable": self.server_reachable,
             "reference_ready": self.reference_ready,
+            "queue_depth": self.queue_depth,
+            "chunk_chars": self.chunk_chars,
+            "time_to_first_audio_ms": self.time_to_first_audio_ms,
+            "latency_p50_ms": self.latency_p50_ms,
+            "latency_p95_ms": self.latency_p95_ms,
             "last_latency_ms": self.last_latency_ms,
             "last_error": self.last_error,
         }
@@ -40,6 +50,9 @@ class VoiceRuntimeState:
             self.server_reachable = True
             self.reference_ready = True
         self.last_latency_ms = latency_ms
+        self.time_to_first_audio_ms = latency_ms
+        self.latency_p50_ms = latency_ms
+        self.latency_p95_ms = latency_ms
         self.last_error = None
 
     def update_failure(self, engine: str, error: str) -> None:

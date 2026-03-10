@@ -1,6 +1,6 @@
 [
   {
-    "id": 1773082766493,
+    "id": 1773100364431,
     "check_name": "runtime-truth",
     "status": "pass",
     "checks": [
@@ -32,15 +32,15 @@
       {
         "check": "timestamp_present",
         "passed": true,
-        "message": "2026-03-09T18:59:26.493813+00:00"
+        "message": "2026-03-09T23:52:44.431145+00:00"
       }
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-09T18:59:26.493813+00:00"
+    "timestamp": "2026-03-09T23:52:44.431145+00:00"
   },
   {
-    "id": 1773082766501,
+    "id": 1773100364437,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -61,8 +61,8 @@
       },
       {
         "check": "rtmp_configured",
-        "passed": true,
-        "message": "configured"
+        "passed": false,
+        "message": "not set"
       },
       {
         "check": "livetalking_entrypoint",
@@ -86,11 +86,11 @@
       }
     ],
     "provenance": "real_local",
-    "context": "blockers: ['mock_mode_off', 'products_loaded']",
-    "timestamp": "2026-03-09T18:59:26.501122+00:00"
+    "context": "blockers: ['mock_mode_off', 'rtmp_configured', 'products_loaded']",
+    "timestamp": "2026-03-09T23:52:44.437741+00:00"
   },
   {
-    "id": 1773082766753,
+    "id": 1773100368371,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -137,12 +137,12 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-09T18:59:26.753105+00:00"
+    "timestamp": "2026-03-09T23:52:48.371731+00:00"
   },
   {
-    "id": 1773082789909,
+    "id": 1773100382178,
     "check_name": "voice-local-clone",
-    "status": "pass",
+    "status": "fail",
     "checks": [
       {
         "check": "voice_reference_wav",
@@ -156,47 +156,197 @@
       },
       {
         "check": "fish_speech_server_reachable",
-        "passed": true,
-        "message": "reachable at http://127.0.0.1:8080"
+        "passed": false,
+        "message": "not reachable at http://127.0.0.1:9880"
       },
       {
         "check": "indonesian_synthesis_smoke",
-        "passed": true,
-        "message": "synthesized 524332 bytes in 31470ms"
-      }
-    ],
-    "provenance": "real_local",
-    "context": "",
-    "timestamp": "2026-03-09T18:59:49.909076+00:00"
-  },
-  {
-    "id": 1773082820159,
-    "check_name": "voice-local-clone",
-    "status": "pass",
-    "checks": [
-      {
-        "check": "voice_reference_wav",
-        "passed": true,
-        "message": "assets\\voice\\reference.wav"
-      },
-      {
-        "check": "voice_reference_text",
-        "passed": true,
-        "message": "assets\\voice\\reference.txt"
-      },
-      {
-        "check": "fish_speech_server_reachable",
-        "passed": true,
-        "message": "reachable at http://127.0.0.1:8080"
-      },
-      {
-        "check": "indonesian_synthesis_smoke",
-        "passed": true,
-        "message": "synthesized 516140 bytes in 30220ms"
+        "passed": false,
+        "message": "skipped (prerequisites not met)"
       }
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-09T19:00:20.159726+00:00"
+    "timestamp": "2026-03-09T23:53:02.178001+00:00"
+  },
+  {
+    "id": 1773103990957,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-10T00:53:10.957940+00:00"
+  },
+  {
+    "id": 1773103991671,
+    "check_name": "runtime-truth",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "mock_mode_explicit",
+        "passed": true,
+        "message": "MOCK_MODE=False"
+      },
+      {
+        "check": "face_runtime_mode",
+        "passed": true,
+        "message": "livetalking_stopped"
+      },
+      {
+        "check": "voice_runtime_mode",
+        "passed": false,
+        "message": "unknown"
+      },
+      {
+        "check": "stream_runtime_mode",
+        "passed": true,
+        "message": "idle"
+      },
+      {
+        "check": "provenance_complete",
+        "passed": true,
+        "message": "5 surfaces"
+      },
+      {
+        "check": "timestamp_present",
+        "passed": true,
+        "message": "2026-03-10T00:53:11.671282+00:00"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-10T00:53:11.671282+00:00"
+  },
+  {
+    "id": 1773104835505,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-10T01:07:15.505504+00:00"
+  },
+  {
+    "id": 1773104836221,
+    "check_name": "runtime-truth",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "mock_mode_explicit",
+        "passed": true,
+        "message": "MOCK_MODE=False"
+      },
+      {
+        "check": "face_runtime_mode",
+        "passed": true,
+        "message": "livetalking_stopped"
+      },
+      {
+        "check": "voice_runtime_mode",
+        "passed": false,
+        "message": "unknown"
+      },
+      {
+        "check": "stream_runtime_mode",
+        "passed": true,
+        "message": "idle"
+      },
+      {
+        "check": "provenance_complete",
+        "passed": true,
+        "message": "5 surfaces"
+      },
+      {
+        "check": "timestamp_present",
+        "passed": true,
+        "message": "2026-03-10T01:07:16.221879+00:00"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-10T01:07:16.221879+00:00"
   }
 ]

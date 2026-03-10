@@ -39,7 +39,9 @@ LiveTalking is treated as a **vendor sidecar**, not as a co-equal application.
 
 ### 3. `src/dashboard` = Only Operator Dashboard
 
-- The operator opens **one URL**: `http://localhost:8000/dashboard`
+- The operator still opens **one UI path**: `/dashboard`
+- In local lab this is typically `http://localhost:8000/dashboard`
+- In production this becomes a **server-hosted ops controller** exposed through `http://SERVER_IP_OR_DOMAIN/dashboard` behind reverse proxy auth/TLS
 - This dashboard (Svelte, built to static files) is the single source of truth for:
   - System health and readiness
   - Engine start/stop control

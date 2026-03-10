@@ -7,15 +7,16 @@
 
 ## Ringkasan
 
-`videoliveai` adalah **control plane utama** untuk sistem live internal.  
+`videoliveai` adalah **control plane utama** untuk sistem live internal dan server-hosted operations controller.
 `external/livetalking` adalah **sidecar engine vendor** untuk avatar, lip sync, preview, dan output realtime.
 
-Arsitektur ini sengaja **tidak** mengikuti `fullstack.md` untuk fase sekarang. Fokus saat ini adalah:
+Arsitektur ini adalah **evolusi operasional**, bukan rewrite fondasi. Fokus saat ini adalah:
 
 - satu backend utama
-- satu dashboard operator utama
+- satu dashboard operator utama di `/dashboard`
 - satu engine vendor untuk wajah/lip sync/output
-- alur live minimal yang stabil dan mudah dipindah ke Ubuntu server
+- truth model yang host-aware untuk local lab dan server production
+- alur live yang tetap berjalan di server walau browser operator terputus
 
 ## Keputusan Arsitektur
 
@@ -96,12 +97,14 @@ Ini pemisahan paling penting agar tidak bingung:
 
 | UI | URL | Fungsi |
 |----|-----|--------|
-| Operator Dashboard | `http://localhost:8000/dashboard` | Dashboard utama untuk validasi dan kontrol sistem |
+| Operator Dashboard | `http://localhost:8000/dashboard` atau `http://SERVER_IP_OR_DOMAIN/dashboard` | Dashboard utama untuk validasi, kontrol, incident review, dan ops summary |
 | Vendor Debug Pages | `http://localhost:8010/*.html` | Halaman debug LiveTalking, bukan dashboard operator |
 
 ### Aturan penggunaan
 
 - Operator harian harus mulai dari `/dashboard`
+- Untuk production, `/dashboard` harus dipublish lewat reverse proxy dengan auth + TLS
+- Browser operator boleh putus; proses live harus tetap berjalan di host server
 - Vendor pages hanya dipakai saat:
   - test engine langsung
   - cek preview WebRTC

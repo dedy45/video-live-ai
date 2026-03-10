@@ -1,0 +1,227 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "AI Live Commerce — Command Center" [level=1] [ref=e5]
+  - generic [ref=e6]:
+    - generic [ref=e7]: LIVE
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Validation:"
+      - generic [ref=e10]: unvalidated
+    - generic [ref=e11]:
+      - generic [ref=e12]: "Origin:"
+      - generic [ref=e13]: real_local
+    - generic [ref=e14]:
+      - generic [ref=e15]: "Validated:"
+      - generic [ref=e16]: never
+    - generic [ref=e17]:
+      - generic [ref=e18]: "Host:"
+      - generic [ref=e19]: DESKTOP-N1GGHD7
+    - generic [ref=e20]:
+      - generic [ref=e21]: "Role:"
+      - generic [ref=e22]: local_lab
+    - generic [ref=e23]:
+      - generic [ref=e24]: "Deploy:"
+      - generic [ref=e25]: cold
+    - generic [ref=e26]: "|"
+    - generic [ref=e27]:
+      - generic [ref=e28]: "Face:"
+      - generic [ref=e29]: livetalking_stopped
+    - generic [ref=e30]:
+      - generic [ref=e31]: "Voice:"
+      - generic [ref=e32]: unknown
+    - generic [ref=e33]:
+      - generic [ref=e34]: "Stream:"
+      - generic [ref=e35]: idle
+    - generic [ref=e36]: "|"
+    - generic [ref=e37]:
+      - generic [ref=e38]: "Src:"
+      - generic [ref=e39]: websocket
+  - tablist [ref=e40]:
+    - tab "Overview" [ref=e41] [cursor=pointer]
+    - tab "Voice" [ref=e42] [cursor=pointer]
+    - tab "Face Engine" [ref=e43] [cursor=pointer]
+    - tab "Stream" [ref=e44] [cursor=pointer]
+    - tab "Validation" [active] [selected] [ref=e45] [cursor=pointer]
+    - tab "Monitor" [ref=e46] [cursor=pointer]
+    - tab "Commerce" [ref=e47] [cursor=pointer]
+    - tab "Diagnostics" [ref=e48] [cursor=pointer]
+  - main [ref=e49]:
+    - generic [ref=e368]:
+      - generic [ref=e369]:
+        - generic [ref=e370]:
+          - heading "Readiness" [level=2] [ref=e371]
+          - generic [ref=e372]:
+            - generic [ref=e373]: derived
+            - generic [ref=e374]: just now
+            - button "Refresh" [ref=e375] [cursor=pointer]
+        - generic [ref=e376]:
+          - generic [ref=e377]: ">"
+          - generic [ref=e378]: readiness.refresh
+          - generic [ref=e379]: degraded — 13 checks
+          - generic [ref=e380]: 9:02:11 AM
+        - generic [ref=e381]: DEGRADED
+        - paragraph [ref=e382]: "Optional fixes: fish_speech_server_reachable"
+        - generic [ref=e383]:
+          - generic [ref=e384]:
+            - generic [ref=e385]: ●
+            - generic [ref=e386]: config_loaded
+            - generic [ref=e387]: ok
+            - generic [ref=e388]: AI Live Commerce v0.1.0
+          - generic [ref=e389]:
+            - generic [ref=e390]: ●
+            - generic [ref=e391]: database_healthy
+            - generic [ref=e392]: ok
+            - generic [ref=e393]: OK — 8 tables
+          - generic [ref=e394]:
+            - generic [ref=e395]: ●
+            - generic [ref=e396]: livetalking_installed
+            - generic [ref=e397]: ok
+            - generic [ref=e398]: external\livetalking\app.py
+          - generic [ref=e399]:
+            - generic [ref=e400]: ●
+            - generic [ref=e401]: avatar_reference_video
+            - generic [ref=e402]: ok
+            - generic [ref=e403]: assets\avatar\reference.mp4
+          - generic [ref=e404]:
+            - generic [ref=e405]: ●
+            - generic [ref=e406]: avatar_reference_audio
+            - generic [ref=e407]: ok
+            - generic [ref=e408]: assets\avatar\reference.wav
+          - generic [ref=e409]:
+            - generic [ref=e410]: ●
+            - generic [ref=e411]: livetalking_model_ready
+            - generic [ref=e412]: ok
+            - generic [ref=e413]: "musetalk: external\\livetalking\\models\\musetalk"
+          - generic [ref=e414]:
+            - generic [ref=e415]: ●
+            - generic [ref=e416]: livetalking_avatar_ready
+            - generic [ref=e417]: ok
+            - generic [ref=e418]: "musetalk_avatar1: external\\livetalking\\data\\avatars\\musetalk_avatar1"
+          - generic [ref=e419]:
+            - generic [ref=e420]: ●
+            - generic [ref=e421]: ffmpeg_available
+            - generic [ref=e422]: ok
+            - generic [ref=e423]: C:\Users\dedy\Documents\!fast-track-income\videoliveai\tools\ffmpeg\bin\ffmpeg.exe
+          - generic [ref=e424]:
+            - generic [ref=e425]: ●
+            - generic [ref=e426]: rtmp_target_configured
+            - generic [ref=e427]: ok
+            - generic [ref=e428]: TikTok RTMP configured
+          - generic [ref=e429]:
+            - generic [ref=e430]: ●
+            - generic [ref=e431]: mode_explicit
+            - generic [ref=e432]: ok
+            - generic [ref=e433]: MOCK_MODE=false
+          - generic [ref=e434]:
+            - generic [ref=e435]: ●
+            - generic [ref=e436]: voice_reference_wav_ready
+            - generic [ref=e437]: ok
+            - generic [ref=e438]: assets\voice\reference.wav
+          - generic [ref=e439]:
+            - generic [ref=e440]: ●
+            - generic [ref=e441]: voice_reference_text_ready
+            - generic [ref=e442]: ok
+            - generic [ref=e443]: assets\voice\reference.txt
+          - generic [ref=e444]:
+            - generic [ref=e445]: ○
+            - generic [ref=e446]: fish_speech_server_reachable
+            - generic [ref=e447]: warning
+            - generic [ref=e448]: Fish-Speech not reachable at http://127.0.0.1:9880 (start sidecar for real voice)
+      - generic [ref=e449]:
+        - generic [ref=e450]:
+          - generic [ref=e451]:
+            - heading "Validation Gate Center" [level=2] [ref=e452]
+            - paragraph [ref=e453]: Run the local-to-live gate checks before promotion, dry-run, and recovery work.
+          - generic [ref=e455]: just now
+        - generic [ref=e456]:
+          - generic [ref=e457]:
+            - generic [ref=e458]: Core truth and readiness
+            - generic [ref=e459]:
+              - generic [ref=e460]:
+                - generic [ref=e461]: Runtime Truth
+                - paragraph [ref=e462]: Check env consistency
+                - button "Run Check" [ref=e463] [cursor=pointer]
+              - generic [ref=e464]:
+                - generic [ref=e465]: Real-Mode Readiness
+                - paragraph [ref=e466]: Final go/no-go checks
+                - button "Run Check" [ref=e467] [cursor=pointer]
+              - generic [ref=e468]:
+                - generic [ref=e469]: Mock Stack
+                - paragraph [ref=e470]: Check local mock services
+                - button "Run Check" [ref=e471] [cursor=pointer]
+          - generic [ref=e472]:
+            - generic [ref=e473]: Voice and media checks
+            - generic [ref=e474]:
+              - generic [ref=e475]:
+                - generic [ref=e476]: Voice Local Clone
+                - paragraph [ref=e477]: Verify local voice reference path
+                - button "Run Check" [ref=e478] [cursor=pointer]
+              - generic [ref=e479]:
+                - generic [ref=e480]: Audio Chunking Smoke
+                - paragraph [ref=e481]: Check chunk sizing for local synthesis
+                - button "Run Check" [ref=e482] [cursor=pointer]
+              - generic [ref=e483]:
+                - generic [ref=e484]: LiveTalking Engine
+                - paragraph [ref=e485]: Test local engine readiness
+                - button "Run Check" [ref=e486] [cursor=pointer]
+          - generic [ref=e487]:
+            - generic [ref=e488]: Stream and long-run checks
+            - generic [ref=e489]:
+              - generic [ref=e490]:
+                - generic [ref=e491]: RTMP Target
+                - paragraph [ref=e492]: Verify stream destination
+                - button "Run Check" [ref=e493] [cursor=pointer]
+              - generic [ref=e494]:
+                - generic [ref=e495]: Stream Dry Run
+                - paragraph [ref=e496]: Exercise stream path without going live
+                - button "Run Check" [ref=e497] [cursor=pointer]
+              - generic [ref=e498]:
+                - generic [ref=e499]: Resource Budget
+                - paragraph [ref=e500]: Validate CPU, RAM, disk, and VRAM signals
+                - button "Run Check" [ref=e501] [cursor=pointer]
+              - generic [ref=e502]:
+                - generic [ref=e503]: Soak Sanity
+                - paragraph [ref=e504]: Check incident and recovery summary before long runs
+                - button "Run Check" [ref=e505] [cursor=pointer]
+        - generic [ref=e506]:
+          - generic [ref=e507]: Recent validation history
+          - generic [ref=e508]:
+            - generic [ref=e509]:
+              - generic [ref=e510]: runtime-truth
+              - generic [ref=e511]: fail
+              - generic [ref=e512]: real_local
+              - generic [ref=e513]: 8:07:16 AM
+            - generic [ref=e514]:
+              - generic [ref=e515]: real-mode-readiness
+              - generic [ref=e516]: pass
+              - generic [ref=e517]: real_local
+              - generic [ref=e518]: 8:07:15 AM
+            - generic [ref=e519]:
+              - generic [ref=e520]: runtime-truth
+              - generic [ref=e521]: fail
+              - generic [ref=e522]: real_local
+              - generic [ref=e523]: 7:53:11 AM
+            - generic [ref=e524]:
+              - generic [ref=e525]: real-mode-readiness
+              - generic [ref=e526]: pass
+              - generic [ref=e527]: real_local
+              - generic [ref=e528]: 7:53:10 AM
+            - generic [ref=e529]:
+              - generic [ref=e530]: voice-local-clone
+              - generic [ref=e531]: fail
+              - generic [ref=e532]: mock
+              - generic [ref=e533]: 6:53:02 AM
+            - generic [ref=e534]:
+              - generic [ref=e535]: real-mode-readiness
+              - generic [ref=e536]: blocked
+              - generic [ref=e537]: real_local
+              - generic [ref=e538]: 6:52:48 AM
+            - generic [ref=e539]:
+              - generic [ref=e540]: real-mode-readiness
+              - generic [ref=e541]: blocked
+              - generic [ref=e542]: real_local
+              - generic [ref=e543]: 6:52:44 AM
+            - generic [ref=e544]:
+              - generic [ref=e545]: runtime-truth
+              - generic [ref=e546]: pass
+              - generic [ref=e547]: mock
+              - generic [ref=e548]: 6:52:44 AM

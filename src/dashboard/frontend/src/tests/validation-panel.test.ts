@@ -35,6 +35,26 @@ vi.mock('../lib/api', () => ({
     ],
     blockers: ['mock_mode_off', 'rtmp_configured'],
   }),
+  validateVoiceLocalClone: vi.fn().mockResolvedValue({
+    status: 'pass',
+    checks: [{ check: 'voice_reference_wav', passed: true, message: 'ok' }],
+  }),
+  validateAudioChunkingSmoke: vi.fn().mockResolvedValue({
+    status: 'blocked',
+    checks: [{ check: 'chunk_chars_configured', passed: false, message: 'chunk size not configured' }],
+  }),
+  validateStreamDryRun: vi.fn().mockResolvedValue({
+    status: 'pass',
+    checks: [{ check: 'ffmpeg_available', passed: true, message: 'ok' }],
+  }),
+  validateResourceBudget: vi.fn().mockResolvedValue({
+    status: 'pass',
+    checks: [{ check: 'cpu_metric_present', passed: true, message: '0.0' }],
+  }),
+  validateSoakSanity: vi.fn().mockResolvedValue({
+    status: 'pass',
+    checks: [{ check: 'incident_summary_present', passed: true, message: 'ok' }],
+  }),
   getValidationHistory: vi.fn().mockResolvedValue([
     { id: 1, check_name: 'runtime-truth', status: 'pass', provenance: 'mock', timestamp: '2026-03-08T10:00:00Z' },
     { id: 2, check_name: 'real-mode-readiness', status: 'blocked', provenance: 'real_local', timestamp: '2026-03-08T10:01:00Z' },
@@ -125,5 +145,11 @@ describe('ValidationPanel', () => {
     await fireEvent.click(btn);
 
     expect(await screen.findByText(/API 500/i)).toBeTruthy();
+  });
+
+  it('renders voice local clone and stream dry-run validation actions', async () => {
+    render(ValidationPanel);
+    expect(await screen.findByText(/voice local clone/i)).toBeTruthy();
+    expect(await screen.findByText(/stream dry run/i)).toBeTruthy();
   });
 });

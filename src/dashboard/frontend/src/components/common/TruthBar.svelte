@@ -95,6 +95,24 @@
       <span class="truth-label">Validated:</span>
       <span class="truth-value" data-testid="truth-last-validated">{lastValidatedDisplay()}</span>
     </span>
+    {#if truth.host?.name}
+      <span class="truth-item">
+        <span class="truth-label">Host:</span>
+        <span class="truth-value">{truth.host.name}</span>
+      </span>
+    {/if}
+    {#if truth.host?.role}
+      <span class="truth-item">
+        <span class="truth-label">Role:</span>
+        <span class="truth-value">{truth.host.role}</span>
+      </span>
+    {/if}
+    {#if truth.deployment_mode}
+      <span class="truth-item">
+        <span class="truth-label">Deploy:</span>
+        <span class="truth-value">{truth.deployment_mode}</span>
+      </span>
+    {/if}
     <span class="truth-sep">|</span>
     <span class="truth-item">
       <span class="truth-label">Face:</span>

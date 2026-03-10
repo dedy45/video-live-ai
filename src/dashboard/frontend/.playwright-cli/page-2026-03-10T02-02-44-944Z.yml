@@ -1,0 +1,82 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "AI Live Commerce — Command Center" [level=1] [ref=e5]
+  - generic [ref=e6]:
+    - generic [ref=e7]: LIVE
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Validation:"
+      - generic [ref=e10]: unvalidated
+    - generic [ref=e11]:
+      - generic [ref=e12]: "Origin:"
+      - generic [ref=e13]: real_local
+    - generic [ref=e14]:
+      - generic [ref=e15]: "Validated:"
+      - generic [ref=e16]: never
+    - generic [ref=e17]:
+      - generic [ref=e18]: "Host:"
+      - generic [ref=e19]: DESKTOP-N1GGHD7
+    - generic [ref=e20]:
+      - generic [ref=e21]: "Role:"
+      - generic [ref=e22]: local_lab
+    - generic [ref=e23]:
+      - generic [ref=e24]: "Deploy:"
+      - generic [ref=e25]: cold
+    - generic [ref=e26]: "|"
+    - generic [ref=e27]:
+      - generic [ref=e28]: "Face:"
+      - generic [ref=e29]: livetalking_stopped
+    - generic [ref=e30]:
+      - generic [ref=e31]: "Voice:"
+      - generic [ref=e32]: unknown
+    - generic [ref=e33]:
+      - generic [ref=e34]: "Stream:"
+      - generic [ref=e35]: idle
+    - generic [ref=e36]: "|"
+    - generic [ref=e37]:
+      - generic [ref=e38]: "Src:"
+      - generic [ref=e39]: websocket
+  - tablist [ref=e40]:
+    - tab "Overview" [ref=e41] [cursor=pointer]
+    - tab "Voice" [ref=e42] [cursor=pointer]
+    - tab "Face Engine" [ref=e43] [cursor=pointer]
+    - tab "Stream" [active] [selected] [ref=e44] [cursor=pointer]
+    - tab "Validation" [ref=e45] [cursor=pointer]
+    - tab "Monitor" [ref=e46] [cursor=pointer]
+    - tab "Commerce" [ref=e47] [cursor=pointer]
+    - tab "Diagnostics" [ref=e48] [cursor=pointer]
+  - main [ref=e49]:
+    - generic [ref=e549]:
+      - generic [ref=e550]:
+        - generic [ref=e551]:
+          - heading "Stream Control Center" [level=2] [ref=e552]
+          - paragraph [ref=e553]: Run dry-runs, validate RTMP, move pipeline state, and control live output.
+        - generic [ref=e554]:
+          - generic [ref=e555]: real_local
+          - generic [ref=e556]: just now
+          - button "Refresh" [ref=e557] [cursor=pointer]
+      - generic [ref=e558]:
+        - generic [ref=e559]:
+          - generic [ref=e560]: Stream posture
+          - generic [ref=e561]: idle
+          - generic [ref=e562]: Runtime idle · Pipeline unknown
+        - generic [ref=e563]:
+          - generic [ref=e564]: Emergency state
+          - generic [ref=e565]: CLEAR
+          - generic [ref=e566]: Use emergency stop only for hard recovery situations.
+      - generic [ref=e567]:
+        - generic [ref=e568]:
+          - generic [ref=e569]: Live controls
+          - generic [ref=e570]:
+            - button "Start Stream" [ref=e571] [cursor=pointer]
+            - button "Stop Stream" [disabled] [ref=e572]
+            - button "Emergency Stop" [ref=e573] [cursor=pointer]
+        - generic [ref=e574]:
+          - generic [ref=e575]: RTMP validation
+          - button "Validate RTMP Target" [ref=e576] [cursor=pointer]
+        - generic [ref=e577]:
+          - generic [ref=e578]: Pipeline state machine
+          - generic [ref=e579]:
+            - button "IDLE" [ref=e580] [cursor=pointer]
+            - button "WARMING" [ref=e581] [cursor=pointer]
+            - button "LIVE" [ref=e582] [cursor=pointer]
+            - button "COOLDOWN" [ref=e583] [cursor=pointer]

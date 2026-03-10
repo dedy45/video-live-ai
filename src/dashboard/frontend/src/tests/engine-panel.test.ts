@@ -65,8 +65,7 @@ describe('EnginePanel', () => {
   it('renders the panel title', async () => {
     render(EnginePanel);
 
-    // Wait for async data load
-    const title = await screen.findByText('LiveTalking Engine');
+    const title = await screen.findByText('Face Engine Control Center');
     expect(title).toBeInTheDocument();
   });
 

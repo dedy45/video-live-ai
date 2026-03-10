@@ -29,7 +29,12 @@
       "Bash(npx vitest:*)",
       "Bash(mv:*)",
       "Bash(npx vite:*)",
-      "Bash(tools/ffmpeg/bin/ffmpeg.exe:*)"
+      "Bash(tools/ffmpeg/bin/ffmpeg.exe:*)",
+      "Bash(npm test:*)",
+      "Bash(netstat:*)",
+      "Bash(tasklist:*)",
+      "Bash(cmd:*)",
+      "Bash(command:*)"
     ]
   }
 }

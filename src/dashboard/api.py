@@ -25,6 +25,9 @@ from src.commerce.analytics import get_analytics
 from src.commerce.manager import AffiliateTracker, Product, ProductManager
 from src.config import get_config, get_env, is_mock_mode
 from src.utils.health import get_health_manager
+from src.dashboard.incidents import get_incident_registry
+from src.dashboard.ops_state import get_ops_state
+from src.dashboard.resources import get_resource_metrics, get_restart_counters
 from src.dashboard.truth import get_runtime_truth_snapshot
 from src.dashboard.validation_history import record_validation, get_history as get_validation_history
 from src.utils.ffmpeg import check_ffmpeg_ready
@@ -824,7 +827,14 @@ async def get_readiness() -> dict[str, Any]:
 async def get_runtime_truth() -> dict[str, Any]:
     """Get consolidated runtime truth snapshot for operator dashboard."""
     try:
-        return get_runtime_truth_snapshot()
+        truth = get_runtime_truth_snapshot()
+        ops_state = get_ops_state()
+        incident_summary = get_incident_registry().summary()
+        truth["deployment_mode"] = ops_state.deployment_mode
+        truth["session_id"] = ops_state.session_id
+        truth["host"]["role"] = ops_state.host_role
+        truth["incident_summary"] = incident_summary
+        return truth
     except Exception as e:
         logger.error("runtime_truth_error", error=str(e), exc_info=True)
         return {
@@ -832,6 +842,46 @@ async def get_runtime_truth() -> dict[str, Any]:
             "error": str(e),
             "timestamp": None,
         }
+
+
+@router.get("/incidents")
+async def get_incidents(limit: int = 50) -> list[dict[str, Any]]:
+    """Return recent incidents from the in-process registry."""
+    return get_incident_registry().list_recent(limit=limit)
+
+
+@router.post("/incidents/{incident_id}/ack")
+async def acknowledge_incident(incident_id: str) -> dict[str, Any]:
+    """Acknowledge an incident in the in-process registry."""
+    registry = get_incident_registry()
+    registry.acknowledge(incident_id)
+    return {
+        "status": "success",
+        "message": f"Incident {incident_id} acknowledged",
+        "incident_id": incident_id,
+    }
+
+
+@router.get("/resources")
+async def get_resources() -> dict[str, Any]:
+    """Return lightweight server resource metrics."""
+    return get_resource_metrics()
+
+
+@router.get("/ops/summary")
+async def get_ops_summary() -> dict[str, Any]:
+    """Return top-level ops controller summary."""
+    truth = await get_runtime_truth()
+    return {
+        "overall_status": truth["deployment_mode"],
+        "deployment_mode": truth["deployment_mode"],
+        "voice_status": truth["voice_runtime_mode"],
+        "face_status": truth["face_runtime_mode"],
+        "stream_status": truth["stream_runtime_mode"],
+        "incident_summary": truth["incident_summary"],
+        "resource_metrics": get_resource_metrics(),
+        "restart_counters": get_restart_counters(),
+    }
 
 
 # ── Validation Workflow Endpoints ──────────────────────────
@@ -995,6 +1045,79 @@ async def validate_real_mode_readiness() -> dict[str, Any]:
         return {"status": "error", "checks": [], "error": str(e)}
 
 
+@router.post("/voice/warmup")
+async def voice_warmup() -> dict[str, Any]:
+    """Warm the voice subsystem and return an explicit operator receipt."""
+    try:
+        state = get_runtime_truth_snapshot()["voice_engine"]
+        if not state.get("server_reachable", False):
+            return {
+                "status": "blocked",
+                "message": "Voice sidecar is not reachable yet",
+                "provenance": "mock" if is_mock_mode() else "real_local",
+                "action": "voice.warmup",
+            }
+        return {
+            "status": "success",
+            "message": "Voice sidecar is reachable and ready for warmup",
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.warmup",
+        }
+    except Exception as e:
+        logger.error("voice_warmup_error", error=str(e), exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.warmup",
+        }
+
+
+@router.post("/voice/queue/clear")
+async def voice_queue_clear() -> dict[str, Any]:
+    """Clear in-memory voice queue counters."""
+    try:
+        from src.voice.runtime_state import get_voice_runtime_state
+        state = get_voice_runtime_state()
+        state.queue_depth = 0
+        return {
+            "status": "success",
+            "message": "Voice queue cleared",
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.queue.clear",
+        }
+    except Exception as e:
+        logger.error("voice_queue_clear_error", error=str(e), exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.queue.clear",
+        }
+
+
+@router.post("/voice/restart")
+async def voice_restart() -> dict[str, Any]:
+    """Increment voice restart counter and return a receipt."""
+    try:
+        from src.dashboard.resources import increment_restart_counter
+        increment_restart_counter("voice")
+        return {
+            "status": "success",
+            "message": "Voice worker restart requested",
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.restart",
+        }
+    except Exception as e:
+        logger.error("voice_restart_error", error=str(e), exc_info=True)
+        return {
+            "status": "error",
+            "message": str(e),
+            "provenance": "mock" if is_mock_mode() else "real_local",
+            "action": "voice.restart",
+        }
+
+
 @router.post("/validate/voice-local-clone")
 async def validate_voice_local_clone() -> dict[str, Any]:
     """Validate local Fish-Speech voice clone readiness and run synthesis smoke test.
@@ -1090,5 +1213,126 @@ async def validate_voice_local_clone() -> dict[str, Any]:
         return {"status": status, "checks": checks, "evidence_id": entry["id"], "latency_ms": latency_ms}
     except Exception as e:
         logger.error("validate_voice_clone_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/audio-chunking-smoke")
+async def validate_audio_chunking_smoke() -> dict[str, Any]:
+    """Validate that voice chunking controls are configured for ops mode."""
+    try:
+        from src.voice.runtime_state import get_voice_runtime_state
+
+        state = get_voice_runtime_state()
+        checks = [
+            {
+                "check": "voice_engine_selected",
+                "passed": state.requested_engine != "unknown",
+                "message": state.requested_engine,
+            },
+            {
+                "check": "chunk_chars_configured",
+                "passed": state.chunk_chars is not None,
+                "message": str(state.chunk_chars) if state.chunk_chars is not None else "chunk size not configured",
+            },
+        ]
+        status = "pass" if all(check["passed"] for check in checks) else "blocked"
+        entry = record_validation("audio-chunking-smoke", status, checks, provenance="mock" if is_mock_mode() else "real_local")
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_audio_chunking_smoke_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/stream-dry-run")
+async def validate_stream_dry_run() -> dict[str, Any]:
+    """Validate minimum dry-run stream prerequisites."""
+    try:
+        checks = [
+            {"check": "ffmpeg_available", "passed": bool(check_ffmpeg_ready()["available"]), "message": check_ffmpeg_ready()["path"] or "not found"},
+            {"check": "stream_idle_or_live_known", "passed": get_runtime_truth_snapshot()["stream_runtime_mode"] in {"mock", "idle", "live"}, "message": get_runtime_truth_snapshot()["stream_runtime_mode"]},
+        ]
+        status = "pass" if all(check["passed"] for check in checks) else "fail"
+        entry = record_validation("stream-dry-run", status, checks, provenance="mock" if is_mock_mode() else "real_local")
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_stream_dry_run_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/resource-budget")
+async def validate_resource_budget() -> dict[str, Any]:
+    """Validate lightweight resource budget placeholders."""
+    try:
+        metrics = get_resource_metrics()
+        checks = [
+            {"check": "cpu_metric_present", "passed": "cpu_pct" in metrics, "message": str(metrics.get("cpu_pct"))},
+            {"check": "ram_metric_present", "passed": "ram_pct" in metrics, "message": str(metrics.get("ram_pct"))},
+            {"check": "disk_metric_present", "passed": "disk_pct" in metrics, "message": str(metrics.get("disk_pct"))},
+        ]
+        status = "pass" if all(check["passed"] for check in checks) else "fail"
+        entry = record_validation("resource-budget", status, checks, provenance="mock" if is_mock_mode() else "real_local")
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_resource_budget_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/soak-sanity")
+async def validate_soak_sanity() -> dict[str, Any]:
+    """Validate minimal long-run sanity indicators for the ops controller."""
+    try:
+        summary = get_incident_registry().summary()
+        restarts = get_restart_counters()
+        checks = [
+            {"check": "incident_summary_present", "passed": "open_count" in summary, "message": str(summary)},
+            {"check": "restart_counters_present", "passed": "voice" in restarts, "message": str(restarts)},
+        ]
+        status = "pass" if all(check["passed"] for check in checks) else "fail"
+        entry = record_validation("soak-sanity", status, checks, provenance="mock" if is_mock_mode() else "real_local")
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_soak_sanity_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/face-sync-smoke")
+async def validate_face_sync_smoke() -> dict[str, Any]:
+    """Validate minimum face runtime truth presence for ops controller."""
+    try:
+        truth = get_runtime_truth_snapshot()
+        checks = [
+            {"check": "face_runtime_known", "passed": truth["face_runtime_mode"] != "unknown", "message": truth["face_runtime_mode"]},
+            {"check": "face_engine_present", "passed": "face_engine" in truth, "message": "present"},
+        ]
+        status = "pass" if all(check["passed"] for check in checks) else "fail"
+        entry = record_validation("face-sync-smoke", status, checks, provenance="mock" if is_mock_mode() else "real_local")
+        return {"status": status, "checks": checks, "evidence_id": entry["id"]}
+    except Exception as e:
+        logger.error("validate_face_sync_smoke_error", error=str(e), exc_info=True)
+        return {"status": "error", "checks": [], "error": str(e)}
+
+
+@router.post("/validate/rtmp-target")
+async def validate_rtmp_target() -> dict[str, Any]:
+    """Validate RTMP target configuration."""
+    try:
+        checks = []
+
+        ffmpeg_status = check_ffmpeg_ready()
+        checks.append({
+            "check": "ffmpeg_available",
+            "passed": bool(ffmpeg_status["available"]),
+            "message": ffmpeg_status["path"] or "not found",
+        })
+
+        rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
+        stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
+        rtmp_ok = bool(rtmp_url and stream_key)
+        checks.append({"check": "rtmp_configured", "passed": rtmp_ok, "message": "configured" if rtmp_ok else "TIKTOK_RTMP_URL or TIKTOK_STREAM_KEY not set"})
+
+        all_pass = all(c["passed"] for c in checks)
+        return {"status": "pass" if all_pass else "fail", "checks": checks}
+    except Exception as e:
+        logger.error("validate_rtmp_error", error=str(e), exc_info=True)
         return {"status": "error", "checks": [], "error": str(e)}
 

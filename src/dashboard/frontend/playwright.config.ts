@@ -4,7 +4,7 @@ export default defineConfig({
   testDir: './e2e',
   timeout: 30000,
   use: {
-    baseURL: 'http://localhost:8000',
+    baseURL: 'http://localhost:8001',
     headless: true,
   },
   projects: [
@@ -15,7 +15,7 @@ export default defineConfig({
   ],
   webServer: {
     command: 'cd ../../.. && uv run python -m src.main',
-    url: 'http://localhost:8000/api/status',
+    url: 'http://localhost:8001/api/status',
     reuseExistingServer: true,
     timeout: 30000,
   },

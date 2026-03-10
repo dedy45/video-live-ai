@@ -257,6 +257,59 @@ async def test_runtime_truth_validation_state_valid() -> None:
     assert result["validation_state"] in valid_states
 
 
+@pytest.mark.asyncio
+async def test_runtime_truth_exposes_ops_contract() -> None:
+    """Runtime truth should expose server-hosted ops controller fields."""
+    from src.dashboard.api import get_runtime_truth
+
+    result = await get_runtime_truth()
+
+    assert "host" in result
+    assert "deployment_mode" in result
+    assert "incident_summary" in result
+    assert "guardrails" in result
+
+
+def test_incident_registry_tracks_open_incidents() -> None:
+    """Incident registry should track unresolved incidents."""
+    from src.dashboard.incidents import IncidentRegistry
+
+    reg = IncidentRegistry()
+    incident = reg.open("voice.timeout", "error", subsystem="voice")
+    assert incident["resolved"] is False
+    assert reg.summary()["open_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_ops_summary_exposes_resource_and_restart_state() -> None:
+    """Ops summary should expose resource metrics and restart counters."""
+    from src.dashboard.api import get_ops_summary
+
+    result = await get_ops_summary()
+    assert "resource_metrics" in result
+    assert "restart_counters" in result
+
+
+@pytest.mark.asyncio
+async def test_voice_warmup_receipt_shape() -> None:
+    """Voice warmup should return an explicit operator receipt."""
+    from src.dashboard.api import voice_warmup
+
+    result = await voice_warmup()
+    assert result["status"] in {"success", "blocked", "error"}
+    assert "message" in result
+
+
+@pytest.mark.asyncio
+async def test_audio_chunking_smoke_endpoint_shape() -> None:
+    """Audio chunking smoke endpoint should return validation receipt shape."""
+    from src.dashboard.api import validate_audio_chunking_smoke
+
+    result = await validate_audio_chunking_smoke()
+    assert result["status"] in {"pass", "fail", "blocked", "error"}
+    assert "checks" in result
+
+
 # === Validation History Tests ===
 
 def test_validation_history_record_and_retrieve() -> None:

@@ -57,12 +57,24 @@ uv run python scripts/manage.py serve --mock
 
 | URL | Purpose | Who |
 |-----|---------|-----|
-| `http://localhost:8000/dashboard` | **Operator dashboard** (primary UI) | Operators |
+| `http://localhost:8000/dashboard` | **Operator dashboard** (primary UI in local lab) | Operators |
+| `http://SERVER_IP_OR_DOMAIN/dashboard` | **Server-hosted ops controller** for production/browser access | Operators |
 | `http://localhost:8000/docs` | API documentation | Developers |
 | `http://localhost:8000/diagnostic/` | System diagnostics | Operators/Devs |
 | `http://localhost:8010/*.html` | LiveTalking debug pages | Developers only |
 
-> **Rule:** `/dashboard` is the only operator UI. Vendor pages at port 8010 are debug tools only.
+> **Rule:** `/dashboard` stays the only operator UI. In production it is hosted on the server behind a reverse proxy, and browser disconnects must not stop the live process. Vendor pages at port 8010 stay debug tools only.
+
+### Operator Model
+
+The dashboard architecture is now an **operational evolution**, not a rewrite:
+
+- FastAPI remains the control plane
+- Fish-Speech remains the voice sidecar
+- LiveTalking / MuseTalk remains the face sidecar
+- `/dashboard` remains the single operator UI
+- what changes is the runtime model: from a localhost-oriented operator shell to a **server-hosted ops controller** reachable via browser, IP, or domain
+- server execution continues even if the operator laptop disconnects or dies
 
 ### Local Operator Commands
 

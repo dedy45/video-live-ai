@@ -66,6 +66,8 @@ Root `docs/` now keeps only the project-level source of truth:
 - [2026-03-09-musetalk-local-vertical-slice-real-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-musetalk-local-vertical-slice-real-implementation.md)
 - [2026-03-09-fish-speech-local-real-audio-design.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-fish-speech-local-real-audio-design.md)
 - [2026-03-09-fish-speech-local-real-audio-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-09-fish-speech-local-real-audio-implementation.md)
+- [2026-03-10-server-hosted-ops-controller-design.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-10-server-hosted-ops-controller-design.md)
+- [2026-03-10-server-hosted-ops-controller-implementation.md](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans/2026-03-10-server-hosted-ops-controller-implementation.md)
 - [plans](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/plans)
 - [archive](/c:/Users/dedy/Documents/!fast-track-income/videoliveai/docs/archive)
 
@@ -73,10 +75,20 @@ Root `docs/` now keeps only the project-level source of truth:
 
 - Dashboard Svelte operator shell is `LOCAL VERIFIED`
 - Dashboard Single Truth Real Validation is `LOCAL VERIFIED`
+- Server-hosted ops controller evolution is `IN PROGRESS` but backend truth and core frontend surfaces are now implemented
 - Active milestone `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` is `LOCAL VERIFIED`
 - Active milestone `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` is `LOCAL VERIFIED` for direct local testing
 - Face operator slice resolves to `musetalk / musetalk_avatar1`, and the voice slice now resolves to `fish_speech_local` without fallback after real synthesis
 - Humanization remains next because the remaining audio issue is latency on current local hardware, not basic correctness
+
+## Ops Controller Truth
+
+The current architecture keeps `/dashboard` as the only operator UI, but the operational model now targets two roles:
+
+- **local truth lab** for mock mode, validation, and dry-run work
+- **server-hosted ops controller** for browser-based production operation behind reverse proxy auth/TLS
+
+The browser is now only the control surface; the live process is intended to keep running on the server host even if the operator client disconnects.
 
 ## Placement Rules
 

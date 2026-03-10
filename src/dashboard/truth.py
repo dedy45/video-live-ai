@@ -8,11 +8,13 @@ See: docs/specs/dashboard_truth_model.md
 
 from __future__ import annotations
 
+import socket
 import time
 from datetime import datetime, timezone
 from typing import Any
 
 from src.config import is_mock_mode
+from src.dashboard.resources import get_resource_metrics, get_restart_counters
 from src.utils.logging import get_logger
 
 logger = get_logger("dashboard.truth")
@@ -156,11 +158,26 @@ def get_runtime_truth_snapshot() -> dict[str, Any]:
     voice_engine = _get_voice_engine_truth()
     return {
         "mock_mode": is_mock_mode(),
+        "host": {
+            "name": socket.gethostname(),
+            "role": "local_lab",
+        },
+        "deployment_mode": "cold",
         "face_runtime_mode": _get_face_runtime_mode(),
         "face_engine": face_engine,
         "voice_runtime_mode": _get_voice_runtime_mode(),
         "voice_engine": voice_engine,
         "stream_runtime_mode": _get_stream_runtime_mode(),
+        "incident_summary": {
+            "open_count": 0,
+            "highest_severity": "none",
+        },
+        "guardrails": {
+            "restart_storm": False,
+            "disk_pressure": False,
+        },
+        "resource_metrics": get_resource_metrics(),
+        "restart_counters": get_restart_counters(),
         "validation_state": "unvalidated",
         "last_validated_at": None,
         "provenance": _get_provenance(),

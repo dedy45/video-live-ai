@@ -1,0 +1,107 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "AI Live Commerce — Command Center" [level=1] [ref=e5]
+  - generic [ref=e6]:
+    - generic [ref=e7]: LIVE
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Validation:"
+      - generic [ref=e10]: unvalidated
+    - generic [ref=e11]:
+      - generic [ref=e12]: "Origin:"
+      - generic [ref=e13]: real_local
+    - generic [ref=e14]:
+      - generic [ref=e15]: "Validated:"
+      - generic [ref=e16]: never
+    - generic [ref=e17]:
+      - generic [ref=e18]: "Host:"
+      - generic [ref=e19]: DESKTOP-N1GGHD7
+    - generic [ref=e20]:
+      - generic [ref=e21]: "Role:"
+      - generic [ref=e22]: local_lab
+    - generic [ref=e23]:
+      - generic [ref=e24]: "Deploy:"
+      - generic [ref=e25]: cold
+    - generic [ref=e26]: "|"
+    - generic [ref=e27]:
+      - generic [ref=e28]: "Face:"
+      - generic [ref=e29]: livetalking_stopped
+    - generic [ref=e30]:
+      - generic [ref=e31]: "Voice:"
+      - generic [ref=e32]: unknown
+    - generic [ref=e33]:
+      - generic [ref=e34]: "Stream:"
+      - generic [ref=e35]: idle
+    - generic [ref=e36]: "|"
+    - generic [ref=e37]:
+      - generic [ref=e38]: "Src:"
+      - generic [ref=e39]: websocket
+  - tablist [ref=e40]:
+    - tab "Overview" [ref=e41] [cursor=pointer]
+    - tab "Voice" [active] [selected] [ref=e42] [cursor=pointer]
+    - tab "Face Engine" [ref=e43] [cursor=pointer]
+    - tab "Stream" [ref=e44] [cursor=pointer]
+    - tab "Validation" [ref=e45] [cursor=pointer]
+    - tab "Monitor" [ref=e46] [cursor=pointer]
+    - tab "Commerce" [ref=e47] [cursor=pointer]
+    - tab "Diagnostics" [ref=e48] [cursor=pointer]
+  - main [ref=e49]:
+    - generic [ref=e260]:
+      - generic [ref=e262]:
+        - heading "Voice Control Center" [level=2] [ref=e263]
+        - paragraph [ref=e264]: Operator cockpit for Fish-Speech state, clone readiness, queue health, and recovery actions.
+      - generic [ref=e265]:
+        - generic [ref=e266]:
+          - generic [ref=e267]: Voice runtime
+          - generic [ref=e268]: unknown
+          - generic [ref=e269]: Requested fish_speech · Resolved unknown
+        - generic [ref=e270]:
+          - generic [ref=e271]: Fallback state
+          - generic [ref=e272]: "OFF"
+          - generic [ref=e273]: Reference ready yes · Sidecar down
+      - generic [ref=e274]:
+        - generic [ref=e275]:
+          - generic [ref=e276]: Voice status
+          - generic [ref=e277]:
+            - generic [ref=e278]:
+              - text: Queue Depth
+              - generic [ref=e279]: "0"
+            - generic [ref=e280]:
+              - text: Chunk Size
+              - generic [ref=e281]: n/a
+            - generic [ref=e282]:
+              - text: Last Latency
+              - generic [ref=e283]: n/a ms
+            - generic [ref=e284]:
+              - text: P50 / P95
+              - generic [ref=e285]: n/a / n/a ms
+        - generic [ref=e286]:
+          - generic [ref=e287]: Operator controls
+          - generic [ref=e288]:
+            - button "Warmup Voice" [ref=e289] [cursor=pointer]
+            - button "Clear Queue" [ref=e290] [cursor=pointer]
+            - button "Restart Voice" [ref=e291] [cursor=pointer]
+            - button "Refresh Truth" [ref=e292] [cursor=pointer]
+        - generic [ref=e293]:
+          - generic [ref=e294]: Voice testing
+          - generic [ref=e295]:
+            - generic [ref=e296]:
+              - generic [ref=e297]: Load Reference
+              - strong [ref=e298]: ready
+            - generic [ref=e299]:
+              - generic [ref=e300]: Run Clone Smoke
+              - strong [ref=e301]: manual via Validation
+            - generic [ref=e302]:
+              - generic [ref=e303]: Chunking Check
+              - strong [ref=e304]: manual via Validation
+        - generic [ref=e305]:
+          - generic [ref=e306]: Diagnostics
+          - generic [ref=e307]:
+            - generic [ref=e308]:
+              - text: Deployment
+              - generic [ref=e309]: cold
+            - generic [ref=e310]:
+              - text: Time to First Audio
+              - generic [ref=e311]: n/a ms
+            - generic [ref=e312]:
+              - text: Last Error
+              - generic [ref=e313]: none

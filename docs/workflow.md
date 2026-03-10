@@ -40,8 +40,8 @@ See `docs/specs/local_audio_vertical_slice_fish_speech.md`.
 ## Current Validation Snapshot
 
 - `cd src/dashboard/frontend && npm run build` -> PASS
-- `cd src/dashboard/frontend && npm run test` -> PASS (`40 passed`, 5 test files)
-- `cd src/dashboard/frontend && npx playwright test` -> PASS (`8 passed`)
+- `cd src/dashboard/frontend && npm run test` -> PASS (`51 passed`, 9 test files)
+- `cd src/dashboard/frontend && npm run test:e2e` -> PASS (`8 passed`)
 - `uv run pytest tests -q -p no:cacheprovider` -> `219 passed, 1 skipped`
 - `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
 - `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE`
@@ -82,14 +82,24 @@ uv sync --extra dev
 uv run python scripts/manage.py serve --mock
 ```
 
-### Local URLs
+## Operator Runtime Model
+
+- Local machine remains the **truth lab** for mock mode, slice validation, and dry-run checks.
+- Production/live execution moves to a **server-hosted ops controller** served from `/dashboard`.
+- FastAPI remains the control plane, while Fish-Speech and LiveTalking remain sidecars.
+- Browser disconnect must not stop a live session running on the server host.
+
+### Operator URLs
 
 | URL | Purpose |
 |-----|---------|
-| `http://localhost:8000/dashboard` | Operator dashboard |
+| `http://localhost:8000/dashboard` | Local operator dashboard / truth lab |
+| `http://SERVER_IP_OR_DOMAIN/dashboard` | Server-hosted ops controller |
 | `http://localhost:8000/docs` | FastAPI schema |
 | `http://localhost:8000/diagnostic/` | Diagnostics |
 | `http://localhost:8010/*.html` | LiveTalking vendor debug pages |
+
+> Production deployment requires a reverse proxy in front of FastAPI for auth and TLS.
 
 ## Verification
 

@@ -90,16 +90,41 @@ vi.mock('../lib/api', () => ({
   validateMockStack: vi.fn(),
   validateRuntimeTruth: vi.fn().mockResolvedValue({ status: 'pass', checks: [], evidence_id: 1 }),
   validateRealModeReadiness: vi.fn().mockResolvedValue({ status: 'blocked', checks: [], blockers: [] }),
+  validateVoiceLocalClone: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  validateAudioChunkingSmoke: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  validateStreamDryRun: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  validateResourceBudget: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  validateSoakSanity: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
   getValidationHistory: vi.fn().mockResolvedValue([]),
+  getOpsSummary: vi.fn().mockResolvedValue({
+    overall_status: 'ready',
+    deployment_mode: 'ready',
+    voice_status: 'healthy',
+    face_status: 'healthy',
+    stream_status: 'idle',
+    incident_summary: { open_count: 0, highest_severity: 'none' },
+    resource_metrics: { cpu_pct: 0, ram_pct: 0, disk_pct: 0, vram_pct: null },
+    restart_counters: { voice: 0, face: 0, stream: 0 },
+  }),
+  getResources: vi.fn().mockResolvedValue({ cpu_pct: 0, ram_pct: 0, disk_pct: 0, vram_pct: null }),
+  getIncidents: vi.fn().mockResolvedValue([]),
+  ackIncident: vi.fn().mockResolvedValue({ status: 'success', message: 'acknowledged' }),
+  voiceWarmup: vi.fn().mockResolvedValue({ status: 'success', message: 'warmed' }),
+  voiceQueueClear: vi.fn().mockResolvedValue({ status: 'success', message: 'cleared' }),
+  voiceRestart: vi.fn().mockResolvedValue({ status: 'success', message: 'restarted' }),
 }));
 
 describe('App shell', () => {
-  it('renders the tab navigation with Engine tab', () => {
+  it('renders ops cockpit navigation tabs', () => {
     render(App);
 
-    expect(screen.getByRole('tab', { name: 'Engine' })).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Overview' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Readiness' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Voice' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Face Engine' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Stream' })).toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Validation' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Readiness' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Preview' })).not.toBeInTheDocument();
   });
 
   it('renders the header', () => {

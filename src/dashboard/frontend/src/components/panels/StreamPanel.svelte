@@ -103,7 +103,10 @@
 
 <div class="panel">
   <div class="panel-header">
-    <h2 class="panel-title">Stream Control</h2>
+    <div>
+      <h2 class="panel-title">Stream Control Center</h2>
+      <p class="panel-subtitle">Run dry-runs, validate RTMP, move pipeline state, and control live output.</p>
+    </div>
     <div class="panel-meta">
       <ProvenanceBadge provenance={truth?.provenance?.stream_status || 'unknown'} />
       <FreshnessBadge timestamp={loadedAt} />
@@ -114,89 +117,93 @@
   <ActionReceipt {receipt} />
 
   {#if loading}
-    <p class="muted">Loading...</p>
+    <p class="muted">Loading stream control center...</p>
   {:else}
-    <div class="grid">
-      <div class="card">
-        <div class="card-title">Stream Status</div>
-        <div class="metric-value">{status.stream_status || 'idle'}</div>
-        {#if truth}
-          <div class="runtime-mode">Runtime: <span class="mode-value">{truth.stream_runtime_mode}</span></div>
-        {/if}
-        <div class="btn-row">
-          <button class="btn btn-start btn-sm" onclick={handleStartStream}
-            disabled={status.stream_running || status.emergency_stopped}>Start Stream</button>
-          <button class="btn btn-stop btn-sm" onclick={handleStopStream}
-            disabled={!status.stream_running}>Stop Stream</button>
-        </div>
-        <div class="btn-row" style="margin-top: 8px;">
+    <div class="hero-grid">
+      <section class="hero-card">
+        <div class="eyebrow">Stream posture</div>
+        <div class="hero-value">{status.stream_status || 'idle'}</div>
+        <div class="hero-copy">Runtime {truth?.stream_runtime_mode || 'unknown'} · Pipeline {pipeline?.current_state || 'unknown'}</div>
+      </section>
+      <section class="hero-card emergency" class:alert={status.emergency_stopped}>
+        <div class="eyebrow">Emergency state</div>
+        <div class="hero-value">{status.emergency_stopped ? 'LOCKED' : 'CLEAR'}</div>
+        <div class="hero-copy">Use emergency stop only for hard recovery situations.</div>
+      </section>
+    </div>
+
+    <div class="section-grid">
+      <section class="card">
+        <div class="section-title">Live controls</div>
+        <div class="button-stack">
+          <button class="btn btn-start" onclick={handleStartStream} disabled={status.stream_running || status.emergency_stopped}>Start Stream</button>
+          <button class="btn btn-stop" onclick={handleStopStream} disabled={!status.stream_running}>Stop Stream</button>
           {#if status.emergency_stopped}
-            <button class="btn btn-reset btn-sm" onclick={handleEmergencyReset}>Reset Emergency</button>
+            <button class="btn btn-reset" onclick={handleEmergencyReset}>Reset Emergency</button>
           {:else}
-            <button class="btn btn-emergency btn-sm" onclick={handleEmergencyStop}>Emergency Stop</button>
+            <button class="btn btn-emergency" onclick={handleEmergencyStop}>Emergency Stop</button>
           {/if}
         </div>
-      </div>
+      </section>
 
-      <div class="card">
-        <div class="card-title">RTMP Validation</div>
-        <button class="btn btn-ghost btn-sm" onclick={handleValidateRtmp}>Validate RTMP Target</button>
+      <section class="card">
+        <div class="section-title">RTMP validation</div>
+        <button class="btn btn-ghost" onclick={handleValidateRtmp}>Validate RTMP Target</button>
         {#if rtmpResult}
-          <div class="validation-result" class:pass={rtmpResult.status === 'pass'} class:fail={rtmpResult.status !== 'pass'}>
-            <p><strong>{rtmpResult.status?.toUpperCase()}</strong></p>
+          <div class="result-box" class:pass={rtmpResult.status === 'pass'} class:fail={rtmpResult.status !== 'pass'}>
+            <strong>{rtmpResult.status?.toUpperCase()}</strong>
             {#each rtmpResult.checks || [] as check}
               <div class="check-row">
-                <span class:green={check.passed} class:red={!check.passed}>{check.passed ? '●' : '○'}</span>
+                <span>{check.passed ? '●' : '○'}</span>
                 <span>{check.check}</span>
                 <span class="muted">{check.message}</span>
               </div>
             {/each}
           </div>
         {/if}
-      </div>
+      </section>
 
-      <div class="card">
-        <div class="card-title">Pipeline State</div>
-        <div class="metric-value">{pipeline?.current_state || 'UNKNOWN'}</div>
-        <div class="btn-row">
+      <section class="card span-2">
+        <div class="section-title">Pipeline state machine</div>
+        <div class="pipeline-grid">
           {#each pipelineTargets as target}
-            <button class="btn btn-ghost btn-sm"
-              class:btn-active={pipeline?.current_state === target}
-              disabled={pipeline?.current_state === target}
-              onclick={() => handlePipelineTransition(target)}>{target}</button>
+            <button class="btn btn-ghost" class:active={pipeline?.current_state === target} disabled={pipeline?.current_state === target} onclick={() => handlePipelineTransition(target)}>{target}</button>
           {/each}
         </div>
-      </div>
+      </section>
     </div>
   {/if}
 </div>
 
 <style>
   .panel { padding: 4px 0; }
-  .panel-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-  .panel-title { font-size: 18px; font-weight: 700; }
-  .panel-meta { display: flex; align-items: center; gap: 8px; }
-  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
-  .card { background: var(--card); border-radius: var(--radius); padding: 18px; border: 1px solid var(--border); }
-  .card-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.2px; margin-bottom: 10px; }
-  .metric-value { font-size: 22px; font-weight: 800; margin-bottom: 10px; }
-  .runtime-mode { font-size: 12px; color: var(--muted); margin-bottom: 10px; }
-  .mode-value { font-weight: 700; color: var(--text); }
-  .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-  .btn { padding: 8px 16px; border: none; border-radius: var(--rsm); cursor: pointer; font-size: 12px; font-weight: 700; font-family: inherit; transition: all .2s; }
-  .btn:disabled { opacity: .4; cursor: not-allowed; }
-  .btn-ghost { background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--border); }
-  .btn-active { background: rgba(255,255,255,.15); border-color: var(--cyan, #22d3ee); color: var(--cyan, #22d3ee); }
-  .btn-sm { padding: 5px 10px; font-size: 11px; }
+  .panel-header { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; margin-bottom: 16px; }
+  .panel-title { font-size: 22px; font-weight: 800; margin: 0 0 6px; }
+  .panel-subtitle { margin: 0; color: var(--muted); font-size: 13px; }
+  .panel-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hero-grid, .section-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .hero-grid { margin-bottom: 14px; }
+  .hero-card, .card { background: var(--card); border-radius: var(--radius); border: 1px solid var(--border); padding: 18px; }
+  .hero-card.emergency.alert { box-shadow: inset 0 0 0 1px rgba(233,69,96,.28); }
+  .eyebrow, .section-title { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 1.1px; }
+  .hero-value { font-size: 32px; font-weight: 900; margin: 8px 0; }
+  .hero-copy { color: var(--muted); font-size: 13px; }
+  .button-stack, .pipeline-grid { display: grid; gap: 10px; margin-top: 12px; }
+  .pipeline-grid { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); }
+  .span-2 { grid-column: span 2; }
+  .btn { padding: 10px 14px; border-radius: var(--rsm); border: 1px solid var(--border); cursor: pointer; font-weight: 700; font-family: inherit; }
+  .btn:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-ghost { background: rgba(255,255,255,.05); color: var(--text); }
+  .btn-ghost.active { border-color: var(--cyan); color: var(--cyan); }
+  .btn-sm { padding: 6px 10px; font-size: 11px; }
   .btn-start { background: var(--green); color: #000; }
   .btn-stop { background: var(--yellow); color: #000; }
   .btn-emergency { background: var(--accent); color: #fff; }
   .btn-reset { background: var(--blue, #3b82f6); color: #fff; }
-  .validation-result { margin-top: 10px; padding: 10px; border-radius: var(--rsm); }
-  .validation-result.pass { background: rgba(0,230,118,.05); }
-  .validation-result.fail { background: rgba(233,69,96,.05); }
-  .check-row { display: flex; gap: 8px; font-size: 12px; padding: 3px 0; }
-  .green { color: var(--green); }
-  .red { color: var(--accent); }
+  .result-box { margin-top: 12px; padding: 12px; border-radius: var(--rsm); }
+  .result-box.pass { background: rgba(0,230,118,.05); }
+  .result-box.fail { background: rgba(233,69,96,.05); }
+  .check-row { display: flex; gap: 8px; font-size: 12px; padding-top: 8px; }
   .muted { color: var(--muted); }
+  @media (max-width: 1024px) { .span-2 { grid-column: span 1; } }
 </style>

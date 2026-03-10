@@ -6,14 +6,13 @@
 
   const tabs = [
     'Overview',
-    'Readiness',
-    'Engine',
-    'Preview',
+    'Voice',
+    'Face Engine',
     'Stream',
-    'Commerce',
-    'Monitor',
-    'Diagnostics',
     'Validation',
+    'Monitor',
+    'Commerce',
+    'Diagnostics',
   ];
 
   let activeTab = $state('Overview');

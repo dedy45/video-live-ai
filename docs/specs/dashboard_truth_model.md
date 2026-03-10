@@ -103,7 +103,38 @@ A component is `REAL VERIFIED` only if:
 
 Everything else is at best `LOCAL VERIFIED` (works in mock/local) or `PARTIAL`.
 
-## 7. Truth API Contract
+## 7. Extended Ops Controller Fields
+
+The server-hosted ops controller extends the baseline truth contract with server-side operational placeholders even before all production wiring is complete.
+
+Additional top-level fields:
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `host` | object | Host identity and role for the current runtime |
+| `deployment_mode` | string | Current operations lifecycle mode |
+| `incident_summary` | object | Open incident count and highest severity |
+| `guardrails` | object | Active policy tripwires surfaced by the backend |
+
+Minimum placeholder shape:
+
+```json
+{
+  "host": {"name": "gpu-01", "role": "local_lab"},
+  "deployment_mode": "cold",
+  "incident_summary": {"open_count": 0, "highest_severity": "none"},
+  "guardrails": {"restart_storm": false, "disk_pressure": false}
+}
+```
+
+Rules:
+
+- These fields must always exist, even when the system is still in local-lab mode.
+- Placeholder values are allowed, but the response shape must remain stable.
+- `host.role` should distinguish at least `local_lab` and `server_production`.
+- `deployment_mode` must never be omitted; use an explicit value such as `cold` when the system is idle.
+
+## 8. Truth API Contract
 
 The backend exposes a single consolidated truth endpoint:
 

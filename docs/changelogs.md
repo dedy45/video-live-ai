@@ -1,5 +1,34 @@
 # Changelog
 
+## v0.5.15 — 2026-03-10 (Server-Hosted Ops Controller Surfaces)
+
+### OK Backend truth contract now exposes ops-controller state
+- Runtime truth now carries host identity, deployment mode, incident summary, guardrails, resource metrics, and restart counters
+- Added server-side ops state and in-memory incident registry surfaces for dashboard consumption
+- Added voice operator actions (`warmup`, `queue clear`, `restart`) with explicit operator receipts
+- Added production validation gates for audio chunking, stream dry run, resource budget, and soak sanity
+
+### OK Frontend dashboard now reflects the server-hosted ops model
+- Truth Bar now shows host and deployment context instead of only local runtime state
+- Added `OpsSummaryPanel` for overall status, restart count, incident severity, and resource pressure
+- Added `VoicePanel` for voice engine truth and operator actions
+- Expanded Validation Console with production-oriented validation controls
+- Added `IncidentsPanel` and refocused Monitor toward resources and recent incidents, keeping chat secondary
+
+### OK Source-of-truth docs now describe the ops architecture evolution honestly
+- `README.md`, `docs/architecture.md`, `docs/workflow.md`, `docs/security.md`, `docs/task_status.md`, and `docs/README.md` now describe `/dashboard` as the single operator UI across local lab and server-hosted production
+- Production guidance now explicitly requires reverse proxy auth/TLS and states that browser disconnect must not stop server execution
+
+### Verification
+- `cd src/dashboard/frontend && npm test -- src/tests/truth-bar.test.ts src/tests/validation-panel.test.ts src/tests/ops-summary-panel.test.ts src/tests/voice-panel.test.ts src/tests/incidents-panel.test.ts` -> `17 passed`
+- `cd src/dashboard/frontend && npm run test` -> `51 passed`
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test:e2e` -> `8 passed`
+- `uv run pytest tests/test_dashboard.py -q -p no:cacheprovider` -> `42 passed` (with known FastAPI deprecation warnings and a Windows temp-cleanup PermissionError after pass)
+
+
+
+
 ## v0.5.14 — 2026-03-10 (Fish-Speech Local Direct-Test Verification + Docs Sync)
 
 ### OK Fish-Speech client now matches the real sidecar contract

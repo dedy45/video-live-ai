@@ -71,10 +71,12 @@ Endpoints TANPA auth (monitoring & internal tooling):
 ## Network Security
 
 - HTTPS untuk semua API calls eksternal (LLM providers)
-- Dashboard memerlukan HTTP Basic auth
+- Dashboard production wajib dipublish lewat reverse proxy dengan auth dan TLS
+- Jangan expose FastAPI dashboard langsung ke internet tanpa proxy boundary
 - CORS policy untuk whitelist origins (configurable via `config.yaml`)
 - Rate limiting bisa ditambahkan via FastAPI middleware
-- WebSocket connections tanpa auth (data non-sensitif)
+- WebSocket connections untuk production sebaiknya ikut berada di belakang reverse proxy policy yang sama
+- Browser disconnect tidak boleh dianggap sebagai stop signal untuk proses live yang berjalan di server
 
 ## Mock Mode Security
 

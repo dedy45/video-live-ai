@@ -63,8 +63,10 @@ export interface EngineConfig {
 }
 
 export interface ValidationResult {
-  status: 'pass' | 'fail' | 'error';
+  status: 'pass' | 'fail' | 'error' | 'blocked';
   checks: Array<{ check: string; passed: boolean; message: string }>;
+  blockers?: string[];
+  evidence_id?: number;
   error?: string;
 }
 
@@ -77,10 +79,70 @@ export interface FaceEngineTruth {
   fallback_active: boolean;
 }
 
+export interface VoiceEngineTruth {
+  requested_engine: string;
+  resolved_engine: string;
+  fallback_active: boolean;
+  server_reachable: boolean;
+  reference_ready: boolean;
+  queue_depth: number;
+  chunk_chars: number | null;
+  time_to_first_audio_ms: number | null;
+  latency_p50_ms: number | null;
+  latency_p95_ms: number | null;
+  last_latency_ms: number | null;
+  last_error: string | null;
+}
+
+export interface ResourceMetrics {
+  cpu_pct: number;
+  ram_pct: number;
+  disk_pct: number;
+  vram_pct: number | null;
+}
+
+export interface RestartCounters {
+  voice: number;
+  face: number;
+  stream: number;
+}
+
+export interface IncidentSummary {
+  open_count: number;
+  highest_severity: string;
+}
+
+export interface OpsSummary {
+  overall_status: string;
+  deployment_mode: string;
+  voice_status: string;
+  face_status: string;
+  stream_status: string;
+  incident_summary: IncidentSummary;
+  resource_metrics: ResourceMetrics;
+  restart_counters: RestartCounters;
+}
+
+export interface Incident {
+  id: string;
+  code: string;
+  severity: string;
+  subsystem: string;
+  message?: string;
+  acknowledged?: boolean;
+  resolved?: boolean;
+  created_at?: string;
+}
+
 export interface RuntimeTruth {
   mock_mode: boolean;
+  host?: { name: string; role: string };
+  deployment_mode?: string;
+  incident_summary?: { open_count: number; highest_severity: string };
+  guardrails?: { restart_storm: boolean; disk_pressure: boolean };
   face_runtime_mode: string;
   face_engine?: FaceEngineTruth;
+  voice_engine?: VoiceEngineTruth;
   voice_runtime_mode: string;
   stream_runtime_mode: string;
   validation_state: string;

@@ -1,0 +1,139 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - heading "AI Live Commerce — Command Center" [level=1] [ref=e5]
+  - generic [ref=e6]:
+    - generic [ref=e7]: LIVE
+    - generic [ref=e8]:
+      - generic [ref=e9]: "Validation:"
+      - generic [ref=e10]: unvalidated
+    - generic [ref=e11]:
+      - generic [ref=e12]: "Origin:"
+      - generic [ref=e13]: real_local
+    - generic [ref=e14]:
+      - generic [ref=e15]: "Validated:"
+      - generic [ref=e16]: never
+    - generic [ref=e17]:
+      - generic [ref=e18]: "Host:"
+      - generic [ref=e19]: DESKTOP-N1GGHD7
+    - generic [ref=e20]:
+      - generic [ref=e21]: "Role:"
+      - generic [ref=e22]: local_lab
+    - generic [ref=e23]:
+      - generic [ref=e24]: "Deploy:"
+      - generic [ref=e25]: cold
+    - generic [ref=e26]: "|"
+    - generic [ref=e27]:
+      - generic [ref=e28]: "Face:"
+      - generic [ref=e29]: livetalking_stopped
+    - generic [ref=e30]:
+      - generic [ref=e31]: "Voice:"
+      - generic [ref=e32]: unknown
+    - generic [ref=e33]:
+      - generic [ref=e34]: "Stream:"
+      - generic [ref=e35]: idle
+    - generic [ref=e36]: "|"
+    - generic [ref=e37]:
+      - generic [ref=e38]: "Src:"
+      - generic [ref=e39]: polling
+  - tablist [ref=e40]:
+    - tab "Overview" [selected] [ref=e41] [cursor=pointer]
+    - tab "Voice" [ref=e42] [cursor=pointer]
+    - tab "Face Engine" [ref=e43] [cursor=pointer]
+    - tab "Stream" [ref=e44] [cursor=pointer]
+    - tab "Validation" [ref=e45] [cursor=pointer]
+    - tab "Monitor" [ref=e46] [cursor=pointer]
+    - tab "Commerce" [ref=e47] [cursor=pointer]
+    - tab "Diagnostics" [ref=e48] [cursor=pointer]
+  - main [ref=e49]:
+    - generic [ref=e50]:
+      - generic [ref=e51]:
+        - heading "Ops Summary" [level=2] [ref=e53]
+        - generic [ref=e54]:
+          - generic [ref=e55]:
+            - generic [ref=e56]: Overall Status
+            - generic [ref=e57]: cold
+          - generic [ref=e58]:
+            - generic [ref=e59]: Deployment Mode
+            - generic [ref=e60]: cold
+          - generic [ref=e61]:
+            - generic [ref=e62]: Restart Count
+            - generic [ref=e63]: "0"
+          - generic [ref=e64]:
+            - generic [ref=e65]: Incident Severity
+            - generic [ref=e66]: none
+          - generic [ref=e67]:
+            - generic [ref=e68]: Voice / Face / Stream
+            - generic [ref=e69]: unknown / livetalking_stopped / idle
+          - generic [ref=e70]:
+            - generic [ref=e71]: Resource Pressure
+            - generic [ref=e72]: CPU 0% · RAM 0% · Disk 0%
+      - generic [ref=e73]:
+        - generic [ref=e74]:
+          - generic [ref=e75]:
+            - heading "Operations Cockpit" [level=2] [ref=e76]
+            - paragraph [ref=e77]: Global command view for state, pressure, live posture, and operator focus.
+          - generic [ref=e78]:
+            - generic [ref=e79]: real_local
+            - generic [ref=e80]: just now
+            - generic [ref=e81]: polling
+        - generic [ref=e82]:
+          - generic [ref=e83]:
+            - generic [ref=e84]: System posture
+            - generic [ref=e85]: IDLE
+            - generic [ref=e86]: Deployment cold · Stream idle · Mock off
+          - generic [ref=e87]:
+            - generic [ref=e88]: Operator alert
+            - generic [ref=e89]: NORMAL
+            - generic [ref=e90]: Emergency latch clear · Voice unknown · Face livetalking_stopped
+        - generic [ref=e91]:
+          - generic [ref=e92]:
+            - generic [ref=e93]: Live snapshot
+            - generic [ref=e94]:
+              - generic [ref=e95]:
+                - text: Viewers
+                - generic [ref=e96]: "0"
+              - generic [ref=e97]:
+                - text: Uptime
+                - generic [ref=e98]: 45m
+              - generic [ref=e99]:
+                - text: Budget
+                - generic [ref=e100]: $5.00
+              - generic [ref=e101]:
+                - text: Current Product
+                - generic [ref=e102]: Skincare Glow Set Premium
+          - generic [ref=e103]:
+            - generic [ref=e104]: Voice / Face / Stream
+            - generic [ref=e105]:
+              - generic [ref=e106]:
+                - generic [ref=e107]: Voice
+                - strong [ref=e108]: unknown
+              - generic [ref=e109]:
+                - generic [ref=e110]: Face
+                - strong [ref=e111]: livetalking_stopped
+              - generic [ref=e112]:
+                - generic [ref=e113]: Stream
+                - strong [ref=e114]: idle
+          - generic [ref=e115]:
+            - generic [ref=e116]: Resource pressure
+            - generic [ref=e117]:
+              - generic [ref=e118]:
+                - generic [ref=e119]: CPU
+                - strong [ref=e120]: 0%
+              - generic [ref=e121]:
+                - generic [ref=e122]: RAM
+                - strong [ref=e123]: 0%
+              - generic [ref=e124]:
+                - generic [ref=e125]: Disk
+                - strong [ref=e126]: 0%
+          - generic [ref=e127]:
+            - generic [ref=e128]: Operator focus
+            - generic [ref=e129]:
+              - generic [ref=e130]:
+                - generic [ref=e131]: Next check
+                - generic [ref=e132]: Validation before live handoff
+              - generic [ref=e133]:
+                - generic [ref=e134]: Watch item
+                - generic [ref=e135]: Queue depth, fallback state, incidents
+              - generic [ref=e136]:
+                - generic [ref=e137]: Recommended path
+                - generic [ref=e138]: Overview → Voice → Face Engine → Stream → Validation

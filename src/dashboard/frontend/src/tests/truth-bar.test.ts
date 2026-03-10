@@ -151,4 +151,31 @@ describe('TruthBar', () => {
     const originEl = await screen.findByTestId('truth-origin');
     expect(originEl.textContent).toBe('mock');
   });
+
+  it('shows host role and deployment mode in the truth bar', async () => {
+    render(TruthBar);
+    pushSnapshot({
+      truth: {
+        mock_mode: false,
+        host: { name: 'gpu-01', role: 'server_production' },
+        deployment_mode: 'ready',
+        incident_summary: { open_count: 1, highest_severity: 'warn' },
+        guardrails: { restart_storm: false, disk_pressure: false },
+        face_runtime_mode: 'livetalking_local',
+        voice_runtime_mode: 'fish_speech_local',
+        stream_runtime_mode: 'idle',
+        validation_state: 'passed',
+        last_validated_at: null,
+        provenance: {
+          system_status: 'real_local',
+          engine_status: 'real_local',
+          stream_status: 'real_local',
+        },
+        timestamp: '2026-03-09T01:00:00Z',
+      },
+    });
+
+    expect(await screen.findByText(/gpu-01/i)).toBeInTheDocument();
+    expect(await screen.findByText(/ready/i)).toBeInTheDocument();
+  });
 });

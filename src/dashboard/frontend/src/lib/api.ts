@@ -34,6 +34,11 @@ export const validateLiveTalkingEngine = () => request<Record<string, any>>('/va
 export const validateRtmpTarget = () => request<Record<string, any>>('/validate/rtmp-target', { method: 'POST' });
 export const validateRuntimeTruth = () => request<Record<string, any>>('/validate/runtime-truth', { method: 'POST' });
 export const validateRealModeReadiness = () => request<Record<string, any>>('/validate/real-mode-readiness', { method: 'POST' });
+export const validateVoiceLocalClone = () => request<Record<string, any>>('/validate/voice-local-clone', { method: 'POST' });
+export const validateAudioChunkingSmoke = () => request<Record<string, any>>('/validate/audio-chunking-smoke', { method: 'POST' });
+export const validateStreamDryRun = () => request<Record<string, any>>('/validate/stream-dry-run', { method: 'POST' });
+export const validateResourceBudget = () => request<Record<string, any>>('/validate/resource-budget', { method: 'POST' });
+export const validateSoakSanity = () => request<Record<string, any>>('/validate/soak-sanity', { method: 'POST' });
 export const getValidationHistory = () => request<any[]>('/validation/history');
 
 // Products
@@ -47,6 +52,13 @@ export const getRecentChats = (limit = 20) => request<any[]>(`/chat/recent?limit
 
 // Runtime Truth
 export const getRuntimeTruth = () => request<Record<string, any>>('/runtime/truth');
+export const getOpsSummary = () => request<Record<string, any>>('/ops/summary');
+export const getResources = () => request<Record<string, any>>('/resources');
+export const getIncidents = () => request<any[]>('/incidents');
+export const ackIncident = (incidentId: string) => request<Record<string, any>>(`/incidents/${incidentId}/ack`, { method: 'POST' });
+export const voiceWarmup = () => request<Record<string, any>>('/voice/warmup', { method: 'POST' });
+export const voiceQueueClear = () => request<Record<string, any>>('/voice/queue/clear', { method: 'POST' });
+export const voiceRestart = () => request<Record<string, any>>('/voice/restart', { method: 'POST' });
 
 // Stream Control
 export const startStream = () => request<Record<string, any>>('/stream/start', { method: 'POST' });
