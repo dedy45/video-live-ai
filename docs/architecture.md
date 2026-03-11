@@ -1,7 +1,7 @@
 # VideoLiveAI Architecture
 
-> Version: 0.5.13
-> Last Updated: 2026-03-10  
+> Version: 0.5.17
+> Last Updated: 2026-03-11  
 > Target: Internal live system first  
 > Package Manager Policy: UV only
 
@@ -29,6 +29,7 @@ Arsitektur ini adalah **evolusi operasional**, bukan rewrite fondasi. Fokus saat
 | `videoliveai/src/stream` | RTMP stream management | Owned by project |
 | `videoliveai/src/data` | SQLite dan state lokal | Owned by project |
 | `videoliveai/external/livetalking` | Face engine vendor | Sidecar |
+| `videoliveai/external/fish-speech` | Voice sidecar checkout/checkpoints/runtime | Sidecar |
 | `videoliveai/external/livetalking/web` | Debug pages vendor | Debug only |
 
 ## Diagram Sistem
@@ -201,6 +202,8 @@ Arsitektur target internal harus menuju satu kebijakan path yang tegas:
 
 - model runtime LiveTalking: `external/livetalking/models/`
 - avatar runtime LiveTalking: `external/livetalking/data/avatars/`
+- fish-speech checkout/runtime: `external/fish-speech/`
+- fish-speech python env: `external/fish-speech/runtime/.venv/`
 - dashboard frontend build: `src/dashboard/frontend/`
 
 Catatan:
@@ -231,6 +234,10 @@ videoliveai/
 ├── tests/
 ├── docs/
 ├── external/
+│   ├── fish-speech/
+│   │   ├── upstream/
+│   │   ├── checkpoints/
+│   │   └── runtime/
 │   └── livetalking/
 │       ├── app.py
 │       ├── web/
@@ -265,6 +272,28 @@ videoliveai/
 - dashboard utama adalah Svelte SPA, diserve dari `src/dashboard/frontend/dist`
 - dashboard bukan hanya status cards — harus mengekspos runtime truth
 - setiap panel wajib menunjukkan provenance (asal data) dan tidak boleh menyembunyikannya
+- workflow operator resmi sekarang terdiri dari 6 surface:
+  - `Setup & Validasi`
+  - `Produk & Penawaran`
+  - `Avatar & Suara`
+  - `Streaming & Platform`
+  - `Konsol Live`
+  - `Monitor & Insiden`
+- `Avatar & Suara` sendiri adalah workspace bertab dengan 6 tab operator:
+  - `Ringkasan`
+  - `Suara`
+  - `Avatar`
+  - `Preview`
+  - `Validasi`
+  - `Teknis`
+- `Validation` dan `Diagnostics` bukan lagi halaman operator terpisah; keduanya digabung ke `Setup & Validasi` dan `Monitor & Insiden`
+- standalone operator entrypoints tetap didukung untuk debugging production-first:
+  - `index.html`
+  - `setup.html`
+  - `products.html`
+  - `performer.html`
+  - `stream.html`
+  - `monitor.html`
 
 ### Truth Model
 
@@ -304,12 +333,38 @@ Semua dokumentasi aktif harus mengikuti aturan ini:
 
 ```bash
 uv sync --extra dev
-uv run python scripts/manage.py setup-livetalking --skip-models
+uv run python scripts/manage.py setup all
+uv run python scripts/manage.py setup fish-speech
+uv run python scripts/manage.py start fish-speech
+uv run python scripts/manage.py start livetalking --mode musetalk
+uv run python scripts/manage.py status all
+uv run python scripts/manage.py open performer
+uv run python scripts/manage.py open monitor
 uv run pytest tests -q -p no:cacheprovider
 uv run python scripts/verify_pipeline.py --verbose
 uv run python scripts/manage.py serve --mock
 uv run python scripts/manage.py serve --real
 ```
+
+### Operator CLI policy
+
+`scripts/manage.py` adalah single source of truth untuk:
+
+- `setup`
+- `start`
+- `stop`
+- `status`
+- `validate`
+- `open`
+
+`scripts/menu.bat` hanyalah wrapper Windows tipis. Batch root lama bukan lagi sumber kebenaran.
+
+Untuk Fish-Speech:
+
+- checkout dipin ke line `v1.5.1`
+- checkpoint acceptance disimpan di `external/fish-speech/checkpoints/fish-speech-1.5/`
+- sidecar tidak boleh diinstall ke `.venv` control plane
+- sidecar wajib memakai env UV terpisah di `external/fish-speech/runtime/.venv/`
 
 ## Active Milestones
 
@@ -332,7 +387,7 @@ See `docs/specs/local_audio_vertical_slice_fish_speech.md`
 - Voice clone assets required: `assets/voice/reference.wav` + `assets/voice/reference.txt`
 - Runtime truth must expose requested/resolved voice engine with fallback visibility
 - `voice_runtime_mode` stays `unknown` until the engine is actually resolved by a real synthesis
-- Current local caveat: the direct-test slice now resolves `fish_speech_local` without fallback, but observed smoke latency on the current GTX 1650 setup is still around `31-40s`
+- Current local caveat: the direct-test slice now resolves `fish_speech_local` without fallback, but observed smoke latency on the current GTX 1650 setup is still around `20.9s`
 
 ## Status Saat Ini
 

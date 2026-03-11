@@ -7,6 +7,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
 
 os.environ["MOCK_MODE"] = "true"
 
@@ -202,6 +203,57 @@ async def test_livetalking_config_api_has_requested_resolved() -> None:
     assert "resolved_avatar_id" in result, "config API missing resolved_avatar_id"
 
 
+@pytest.mark.asyncio
+async def test_livetalking_start_api_returns_operator_receipt_fields() -> None:
+    """Start endpoint should return operator receipt metadata alongside engine state."""
+    from src.dashboard.api import engine_livetalking_start
+
+    result = await engine_livetalking_start()
+
+    assert result["status"] in {"success", "blocked", "error"}
+    assert result["action"] == "engine.start"
+    assert "message" in result
+    assert "reason_code" in result
+    assert "next_step" in result
+    assert "state" in result
+
+
+@pytest.mark.asyncio
+async def test_livetalking_stop_api_returns_operator_receipt_fields() -> None:
+    """Stop endpoint should return operator receipt metadata alongside engine state."""
+    from src.dashboard.api import engine_livetalking_stop
+
+    result = await engine_livetalking_stop()
+
+    assert result["status"] in {"success", "blocked", "error"}
+    assert result["action"] == "engine.stop"
+    assert "message" in result
+    assert "reason_code" in result
+    assert "next_step" in result
+    assert "state" in result
+
+
+@pytest.mark.asyncio
+async def test_livetalking_debug_targets_reports_reachability() -> None:
+    """Debug target probe should report each preview URL with reachability metadata."""
+    from src.dashboard.api import engine_livetalking_debug_targets
+
+    with patch(
+        "src.dashboard.api._probe_debug_target",
+        side_effect=[
+            {"url": "http://localhost:8010/webrtcapi.html", "reachable": False, "http_status": None, "error": "Connection refused"},
+            {"url": "http://localhost:8010/dashboard.html", "reachable": True, "http_status": 200, "error": None},
+            {"url": "http://localhost:8010/rtcpushapi.html", "reachable": False, "http_status": None, "error": "Connection refused"},
+        ],
+    ):
+        result = await engine_livetalking_debug_targets()
+
+    assert "checked_at" in result
+    assert result["targets"]["webrtcapi"]["reachable"] is False
+    assert result["targets"]["dashboard_vendor"]["http_status"] == 200
+    assert result["targets"]["rtcpushapi"]["error"] == "Connection refused"
+
+
 # === Runtime Truth API Tests ===
 
 @pytest.mark.asyncio
@@ -270,6 +322,21 @@ async def test_runtime_truth_exposes_ops_contract() -> None:
     assert "guardrails" in result
 
 
+def test_operator_endpoints_send_no_store_headers() -> None:
+    """Operator endpoints should disable browser/proxy caching."""
+    from src.main import create_app
+
+    app = create_app()
+    client = TestClient(app)
+
+    for path in ("/api/status", "/api/runtime/truth", "/api/resources", "/api/ops/summary", "/dashboard"):
+        response = client.get(path)
+        assert response.status_code == 200
+        assert response.headers["Cache-Control"] == "no-store, no-cache, must-revalidate"
+        assert response.headers["Pragma"] == "no-cache"
+        assert response.headers["Expires"] == "0"
+
+
 def test_incident_registry_tracks_open_incidents() -> None:
     """Incident registry should track unresolved incidents."""
     from src.dashboard.incidents import IncidentRegistry
@@ -310,6 +377,35 @@ async def test_voice_test_speak_receipt_shape() -> None:
     assert "message" in result
     assert "text" in result
     assert result["text"] == "halo operator"
+
+
+@pytest.mark.asyncio
+async def test_voice_test_speak_uses_fish_speech_engine_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Voice test speak should use the production FishSpeechEngine path, not a missing helper import."""
+    from src.dashboard.api import voice_test_speak
+    from src.voice.engine import AudioResult
+
+    monkeypatch.setenv("MOCK_MODE", "false")
+
+    class DummyFishSpeechEngine:
+        async def health_check(self) -> bool:
+            return True
+
+        async def synthesize(self, text: str, emotion: str = "neutral", speed: float = 1.0, trace_id: str = "") -> AudioResult:
+            return AudioResult(
+                audio_data=b"WAVDATA",
+                duration_ms=125.0,
+                text=text,
+                emotion=emotion,
+                latency_ms=42.0,
+            )
+
+    monkeypatch.setattr("src.voice.engine.FishSpeechEngine", DummyFishSpeechEngine)
+
+    result = await voice_test_speak(text="halo production")
+    assert result["status"] == "success"
+    assert result["text"] == "halo production"
+    assert result["audio_length_bytes"] == len(b"WAVDATA")
 
 
 def test_products_api_exposes_affiliate_fields() -> None:

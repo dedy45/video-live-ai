@@ -16,8 +16,10 @@ from __future__ import annotations
 import asyncio
 import os
 import time
+from datetime import datetime, timezone
 from typing import Any
 
+import httpx
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
@@ -732,6 +734,57 @@ async def ws_chat(websocket: WebSocket) -> None:
 
 # ── LiveTalking Engine Control Endpoints ───────────────────
 
+
+def _build_engine_action_result(
+    *,
+    action: str,
+    status: str,
+    message: str,
+    reason_code: str,
+    next_step: str,
+    payload: dict[str, Any],
+    details: list[str] | None = None,
+) -> dict[str, Any]:
+    """Attach operator-facing receipt fields without dropping engine payload."""
+    return {
+        "status": status,
+        "action": action,
+        "message": message,
+        "reason_code": reason_code,
+        "details": details or [],
+        "next_step": next_step,
+        **payload,
+    }
+
+
+def _probe_debug_target(url: str) -> dict[str, Any]:
+    """Probe a preview/debug URL so the frontend can disable dead links with context."""
+    if not url:
+        return {
+            "url": "",
+            "reachable": False,
+            "http_status": None,
+            "error": "URL tidak tersedia",
+        }
+
+    try:
+        response = httpx.get(url, follow_redirects=True, timeout=2.5)
+        reachable = response.status_code < 400
+        return {
+            "url": url,
+            "reachable": reachable,
+            "http_status": response.status_code,
+            "error": None if reachable else f"HTTP {response.status_code}",
+        }
+    except httpx.HTTPError as exc:
+        return {
+            "url": url,
+            "reachable": False,
+            "http_status": None,
+            "error": str(exc),
+        }
+
+
 @router.get("/engine/livetalking/status")
 async def engine_livetalking_status() -> dict[str, Any]:
     """Get LiveTalking engine status."""
@@ -752,10 +805,41 @@ async def engine_livetalking_start() -> dict[str, Any]:
         mgr = get_livetalking_manager()
         status = mgr.start()
         logger.info("engine_livetalking_start_api", state=status.state.value)
-        return status.to_dict()
+        payload = status.to_dict()
+        state = payload.get("state", "unknown")
+        receipt_status = "success" if state == "running" else "blocked"
+        return _build_engine_action_result(
+            action="engine.start",
+            status=receipt_status,
+            message=(
+                "Avatar menerima perintah jalan."
+                if receipt_status == "success"
+                else "Perintah jalan sudah dikirim, tetapi avatar belum melapor berjalan."
+            ),
+            reason_code="engine_start_requested" if receipt_status == "success" else "engine_start_not_confirmed",
+            next_step=(
+                "Tunggu status avatar berubah menjadi berjalan."
+                if receipt_status == "success"
+                else "Periksa tab Teknis atau muat ulang status avatar."
+            ),
+            payload=payload,
+            details=[
+                f"state {state}",
+                f"transport {payload.get('transport', 'unknown')}",
+                f"port {payload.get('port', 'unknown')}",
+            ],
+        )
     except Exception as e:
         logger.error("engine_start_error", error=str(e), exc_info=True)
-        return {"state": "error", "last_error": str(e)}
+        return _build_engine_action_result(
+            action="engine.start",
+            status="error",
+            message="Avatar gagal dijalankan.",
+            reason_code="engine_start_failed",
+            next_step="Periksa tab Teknis dan log engine sebelum mencoba lagi.",
+            payload={"state": "error", "last_error": str(e)},
+            details=[str(e)],
+        )
 
 
 @router.post("/engine/livetalking/stop")
@@ -766,10 +850,41 @@ async def engine_livetalking_stop() -> dict[str, Any]:
         mgr = get_livetalking_manager()
         status = mgr.stop()
         logger.info("engine_livetalking_stop_api", state=status.state.value)
-        return status.to_dict()
+        payload = status.to_dict()
+        state = payload.get("state", "unknown")
+        receipt_status = "success" if state == "stopped" else "blocked"
+        return _build_engine_action_result(
+            action="engine.stop",
+            status=receipt_status,
+            message=(
+                "Avatar menerima perintah berhenti."
+                if receipt_status == "success"
+                else "Perintah berhenti sudah dikirim, tetapi avatar belum melapor berhenti."
+            ),
+            reason_code="engine_stop_requested" if receipt_status == "success" else "engine_stop_not_confirmed",
+            next_step=(
+                "Tunggu status avatar berubah menjadi berhenti."
+                if receipt_status == "success"
+                else "Periksa tab Teknis dan pastikan proses avatar benar-benar berhenti."
+            ),
+            payload=payload,
+            details=[
+                f"state {state}",
+                f"transport {payload.get('transport', 'unknown')}",
+                f"port {payload.get('port', 'unknown')}",
+            ],
+        )
     except Exception as e:
         logger.error("engine_stop_error", error=str(e), exc_info=True)
-        return {"state": "error", "last_error": str(e)}
+        return _build_engine_action_result(
+            action="engine.stop",
+            status="error",
+            message="Avatar gagal dihentikan.",
+            reason_code="engine_stop_failed",
+            next_step="Periksa tab Teknis dan log engine sebelum mencoba lagi.",
+            payload={"state": "error", "last_error": str(e)},
+            details=[str(e)],
+        )
 
 
 @router.get("/engine/livetalking/logs")
@@ -805,6 +920,32 @@ async def engine_livetalking_config() -> dict[str, Any]:
     except Exception as e:
         logger.error("engine_config_error", error=str(e), exc_info=True)
         return {"error": str(e)}
+
+
+@router.get("/engine/livetalking/debug-targets")
+async def engine_livetalking_debug_targets() -> dict[str, Any]:
+    """Probe preview/debug URLs so the UI can disable dead links with context."""
+    try:
+        config = await engine_livetalking_config()
+        debug_urls = config.get("debug_urls", {})
+        return {
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "targets": {
+                "webrtcapi": _probe_debug_target(debug_urls.get("webrtcapi", "")),
+                "dashboard_vendor": _probe_debug_target(debug_urls.get("dashboard_vendor", "")),
+                "rtcpushapi": _probe_debug_target(debug_urls.get("rtcpushapi", "")),
+            },
+        }
+    except Exception as e:
+        logger.error("engine_debug_targets_error", error=str(e), exc_info=True)
+        return {
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "targets": {
+                "webrtcapi": {"url": "", "reachable": False, "http_status": None, "error": str(e)},
+                "dashboard_vendor": {"url": "", "reachable": False, "http_status": None, "error": str(e)},
+                "rtcpushapi": {"url": "", "reachable": False, "http_status": None, "error": str(e)},
+            },
+        }
 
 
 # ── Readiness Endpoints ────────────────────────────────────
@@ -1131,13 +1272,11 @@ async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, 
     directly from the dashboard without triggering a full pipeline transition.
     """
     try:
-        from src.voice.fish_speech_client import synthesize_speech
-        from src.voice.runtime_state import get_voice_runtime_state
+        from src.voice.engine import FishSpeechEngine
 
-        state = get_voice_runtime_state()
+        engine = FishSpeechEngine()
 
-        # Check if sidecar is reachable
-        if not state.server_reachable:
+        if not await engine.health_check():
             return {
                 "status": "blocked",
                 "message": "Voice sidecar is not reachable yet",
@@ -1146,8 +1285,8 @@ async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, 
                 "text": text,
             }
 
-        # Attempt synthesis
-        audio_data = await synthesize_speech(text)
+        result = await engine.synthesize(text, emotion="neutral")
+        audio_data = result.audio_data
 
         if audio_data:
             return {
@@ -1157,6 +1296,8 @@ async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, 
                 "action": "voice.test.speak",
                 "text": text,
                 "audio_length_bytes": len(audio_data),
+                "latency_ms": result.latency_ms,
+                "duration_ms": result.duration_ms,
             }
         else:
             return {

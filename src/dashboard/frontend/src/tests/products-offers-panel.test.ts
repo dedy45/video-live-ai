@@ -52,9 +52,9 @@ describe('ProductsOffersPanel', () => {
   it('renders active product, queue, and affiliate context sections', async () => {
     render(ProductsOffersPanel);
 
-    expect(await screen.findByRole('heading', { name: /active product/i })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: /product queue/i })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: /commission/i })).toBeInTheDocument();
-    expect(await screen.findByRole('heading', { name: /affiliate links/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /produk aktif/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /antrian produk/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /komisi/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /link affiliate/i })).toBeInTheDocument();
   });
 });

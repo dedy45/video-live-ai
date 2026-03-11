@@ -348,6 +348,11 @@ def run_sync(include_livetalking: bool) -> int:
     return run_command(command)
 
 
+def setup_app() -> int:
+    """Bootstrap the main app dependencies only."""
+    return run_sync(include_livetalking=False)
+
+
 def load_products() -> int:
     """Load sample products into the local database."""
     return run_command(["uv", "run", "python", "scripts/load_sample_data.py"])
@@ -366,12 +371,130 @@ def setup_fish_speech() -> int:
     return run_command(["uv", "run", "python", "scripts/setup_fish_speech.py"])
 
 
+def setup_musetalk_model() -> int:
+    """Run the canonical MuseTalk asset/model setup flow."""
+    return run_command(
+        ["uv", "run", "--extra", "livetalking", "python", "scripts/setup_musetalk_assets.py"]
+    )
+
+
+def setup_target(target: str) -> int:
+    """Run one setup surface from the unified setup namespace."""
+    if target == "all":
+        for step in ("app", "livetalking", "musetalk-model", "fish-speech"):
+            exit_code = setup_target(step)
+            if exit_code != 0:
+                return exit_code
+        return 0
+    if target == "app":
+        return setup_app()
+    if target == "livetalking":
+        return setup_livetalking(skip_models=False)
+    if target == "musetalk-model":
+        return setup_musetalk_model()
+    if target == "fish-speech":
+        return setup_fish_speech()
+    raise ValueError(f"Unknown setup target: {target}")
+
+
+def start_fish_speech() -> int:
+    """Start the Fish-Speech sidecar via the managed setup/runtime helper."""
+    return run_command(["uv", "run", "python", "scripts/setup_fish_speech.py", "--start"])
+
+
+def build_livetalking_command(mode: str) -> list[str]:
+    """Build the canonical LiveTalking start command for the selected model mode."""
+    avatar_id = "musetalk_avatar1" if mode == "musetalk" else "wav2lip256_avatar1"
+    return [
+        "uv",
+        "run",
+        "--extra",
+        "livetalking",
+        "python",
+        "external/livetalking/app.py",
+        "--transport",
+        "webrtc",
+        "--model",
+        mode,
+        "--avatar_id",
+        avatar_id,
+        "--listenport",
+        "8010",
+    ]
+
+
+def start_target(target: str, mode: str | None = None) -> int:
+    """Start one runtime target from the unified start namespace."""
+    if target == "app":
+        return start_server(mock_mode=False)
+    if target == "fish-speech":
+        return start_fish_speech()
+    if target == "livetalking":
+        return run_command(build_livetalking_command(mode or "musetalk"))
+    raise ValueError(f"Unknown start target: {target}")
+
+
+def stop_target(target: str) -> int:
+    """Stop one runtime target from the unified stop namespace."""
+    if target == "app":
+        return stop_server()
+    if target == "fish-speech":
+        return run_command(["uv", "run", "python", "scripts/setup_fish_speech.py", "--stop"])
+    if target == "livetalking":
+        print("[WARN] LiveTalking stop is not yet supervised by a managed pid file.")
+        return 1
+    if target == "all":
+        results = [stop_target("fish-speech"), stop_target("app")]
+        return 0 if all(result == 0 for result in results) else 1
+    raise ValueError(f"Unknown stop target: {target}")
+
+
+def print_all_status(as_json: bool) -> int:
+    """Print an aggregate runtime snapshot for app, vendor, and Fish-Speech."""
+    app_snapshot = get_runtime_snapshot()
+    payload = {
+        "app": asdict(app_snapshot),
+        "livetalking": {
+            "port": 8010,
+            "reachable": is_port_open(8010),
+            "url": "http://127.0.0.1:8010/dashboard.html",
+        },
+        "fish_speech": {
+            "port": 8080,
+            "reachable": is_port_open(8080),
+            "target": str(PROJECT_ROOT / "external" / "fish-speech"),
+        },
+    }
+    if as_json:
+        print(json.dumps(payload, indent=2))
+    else:
+        print("=== Runtime Status ===")
+        print(json.dumps(payload, indent=2))
+    return 0
+
+
+def print_target_status(target: str, as_json: bool) -> int:
+    """Print status for one managed target."""
+    if target == "app":
+        return print_status(as_json=as_json)
+    if target == "fish-speech":
+        command = ["uv", "run", "python", "scripts/setup_fish_speech.py", "--status"]
+        if as_json:
+            command.append("--json")
+        return run_command(command)
+    if target == "all":
+        return print_all_status(as_json=as_json)
+    raise ValueError(f"Unknown status target: {target}")
+
+
 def open_target(target: str) -> int:
     """Open a local browser target."""
     snapshot = get_runtime_snapshot()
     base = snapshot.base_url
     mapping = {
         "dashboard": f"{base}/dashboard/",
+        "performer": f"{base}/dashboard/performer.html",
+        "monitor": f"{base}/dashboard/monitor.html",
         "docs": f"{base}/docs",
         "vendor": "http://127.0.0.1:8010/dashboard.html",
     }
@@ -391,9 +514,24 @@ def build_parser() -> argparse.ArgumentParser:
     serve_mode.add_argument("--mock", action="store_true", help="Start with MOCK_MODE=true")
     serve_mode.add_argument("--real", action="store_true", help="Start with MOCK_MODE=false")
 
-    subparsers.add_parser("stop", help="Stop the app")
+    start_parser = subparsers.add_parser("start", help="Start a managed runtime target")
+    start_parser.add_argument("target", choices=["app", "livetalking", "fish-speech"])
+    start_parser.add_argument(
+        "--mode",
+        choices=["musetalk", "wav2lip"],
+        help="Runtime mode for LiveTalking starts",
+    )
+
+    stop_parser = subparsers.add_parser("stop", help="Stop a managed runtime target")
+    stop_parser.add_argument(
+        "target",
+        nargs="?",
+        default="app",
+        choices=["app", "livetalking", "fish-speech", "all"],
+    )
 
     status_parser = subparsers.add_parser("status", help="Show runtime status")
+    status_parser.add_argument("target", nargs="?", default="app", choices=["app", "fish-speech", "all"])
     status_parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 
     health_parser = subparsers.add_parser("health", help="Show health/readiness summary")
@@ -429,8 +567,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="Check Fish-Speech voice clone prerequisites and print startup guidance",
     )
 
+    setup_parser = subparsers.add_parser("setup", help="Run one setup workflow")
+    setup_parser.add_argument(
+        "target",
+        choices=["all", "app", "livetalking", "musetalk-model", "fish-speech"],
+    )
+
     open_parser = subparsers.add_parser("open", help="Open a local URL in the browser")
-    open_parser.add_argument("target", choices=["dashboard", "docs", "vendor"])
+    open_parser.add_argument("target", choices=["dashboard", "performer", "monitor", "docs", "vendor"])
 
     return parser
 
@@ -442,10 +586,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "serve":
         return start_server(mock_mode=bool(args.mock))
+    if args.command == "start":
+        return start_target(target=str(args.target), mode=getattr(args, "mode", None))
     if args.command == "stop":
-        return stop_server()
+        return stop_target(target=str(args.target))
     if args.command == "status":
-        return print_status(as_json=bool(args.json))
+        return print_target_status(target=str(args.target), as_json=bool(args.json))
     if args.command == "health":
         return print_health(as_json=bool(args.json))
     if args.command == "validate":
@@ -460,6 +606,8 @@ def main(argv: list[str] | None = None) -> int:
         return setup_livetalking(skip_models=bool(args.skip_models))
     if args.command == "setup-fish-speech":
         return setup_fish_speech()
+    if args.command == "setup":
+        return setup_target(str(args.target))
     if args.command == "open":
         return open_target(str(args.target))
 

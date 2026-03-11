@@ -1,27 +1,5 @@
-/**
- * Realtime state module — WebSocket with polling fallback.
- *
- * Connects to /api/ws/dashboard for live updates.
- * Falls back to polling /api/status + /api/runtime/truth every POLL_INTERVAL_MS
- * if the WebSocket is unavailable or disconnects.
- */
-
 import { WS_BASE, POLL_INTERVAL_MS } from './constants';
-import { getStatus, getRuntimeTruth } from './api';
-
-export interface RealtimeSnapshot {
-  stream_running: boolean;
-  emergency_stopped: boolean;
-  mock_mode: boolean;
-  pipeline_state: string;
-  current_product: { name: string; price: string } | null;
-  truth: Record<string, any> | null;
-  /** ISO timestamp of when this snapshot was received */
-  received_at: string;
-  /** 'websocket' | 'polling' */
-  source: string;
-  [key: string]: any;
-}
+import { normalizePolledSnapshot, normalizeWebsocketSnapshot, type RealtimeSnapshot } from './runtime-client';
 
 type SnapshotCallback = (snapshot: RealtimeSnapshot) => void;
 
@@ -50,11 +28,7 @@ function _connectWs(): void {
     _ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
-        const snapshot: RealtimeSnapshot = {
-          ...data,
-          received_at: new Date().toISOString(),
-          source: 'websocket',
-        };
+        const snapshot = normalizeWebsocketSnapshot(data);
         _callback?.(snapshot);
       } catch {
         // Ignore malformed messages
@@ -87,13 +61,7 @@ function _connectWs(): void {
 
 async function _poll(): Promise<void> {
   try {
-    const [status, truth] = await Promise.all([getStatus(), getRuntimeTruth()]);
-    const snapshot: RealtimeSnapshot = {
-      ...status,
-      truth,
-      received_at: new Date().toISOString(),
-      source: 'polling',
-    };
+    const snapshot = await normalizePolledSnapshot();
     _callback?.(snapshot);
   } catch {
     // Silently skip failed poll — next interval will retry

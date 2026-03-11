@@ -1,7 +1,8 @@
-import '../../app.css';
+import '../app.css';
 import MonitorPage from '../pages/MonitorPage.svelte';
+import { mount } from 'svelte';
 
-const app = new MonitorPage({
+const app = mount(MonitorPage, {
  target: document.getElementById('app')!,
 });
 

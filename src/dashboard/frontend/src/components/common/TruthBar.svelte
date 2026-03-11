@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount, onDestroy } from 'svelte';
   import { useDashboardRealtime } from '../../lib/stores/dashboard.svelte';
-  import type { RuntimeTruth } from '../../lib/types';
+  import StatusBadge from './StatusBadge.svelte';
+  import type { RuntimeTruth, StatusType } from '../../lib/types';
 
   const rt = useDashboardRealtime();
 
@@ -27,13 +28,21 @@
     }
   });
 
-  const modeBadgeClass = $derived(
-    truth?.mock_mode ? 'badge badge-mock' : 'badge badge-live'
+  const modeStatus = $derived<StatusType>(
+    truth?.mock_mode ? 'warning' : 'ready'
   );
 
-  const modeLabel = $derived(
-    truth?.mock_mode ? 'MOCK' : 'LIVE'
-  );
+  const validationStatus = $derived.by((): StatusType => {
+    if (!truth) return 'idle';
+    switch (truth.validation_state) {
+      case 'passed': return 'ready';
+      case 'partial': return 'warning';
+      case 'failed': return 'error';
+      case 'blocked': return 'error';
+      case 'validating': return 'info';
+      default: return 'idle';
+    }
+  });
 
   const validationClass = $derived.by(() => {
     if (!truth) return 'validation-unknown';
@@ -47,6 +56,16 @@
     }
   });
 
+  const dataOriginStatus = $derived.by((): StatusType => {
+    if (!truth?.provenance) return 'idle';
+    const values = Object.values(truth.provenance);
+    if (values.every(v => v === 'mock')) return 'warning';
+    if (values.some(v => v === 'real_live')) return 'ready';
+    if (values.some(v => v === 'real_local')) return 'ready';
+    if (values.every(v => v === 'derived')) return 'idle';
+    return 'info';
+  });
+
   const dataOriginLabel = $derived.by(() => {
     if (!truth?.provenance) return 'unknown';
     const values = Object.values(truth.provenance);
@@ -55,17 +74,6 @@
     if (values.some(v => v === 'real_local')) return 'real_local';
     if (values.every(v => v === 'derived')) return 'derived';
     return 'mixed';
-  });
-
-  const dataOriginClass = $derived.by(() => {
-    const origin = dataOriginLabel;
-    switch (origin) {
-      case 'mock': return 'origin-mock';
-      case 'real_local': return 'origin-real-local';
-      case 'real_live': return 'origin-real-live';
-      case 'derived': return 'origin-derived';
-      default: return 'origin-unknown';
-    }
   });
 
   const lastValidatedDisplay = $derived.by(() => {
@@ -82,14 +90,15 @@
 
 <div class="truth-bar" data-testid="truth-bar">
   {#if truth}
-    <span class={modeBadgeClass}>{modeLabel}</span>
+    <StatusBadge status={modeStatus} label={truth.mock_mode ? 'MOCK' : 'LIVE'} size="sm" />
     <span class="truth-item">
       <span class="truth-label">Validation:</span>
-      <span class="truth-value {validationClass}">{truth.validation_state}</span>
+      <StatusBadge status={validationStatus} label={truth.validation_state} size="sm" showDot={false} />
     </span>
     <span class="truth-item">
       <span class="truth-label">Origin:</span>
-      <span class="truth-value {dataOriginClass}" data-testid="truth-origin">{dataOriginLabel}</span>
+      <span class="test-hook" data-testid="truth-origin">{dataOriginLabel}</span>
+      <StatusBadge status={dataOriginStatus} label={dataOriginLabel} size="sm" showDot={false} />
     </span>
     <span class="truth-item">
       <span class="truth-label">Validated:</span>
@@ -110,21 +119,24 @@
     {#if truth.deployment_mode}
       <span class="truth-item">
         <span class="truth-label">Deploy:</span>
-        <span class="truth-value">{truth.deployment_mode}</span>
+        <StatusBadge status="info" label={truth.deployment_mode} size="sm" showDot={false} />
       </span>
     {/if}
     <span class="truth-sep">|</span>
     <span class="truth-item">
       <span class="truth-label">Face:</span>
-      <span class="truth-value" data-testid="truth-face-mode">{truth.face_runtime_mode}</span>
+      <span class="test-hook" data-testid="truth-face-mode">{truth.face_runtime_mode}</span>
+      <StatusBadge status="info" label={truth.face_runtime_mode} size="sm" showDot={false} />
     </span>
     <span class="truth-item">
       <span class="truth-label">Voice:</span>
-      <span class="truth-value">{truth.voice_runtime_mode}</span>
+      <span class="test-hook" data-testid="truth-voice-mode">{truth.voice_runtime_mode}</span>
+      <StatusBadge status="info" label={truth.voice_runtime_mode} size="sm" showDot={false} />
     </span>
     <span class="truth-item">
       <span class="truth-label">Stream:</span>
-      <span class="truth-value">{truth.stream_runtime_mode}</span>
+      <span class="test-hook" data-testid="truth-stream-mode">{truth.stream_runtime_mode}</span>
+      <StatusBadge status="info" label={truth.stream_runtime_mode} size="sm" showDot={false} />
     </span>
     {#if source}
       <span class="truth-sep">|</span>
@@ -134,7 +146,7 @@
       </span>
     {/if}
   {:else if error}
-    <span class="badge badge-error">ERROR</span>
+    <StatusBadge status="error" label="ERROR" size="sm" />
     <span class="truth-item truth-error">{error}</span>
   {:else}
     <span class="truth-item">Loading truth...</span>
@@ -152,27 +164,6 @@
     font-size: 11px;
     font-family: monospace;
     overflow-x: auto;
-  }
-  .badge {
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    flex-shrink: 0;
-  }
-  .badge-mock {
-    background: var(--yellow, #f59e0b);
-    color: #000;
-  }
-  .badge-live {
-    background: var(--green, #10b981);
-    color: #fff;
-  }
-  .badge-error {
-    background: var(--red, #ef4444);
-    color: #fff;
   }
   .truth-sep {
     color: var(--text-secondary, #555);
@@ -197,16 +188,7 @@
     color: var(--text-secondary, #888);
     font-style: italic;
   }
-  .validation-passed { color: var(--green, #10b981); }
-  .validation-partial { color: var(--yellow, #f59e0b); }
-  .validation-failed { color: var(--red, #ef4444); }
-  .validation-blocked { color: var(--red, #ef4444); }
-  .validation-validating { color: var(--blue, #3b82f6); }
-  .validation-unvalidated { color: var(--text-secondary, #888); }
-  .validation-unknown { color: var(--red, #ef4444); }
-  .origin-mock { color: var(--yellow, #f59e0b); }
-  .origin-real-local { color: var(--green, #10b981); }
-  .origin-real-live { color: #22d3ee; }
-  .origin-derived { color: var(--text-secondary, #888); }
-  .origin-unknown { color: var(--red, #ef4444); }
+  .test-hook {
+    display: none;
+  }
 </style>

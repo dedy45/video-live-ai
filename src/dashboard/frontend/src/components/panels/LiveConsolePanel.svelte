@@ -1,256 +1,474 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { getStatus, getOpsSummary } from '../../lib/api';
-  import { useDashboardRealtime } from '../../lib/stores/dashboard.svelte';
-  import type { RealtimeSnapshot } from '../../lib/realtime';
-  import ProvenanceBadge from '../common/ProvenanceBadge.svelte';
-
-  const rt = useDashboardRealtime();
+  import { onMount, onDestroy } from 'svelte';
+  import {
+    emergencyStop,
+    getLiveTalkingConfig,
+    getOpsSummary,
+    getProducts,
+    getRuntimeTruth,
+    getStatus,
+    startLiveTalking,
+    stopLiveTalking,
+    switchProduct,
+    voiceTestSpeak,
+  } from '../../lib/api';
+  import StatusBadge from '../common/StatusBadge.svelte';
+  import Card from '../common/Card.svelte';
+  import ActionReceipt from '../common/ActionReceipt.svelte';
+  import type { ActionReceipt as ReceiptType } from '../../lib/stores/actions';
+  import type { EngineConfig, OpsSummary, RuntimeTruth } from '../../lib/types';
 
   let status = $state<Record<string, any>>({});
-  let opsSummary = $state<Record<string, any>>({});
+  let opsSummary = $state<OpsSummary | null>(null);
+  let truth = $state<RuntimeTruth | null>(null);
+  let config = $state<EngineConfig | null>(null);
+  let products = $state<any[]>([]);
   let loading = $state(true);
   let error = $state('');
+  let receipt = $state<ReceiptType | null>(null);
+  let sessionLogs = $state<string[]>([]);
+  let pollHandle: number | null = null;
 
-  // Direct snapshot subscription - only update when snapshot actually changes
-  let lastSnapshotId = $state('');
-  
-  $effect(() => {
-    const snap = rt.snapshot;
-    if (snap) {
-      // Create simple ID to detect changes
-      const snapId = `${snap.pipeline_state}-${snap.stream_running}-${snap.mock_mode}`;
-      if (snapId !== lastSnapshotId) {
-        lastSnapshotId = snapId;
-        status = {
-          state: snap.pipeline_state,
-          stream_running: snap.stream_running,
-          emergency_stopped: snap.emergency_stopped,
-          mock_mode: snap.mock_mode,
-          current_product: snap.current_product,
-        };
-      }
-    }
-  });
+  function addLog(message: string) {
+    const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    sessionLogs = [`${timestamp} — ${message}`, ...sessionLogs].slice(0, 12);
+  }
 
-  onMount(async () => {
+  async function refresh() {
     try {
-      const [s, ops] = await Promise.all([getStatus(), getOpsSummary()]);
-      status = { ...status, ...s };
-      opsSummary = ops;
-    } catch (e: any) {
-      error = e.message;
+      const [nextStatus, nextOpsSummary, nextTruth, nextProducts, nextConfig] = await Promise.all([
+        getStatus(),
+        getOpsSummary() as Promise<OpsSummary>,
+        getRuntimeTruth() as Promise<RuntimeTruth>,
+        getProducts(),
+        getLiveTalkingConfig() as Promise<EngineConfig>,
+      ]);
+
+      status = nextStatus;
+      opsSummary = nextOpsSummary;
+      truth = nextTruth;
+      products = nextProducts;
+      error = '';
+    } catch (nextError: any) {
+      error = nextError.message || 'Failed to load live console';
     } finally {
       loading = false;
     }
+  }
+
+  async function runAction(action: string, work: () => Promise<{ message?: string } | void>, successMessage: string) {
+    receipt = null;
+    try {
+      const result = await work();
+      const message = result?.message || successMessage;
+      receipt = { action, status: 'success', message, timestamp: Date.now() };
+      addLog(message);
+      await refresh();
+    } catch (nextError: any) {
+      const message = nextError.message || `${action} failed`;
+      receipt = { action, status: 'error', message, timestamp: Date.now() };
+      addLog(message);
+    }
+  }
+
+  const activeProduct = $derived.by(() => {
+    if (!products.length) return null;
+    const currentId = status.current_product?.id;
+    return products.find((product) => product.id === currentId) || products[0];
   });
 
-  const currentProduct = $derived(status.current_product || null);
-  const operatorAlert = $derived(opsSummary.overall_status || 'unknown');
+  const queuedProducts = $derived.by(() => {
+    const currentId = activeProduct?.id;
+    return products.filter((product) => product.id !== currentId);
+  });
+
+  const firstAffiliateLink = $derived.by(() => {
+    const entries = Object.entries(activeProduct?.affiliate_links || {});
+    return entries.length ? { platform: entries[0][0], url: String(entries[0][1]) } : null;
+  });
+
+  const currentScript = $derived.by(() => {
+    if (!activeProduct) {
+      return 'Belum ada produk aktif. Pilih produk terlebih dahulu sebelum live.';
+    }
+
+    const sellingPoints = (activeProduct.selling_points || []).slice(0, 3).join(', ');
+    const price = activeProduct.price_formatted || activeProduct.price || 'harga belum tersedia';
+    const commission = activeProduct.commission_rate ? `Komisi ${activeProduct.commission_rate}%` : 'Komisi cek dashboard';
+    return `Produk aktif ${activeProduct.name}. Harga ${price}. Sorot nilai jual utama: ${sellingPoints || 'stok, manfaat, dan urgensi beli'}. Tutup dengan call to action ke ${firstAffiliateLink?.platform || 'keranjang'} sekarang. ${commission}.`;
+  });
+
+  const uptimeMinutes = $derived(Math.floor((status.uptime_sec || 0) / 60));
+  const viewerCount = $derived(status.viewer_count || 0);
+  const streamLive = $derived(status.stream_running === true);
+  const faceRunning = $derived(truth?.face_engine?.engine_state === 'running');
+  const voiceReady = $derived(Boolean(truth?.voice_engine?.server_reachable && truth?.voice_engine?.reference_ready));
+  const totalRestarts = $derived(
+    (opsSummary?.restart_counters?.voice || 0) +
+    (opsSummary?.restart_counters?.face || 0) +
+    (opsSummary?.restart_counters?.stream || 0),
+  );
+
+  async function handleRotateProduct() {
+    const nextProduct = queuedProducts[0];
+    if (!nextProduct) {
+      receipt = { action: 'product.rotate', status: 'error', message: 'Tidak ada produk cadangan untuk dirotasi', timestamp: Date.now() };
+      return;
+    }
+    await runAction(
+      'product.rotate',
+      () => switchProduct(nextProduct.id),
+      `Produk aktif diganti ke ${nextProduct.name}`,
+    );
+  }
+
+  async function handleVoiceTest() {
+    await runAction(
+      'voice.test',
+      () => voiceTestSpeak(currentScript),
+      'Tes suara operator selesai',
+    );
+  }
+
+  async function handleCopyLink() {
+    if (!firstAffiliateLink?.url) {
+      receipt = { action: 'affiliate.copy', status: 'error', message: 'Link affiliate belum tersedia', timestamp: Date.now() };
+      return;
+    }
+    await navigator.clipboard.writeText(firstAffiliateLink.url);
+    receipt = { action: 'affiliate.copy', status: 'success', message: `Link ${firstAffiliateLink.platform} disalin`, timestamp: Date.now() };
+    addLog(`Link ${firstAffiliateLink.platform} disalin`);
+  }
+
+  async function handleAvatarToggle() {
+    await runAction(
+      faceRunning ? 'avatar.stop' : 'avatar.start',
+      () => (faceRunning ? stopLiveTalking() : startLiveTalking()),
+      faceRunning ? 'Avatar dihentikan' : 'Avatar dijalankan',
+    );
+  }
+
+  async function handleEmergencyStop() {
+    await runAction(
+      'emergency.stop',
+      () => emergencyStop(),
+      'Emergency stop diaktifkan',
+    );
+  }
+
+  function openPreview() {
+    const url = config?.debug_urls?.webrtcapi;
+    if (!url) {
+      receipt = { action: 'preview.open', status: 'error', message: 'Preview URL belum tersedia', timestamp: Date.now() };
+      return;
+    }
+    window.open(url, '_blank', 'noopener,noreferrer');
+    addLog('Preview window dibuka');
+  }
+
+  onMount(async () => {
+    await refresh();
+    pollHandle = window.setInterval(() => {
+      void refresh();
+    }, 10000);
+  });
+
+  onDestroy(() => {
+    if (pollHandle !== null) {
+      window.clearInterval(pollHandle);
+    }
+  });
 </script>
 
-<div class="live-console-panel">
-  <div class="panel-header">
-    <h2 class="panel-title">Konsol Live</h2>
-    <ProvenanceBadge source="realtime" />
+<div class="live-command-center">
+  <div class="command-header">
+    <div class="title-section">
+      <h1 class="command-title">📺 Konsol Live</h1>
+      <p class="command-subtitle">Command center operator untuk produk aktif, avatar, skrip panduan, dan quick actions saat sesi live berjalan.</p>
+    </div>
+    <div class="status-bar">
+      <StatusBadge status={streamLive ? 'ready' : 'idle'} label={streamLive ? 'LIVE' : 'OFFLINE'} size="lg" />
+      <span class="status-meta">Uptime {uptimeMinutes} menit</span>
+      <span class="status-meta">Viewer {viewerCount}</span>
+    </div>
   </div>
 
+  <ActionReceipt {receipt} />
+
+  {#if error}
+    <div class="error-banner">{error}</div>
+  {/if}
+
   {#if loading}
-    <div class="loading">Memuat konsol live...</div>
-  {:else if error}
-    <div class="error">Error: {error}</div>
+    <div class="loading-panel">Memuat konsol live...</div>
   {:else}
-    <div class="console-grid">
-      <!-- Current Product Section -->
-      <section class="console-section current-product">
-        <h3>Produk Saat Ini</h3>
-        {#if currentProduct}
-          <div class="product-card">
-            <div class="product-name">{currentProduct.name || 'Produk Tidak Diketahui'}</div>
-            <div class="product-price">{currentProduct.price_formatted || 'N/A'}</div>
+    <div class="command-grid">
+      <div class="command-col">
+        <Card title="Produk Aktif" size="lg" className="product-card">
+          {#if activeProduct}
+            <div class="product-name">{activeProduct.name}</div>
+            <div class="product-meta">
+              <span>{activeProduct.price_formatted || 'Harga belum tersedia'}</span>
+              <span>{activeProduct.commission_rate ? `${activeProduct.commission_rate}% komisi` : 'Komisi belum tersedia'}</span>
+              <span>{queuedProducts.length} produk antrian</span>
+            </div>
+            <div class="selling-points">
+              {#each activeProduct.selling_points || [] as point}
+                <div class="selling-point">{point}</div>
+              {/each}
+            </div>
+            <div class="link-row">
+              {#each Object.entries(activeProduct.affiliate_links || {}) as [platform, url]}
+                <a class="affiliate-link" href={String(url)} target="_blank" rel="noreferrer">{platform}</a>
+              {/each}
+            </div>
+          {:else}
+            <div class="empty-copy">Belum ada produk aktif di runtime.</div>
+          {/if}
+        </Card>
+
+        <Card title="Status Avatar" size="lg">
+          <div class="status-rows">
+            <div class="status-row">
+              <span>Suara</span>
+              <StatusBadge status={voiceReady ? 'ready' : 'warning'} label={truth?.voice_engine?.resolved_engine || 'unknown'} />
+            </div>
+            <div class="status-row">
+              <span>Wajah</span>
+              <StatusBadge status={faceRunning ? 'ready' : 'idle'} label={truth?.face_engine?.resolved_model || 'unknown'} />
+            </div>
+            <div class="status-row">
+              <span>Stream</span>
+              <StatusBadge status={streamLive ? 'ready' : 'idle'} label={status.stream_status || 'idle'} />
+            </div>
           </div>
-        {:else}
-          <div class="empty-state">Belum ada produk aktif</div>
-        {/if}
-      </section>
+          <button class="secondary-btn" onclick={openPreview}>Open Preview Window</button>
+        </Card>
 
-      <!-- Operator Alert Section -->
-      <section class="console-section operator-alert">
-        <h3>Status Operator</h3>
-        <div class="alert-badge status-{operatorAlert}">
-          {operatorAlert.toUpperCase()}
-        </div>
-      </section>
+        <Card title="Skrip Panduan" size="lg">
+          <div class="script-copy">{currentScript}</div>
+          <div class="script-hint">Asal data: derived dari produk aktif + runtime truth, bukan browser cache.</div>
+        </Card>
+      </div>
 
-      <!-- Script Rail Section -->
-      <section class="console-section script-rail">
-        <h3>Panduan Skrip</h3>
-        <div class="placeholder">
-          <p>Pembukaan, pitch produk, bukti manfaat</p>
-          <p class="note">Asistensi skrip akan datang di fase berikutnya</p>
-        </div>
-      </section>
+      <div class="command-col">
+        <Card title="Aksi Cepat" size="lg">
+          <div class="action-grid">
+            <button class="primary-btn" onclick={handleRotateProduct}>Ganti Produk</button>
+            <button class="secondary-btn" onclick={handleVoiceTest}>Tes Suara</button>
+            <button class="secondary-btn" onclick={handleCopyLink}>Copy Link</button>
+            <button class="secondary-btn" onclick={handleAvatarToggle}>{faceRunning ? 'Stop Avatar' : 'Start Avatar'}</button>
+            <button class="critical-btn" onclick={handleEmergencyStop}>Emergency Stop</button>
+          </div>
+        </Card>
 
-      <!-- Next Best Action Section -->
-      <section class="console-section next-action">
-        <h3>Aksi Berikutnya</h3>
-        <div class="placeholder">
-          <p>Panduan: apa yang harus dikatakan, apa yang harus dicek</p>
-          <p class="note">Panduan aksi akan datang di fase berikutnya</p>
-        </div>
-      </section>
+        <Card title="Ringkasan Sesi" size="lg">
+          <div class="summary-list">
+            <div class="summary-row"><span>Deploy</span><strong>{opsSummary?.deployment_mode || 'unknown'}</strong></div>
+            <div class="summary-row"><span>Produk aktif</span><strong>{activeProduct?.name || 'none'}</strong></div>
+            <div class="summary-row"><span>Restart</span><strong>{totalRestarts}</strong></div>
+            <div class="summary-row"><span>Insiden terbuka</span><strong>{opsSummary?.incident_summary?.open_count ?? 0}</strong></div>
+          </div>
+        </Card>
 
-      <!-- Quick Actions Section -->
-      <section class="console-section quick-actions">
-        <h3>Aksi Cepat</h3>
-        <div class="action-buttons">
-          <button class="action-btn" disabled>Tes Suara</button>
-          <button class="action-btn" disabled>Ganti Produk</button>
-          <button class="action-btn" disabled>Jalankan Validasi</button>
-        </div>
-        <p class="note">Aksi cepat akan aktif di fase berikutnya</p>
-      </section>
+        <Card title="Log Aktivitas" size="lg">
+          <div class="log-list">
+            {#each sessionLogs as log}
+              <div class="log-item">{log}</div>
+            {:else}
+              <div class="empty-copy">Belum ada aksi operator pada sesi ini.</div>
+            {/each}
+          </div>
+        </Card>
+      </div>
     </div>
   {/if}
 </div>
 
 <style>
-  .live-console-panel {
-    background: var(--panel-bg);
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  .live-command-center {
+    padding: 24px;
+    max-width: 1400px;
+    margin: 0 auto;
   }
-
-  .panel-header {
+  .command-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-  }
-
-  .panel-title {
-    font-size: 1.5rem;
-    font-weight: 600;
-    margin: 0;
-    color: var(--text-primary);
-  }
-
-  .loading,
-  .error {
-    padding: 20px;
-    text-align: center;
-    color: var(--text-secondary);
-  }
-
-  .error {
-    color: var(--error-color);
-  }
-
-  .console-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
     gap: 16px;
+    align-items: flex-start;
+    margin-bottom: 24px;
   }
-
-  .console-section {
-    background: var(--section-bg);
-    border-radius: 6px;
-    padding: 16px;
-    border: 1px solid var(--border-color);
+  .command-title {
+    margin: 0 0 8px;
+    font-size: 32px;
+    font-weight: 800;
   }
-
-  .console-section h3 {
-    font-size: 1rem;
-    font-weight: 600;
-    margin: 0 0 12px 0;
-    color: var(--text-primary);
+  .command-subtitle {
+    margin: 0;
+    color: var(--muted);
+    max-width: 760px;
+    line-height: 1.5;
   }
-
-  .product-card {
-    padding: 12px;
-    background: var(--card-bg);
-    border-radius: 4px;
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.03);
+    flex-wrap: wrap;
   }
-
+  .status-meta {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .error-banner,
+  .loading-panel {
+    padding: 14px 16px;
+    border-radius: var(--radius);
+    border: 1px solid var(--border);
+    background: var(--card);
+    margin-bottom: 18px;
+  }
+  .error-banner {
+    color: var(--accent);
+    border-color: rgba(233, 69, 96, 0.3);
+  }
+  .command-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 20px;
+  }
+  .command-col {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
   .product-name {
-    font-weight: 600;
-    margin-bottom: 4px;
-    color: var(--text-primary);
+    font-size: 22px;
+    font-weight: 800;
+    margin-bottom: 8px;
   }
-
-  .product-price {
-    color: var(--accent-color);
-    font-size: 1.1rem;
+  .product-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 14px;
   }
-
-  .empty-state {
-    color: var(--text-secondary);
-    font-style: italic;
-  }
-
-  .alert-badge {
-    display: inline-block;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-weight: 600;
-    font-size: 0.9rem;
-  }
-
-  .alert-badge.status-ready {
-    background: var(--success-bg);
-    color: var(--success-color);
-  }
-
-  .alert-badge.status-degraded {
-    background: var(--warning-bg);
-    color: var(--warning-color);
-  }
-
-  .alert-badge.status-unknown {
-    background: var(--neutral-bg);
-    color: var(--text-secondary);
-  }
-
-  .placeholder {
-    color: var(--text-secondary);
-    font-size: 0.9rem;
-  }
-
-  .placeholder p {
-    margin: 8px 0;
-  }
-
-  .note {
-    font-size: 0.85rem;
-    color: var(--text-tertiary);
-    font-style: italic;
-  }
-
-  .action-buttons {
+  .selling-points {
     display: flex;
     flex-direction: column;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 14px;
   }
-
-  .action-btn {
-    padding: 10px 16px;
-    background: var(--button-bg);
-    color: var(--button-text);
-    border: 1px solid var(--border-color);
-    border-radius: 4px;
+  .selling-point {
+    padding: 10px 12px;
+    border-radius: var(--rsm);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+  }
+  .link-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .affiliate-link {
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(34, 211, 238, 0.2);
+    background: rgba(34, 211, 238, 0.08);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .status-rows,
+  .summary-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .status-row,
+  .summary-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--rsm);
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .script-copy {
+    padding: 16px;
+    border-radius: var(--radius);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.02)),
+      radial-gradient(circle at top left, rgba(34, 211, 238, 0.1), transparent 45%);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    line-height: 1.7;
+  }
+  .script-hint {
+    margin-top: 12px;
+    color: var(--muted);
+    font-size: 12px;
+  }
+  .action-grid {
+    display: grid;
+    gap: 10px;
+  }
+  .primary-btn,
+  .secondary-btn,
+  .critical-btn {
+    padding: 12px 14px;
+    border-radius: var(--rsm);
+    border: 1px solid var(--border);
+    font-weight: 800;
+    font-family: inherit;
     cursor: pointer;
-    font-size: 0.9rem;
-    transition: background 0.2s;
   }
-
-  .action-btn:hover:not(:disabled) {
-    background: var(--button-hover-bg);
+  .primary-btn {
+    background: linear-gradient(135deg, rgba(34, 211, 238, 0.9), rgba(59, 130, 246, 0.9));
+    color: #04111f;
+    border: none;
   }
-
-  .action-btn:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
+  .secondary-btn {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+  }
+  .critical-btn {
+    background: rgba(233, 69, 96, 0.18);
+    border-color: rgba(233, 69, 96, 0.3);
+    color: #ffb6c1;
+  }
+  .log-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 260px;
+    overflow-y: auto;
+  }
+  .log-item,
+  .empty-copy {
+    padding: 10px 12px;
+    border-radius: var(--rsm);
+    background: rgba(255, 255, 255, 0.03);
+    color: var(--muted);
+    font-size: 12px;
+  }
+  @media (max-width: 768px) {
+    .live-command-center {
+      padding: 16px;
+    }
+    .command-header {
+      flex-direction: column;
+    }
+    .command-title {
+      font-size: 28px;
+    }
   }
 </style>

@@ -284,6 +284,16 @@ def load_config(
             config_data["logging"] = {}
         config_data["logging"]["level"] = log_level
 
+    dashboard_host = os.getenv("DASHBOARD_HOST")
+    dashboard_port = os.getenv("DASHBOARD_PORT")
+    if dashboard_host or dashboard_port:
+        if "dashboard" not in config_data:
+            config_data["dashboard"] = {}
+        if dashboard_host:
+            config_data["dashboard"]["host"] = dashboard_host
+        if dashboard_port:
+            config_data["dashboard"]["port"] = int(dashboard_port)
+
     # LiveTalking env overrides
     lt_enabled = os.getenv("LIVETALKING_ENABLED")
     if lt_enabled is not None:

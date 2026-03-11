@@ -1,8 +1,24 @@
 import { API_BASE } from './constants';
+import type {
+  EngineConfig,
+  EngineStatus,
+  LiveTalkingDebugTargets,
+  OperatorActionResult,
+  ReadinessResult,
+  RuntimeTruth,
+  SystemStatus,
+  ValidationResult,
+  VoiceTestSpeakResult,
+} from './types';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
+    cache: 'no-store',
+    headers: {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-cache',
+      Pragma: 'no-cache',
+    },
     ...options,
   });
   if (!res.ok) {
@@ -13,29 +29,30 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 // System
-export const getStatus = () => request<Record<string, any>>('/status');
+export const getStatus = () => request<SystemStatus>('/status');
 export const getMetrics = (window = 60) => request<Record<string, any>>(`/metrics?window=${window}`);
 
 // Readiness
-export const getReadiness = () => request<Record<string, any>>('/readiness');
+export const getReadiness = () => request<ReadinessResult>('/readiness');
 
 // Health
 export const getHealthSummary = () => request<Record<string, any>>('/health/summary');
 
 // LiveTalking Engine
-export const getLiveTalkingStatus = () => request<Record<string, any>>('/engine/livetalking/status');
-export const getLiveTalkingConfig = () => request<Record<string, any>>('/engine/livetalking/config');
+export const getLiveTalkingStatus = () => request<EngineStatus>('/engine/livetalking/status');
+export const getLiveTalkingConfig = () => request<EngineConfig>('/engine/livetalking/config');
 export const getLiveTalkingLogs = (tail = 100) => request<Record<string, any>>(`/engine/livetalking/logs?tail=${tail}`);
-export const startLiveTalking = () => request<Record<string, any>>('/engine/livetalking/start', { method: 'POST' });
-export const stopLiveTalking = () => request<Record<string, any>>('/engine/livetalking/stop', { method: 'POST' });
+export const startLiveTalking = () => request<OperatorActionResult & Partial<EngineStatus>>('/engine/livetalking/start', { method: 'POST' });
+export const stopLiveTalking = () => request<OperatorActionResult & Partial<EngineStatus>>('/engine/livetalking/stop', { method: 'POST' });
+export const getLiveTalkingDebugTargets = () => request<LiveTalkingDebugTargets>('/engine/livetalking/debug-targets');
 
 // Validation
-export const validateLiveTalkingEngine = () => request<Record<string, any>>('/validate/livetalking-engine', { method: 'POST' });
+export const validateLiveTalkingEngine = () => request<ValidationResult>('/validate/livetalking-engine', { method: 'POST' });
 export const validateRtmpTarget = () => request<Record<string, any>>('/validate/rtmp-target', { method: 'POST' });
-export const validateRuntimeTruth = () => request<Record<string, any>>('/validate/runtime-truth', { method: 'POST' });
-export const validateRealModeReadiness = () => request<Record<string, any>>('/validate/real-mode-readiness', { method: 'POST' });
-export const validateVoiceLocalClone = () => request<Record<string, any>>('/validate/voice-local-clone', { method: 'POST' });
-export const validateAudioChunkingSmoke = () => request<Record<string, any>>('/validate/audio-chunking-smoke', { method: 'POST' });
+export const validateRuntimeTruth = () => request<ValidationResult>('/validate/runtime-truth', { method: 'POST' });
+export const validateRealModeReadiness = () => request<ValidationResult>('/validate/real-mode-readiness', { method: 'POST' });
+export const validateVoiceLocalClone = () => request<ValidationResult>('/validate/voice-local-clone', { method: 'POST' });
+export const validateAudioChunkingSmoke = () => request<ValidationResult>('/validate/audio-chunking-smoke', { method: 'POST' });
 export const validateStreamDryRun = () => request<Record<string, any>>('/validate/stream-dry-run', { method: 'POST' });
 export const validateResourceBudget = () => request<Record<string, any>>('/validate/resource-budget', { method: 'POST' });
 export const validateSoakSanity = () => request<Record<string, any>>('/validate/soak-sanity', { method: 'POST' });
@@ -51,18 +68,17 @@ export const getRevenue = (hours = 1) => request<Record<string, any>>(`/analytic
 export const getRecentChats = (limit = 20) => request<any[]>(`/chat/recent?limit=${limit}`);
 
 // Runtime Truth
-export const getRuntimeTruth = () => request<Record<string, any>>('/runtime/truth');
+export const getRuntimeTruth = () => request<RuntimeTruth>('/runtime/truth');
 export const getOpsSummary = () => request<Record<string, any>>('/ops/summary');
 export const getResources = () => request<Record<string, any>>('/resources');
 export const getIncidents = () => request<any[]>('/incidents');
 export const ackIncident = (incidentId: string) => request<Record<string, any>>(`/incidents/${incidentId}/ack`, { method: 'POST' });
-export const voiceWarmup = () => request<Record<string, any>>('/voice/warmup', { method: 'POST' });
-export const voiceQueueClear = () => request<Record<string, any>>('/voice/queue/clear', { method: 'POST' });
-export const voiceRestart = () => request<Record<string, any>>('/voice/restart', { method: 'POST' });
+export const voiceWarmup = () => request<OperatorActionResult>('/voice/warmup', { method: 'POST' });
+export const voiceQueueClear = () => request<OperatorActionResult>('/voice/queue/clear', { method: 'POST' });
+export const voiceRestart = () => request<OperatorActionResult>('/voice/restart', { method: 'POST' });
 export const voiceTestSpeak = (text: string) =>
-  request<Record<string, any>>('/voice/test/speak', {
+  request<VoiceTestSpeakResult>(`/voice/test/speak?text=${encodeURIComponent(text)}`, {
     method: 'POST',
-    body: JSON.stringify({ text }),
   });
 
 // Stream Control

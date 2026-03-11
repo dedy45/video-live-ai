@@ -1,16 +1,14 @@
 <script lang="ts">
  import MonitorPanel from '../components/panels/MonitorPanel.svelte';
- import IncidentsPanel from '../components/panels/IncidentsPanel.svelte';
 </script>
 
 <div class="page">
  <div class="page-header">
   <h1 class="page-title">Monitor & Insiden</h1>
-  <p class="page-subtitle">Pemantauan sistem dan pelacakan insiden</p>
+ <p class="page-subtitle">Pemantauan sistem dan pelacakan insiden</p>
  </div>
 
  <div class="page-grid">
-  <IncidentsPanel />
   <MonitorPanel />
  </div>
 </div>

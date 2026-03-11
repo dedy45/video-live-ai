@@ -1,9 +1,8 @@
-import '../../app.css';
+import '../app.css';
 import ProductsPage from '../pages/ProductsPage.svelte';
-import App from '../../App.svelte';
+import { mount } from 'svelte';
 
-// Override the App to render Products page directly
-const app = new ProductsPage({
+const app = mount(ProductsPage, {
  target: document.getElementById('app')!,
 });
 

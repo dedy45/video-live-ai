@@ -1,6 +1,16 @@
 import { defineConfig } from 'vite';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { svelteTesting } from '@testing-library/svelte/vite';
+import { resolve } from 'node:path';
+
+const htmlInputs = {
+ index: resolve(__dirname, 'index.html'),
+ setup: resolve(__dirname, 'setup.html'),
+ performer: resolve(__dirname, 'performer.html'),
+ monitor: resolve(__dirname, 'monitor.html'),
+ stream: resolve(__dirname, 'stream.html'),
+ products: resolve(__dirname, 'products.html'),
+};
 
 export default defineConfig({
  plugins: [svelte(), svelteTesting()],
@@ -8,6 +18,9 @@ export default defineConfig({
  build: {
    outDir: 'dist',
    emptyOutDir: true,
+   rollupOptions: {
+     input: htmlInputs,
+   },
  },
  server: {
    proxy: {

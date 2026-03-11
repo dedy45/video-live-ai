@@ -39,8 +39,8 @@ uv sync --extra dev
 cp .env.example .env
 # Edit .env with your API keys
 
-# Hydrate LiveTalking vendor deps into the managed UV env
-uv run python scripts/manage.py setup-livetalking --skip-models
+# Production-first bootstrap from zero
+uv run python scripts/manage.py setup all
 ```
 
 ### Test with Mock Mode (No GPU Required)
@@ -57,13 +57,32 @@ uv run python scripts/manage.py serve --mock
 
 | URL | Purpose | Who |
 |-----|---------|-----|
-| `http://localhost:8181/dashboard` | **Operator dashboard** (primary UI in local lab) | Operators |
+| `http://localhost:8000/dashboard` | **Operator dashboard** (primary UI in local lab) | Operators |
 | `http://SERVER_IP_OR_DOMAIN/dashboard` | **Server-hosted ops controller** for production/browser access | Operators |
-| `http://localhost:8181/docs` | API documentation | Developers |
-| `http://localhost:8181/diagnostic/` | System diagnostics | Operators/Devs |
+| `http://localhost:8000/docs` | API documentation | Developers |
+| `http://localhost:8000/diagnostic/` | System diagnostics | Operators/Devs |
 | `http://localhost:8010/*.html` | LiveTalking debug pages | Developers only |
 
 > **Rule:** `/dashboard` stays the only operator UI. In production it is hosted on the server behind a reverse proxy, and browser disconnects must not stop the live process. Vendor pages at port 8010 stay debug tools only.
+
+Official operator workflow surfaces:
+
+- `Setup & Validasi`
+- `Produk & Penawaran`
+- `Avatar & Suara`
+- `Streaming & Platform`
+- `Konsol Live`
+- `Monitor & Insiden`
+
+Standalone production entrypoints remain supported for focused debugging and operator drills:
+
+- `/dashboard/setup.html`
+- `/dashboard/products.html`
+- `/dashboard/performer.html`
+- `/dashboard/stream.html`
+- `/dashboard/monitor.html`
+
+`Validation` and `Diagnostics` are no longer standalone operator pages. They now live inside the `Setup & Validasi` and `Monitor & Insiden` surfaces.
 
 ### Operator Model
 
@@ -81,15 +100,20 @@ The dashboard architecture is now an **operational evolution**, not a rewrite:
 Canonical cross-platform operator CLI:
 
 ```bash
-uv run python scripts/manage.py status
+uv run python scripts/manage.py setup all
+uv run python scripts/manage.py setup fish-speech
+uv run python scripts/manage.py start fish-speech
+uv run python scripts/manage.py start livetalking --mode musetalk
+uv run python scripts/manage.py status all
+uv run python scripts/manage.py status fish-speech
 uv run python scripts/manage.py health
 uv run python scripts/manage.py validate tests
 uv run python scripts/manage.py validate livetalking
 uv run python scripts/manage.py validate fish-speech
 uv run python scripts/manage.py serve --mock
 uv run python scripts/manage.py serve --real
-uv run python scripts/manage.py setup-livetalking --skip-models
-uv run python scripts/manage.py setup-fish-speech
+uv run python scripts/manage.py open performer
+uv run python scripts/manage.py open monitor
 ```
 
 Windows convenience wrapper:
@@ -102,18 +126,29 @@ scripts\menu.bat
 
 For direct ad hoc LiveTalking commands outside `manage.py`, use `uv run --extra livetalking ...` so UV keeps the vendor runtime packages loaded.
 
+Canonical sidecar paths:
+
+- `external/livetalking/`
+- `external/fish-speech/upstream/`
+- `external/fish-speech/checkpoints/`
+- `external/fish-speech/runtime/`
+- `external/fish-speech/runtime/.venv/` managed by `uv` for the voice sidecar only
+
 ### Current Milestone Status
 
 - Face milestone: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` -> `LOCAL VERIFIED`
 - Audio milestone: `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` -> `LOCAL VERIFIED` for direct local test
-- Fresh verification: `uv run pytest tests -q -p no:cacheprovider` -> `219 passed, 1 skipped`
+- Frontend verification: `cd src/dashboard/frontend && npm run test` -> `67 passed` across `19` test files
+- Frontend build: `cd src/dashboard/frontend && npm run build` -> PASS
+- Fresh verification: `uv run pytest tests -q -p no:cacheprovider` -> `255 passed, 1 skipped`
 - Pipeline verification: `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
 - MuseTalk assets: `uv run --extra livetalking python scripts/setup_musetalk_assets.py --sync-only` -> `Models ready: True`, `Avatar ready: True`
 - Official face operator slice: `uv run python scripts/manage.py serve --real` + engine start/validation resolve to `musetalk / musetalk_avatar1` with `fallback_active=false`
 - Audio readiness gate: `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE`
 - Audio prerequisite validation: `uv run python scripts/manage.py validate fish-speech` -> PASS
+- Fish-Speech bootstrap: `uv run python scripts/manage.py setup fish-speech` -> PASS; pinned checkout `v1.5.1`, canonical checkpoints, and dedicated sidecar UV env are now hydrated locally
 - Audio smoke validation: `MOCK_MODE=false uv run python -c "..."` -> PASS with `voice_runtime_mode=fish_speech_local`, `resolved_engine=fish_speech`, `fallback_active=false`
-- Verified local audio smoke latency on this GTX 1650 setup is still high (`~31-40s`), so the slice is functionally verified for direct test but not yet live-latency-ready
+- Verified local audio smoke latency on this GTX 1650 setup is now around `20.9s` after the dedicated CUDA sidecar env fix; still functionally verified, but not yet live-latency-ready
 - Next-phase work: latency reduction / chunking discipline, humanization minimum, then RTMP dry-run and short real live test
 
 ## 📊 Architecture
@@ -203,6 +238,10 @@ GPU_VRAM_BUDGET_MB=20000
 # Run all tests
 uv run pytest tests/ -v
 
+# Frontend operator surfaces
+cd src/dashboard/frontend && npm run test
+cd src/dashboard/frontend && npm run build
+
 # Run specific test
 uv run pytest tests/test_livetalking_integration.py -v
 
@@ -213,7 +252,7 @@ uv run pytest tests/ -v -m "not integration"
 uv run python scripts/manage.py validate livetalking
 
 # Quick validation (Windows)
-cmd /c verify_livetalking.bat
+uv run python scripts/manage.py validate fish-speech
 ```
 
 ## 📚 Documentation
@@ -310,7 +349,7 @@ git submodule update --init --recursive
 cat data/logs/app.log
 
 # Run diagnostic
-curl http://localhost:8181/diagnostic/health
+curl http://localhost:8000/diagnostic/health
 ```
 
 ## 🤝 Contributing

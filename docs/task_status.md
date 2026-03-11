@@ -1,24 +1,27 @@
 # Task Status
 
 > Honest status snapshot for the internal-live architecture.
-> Last verified: 2026-03-10
+> Last verified: 2026-03-11
 > Package manager policy: `uv` only
 
 ## Verification Snapshot
 
 | Check | Command | Result |
 |-------|---------|--------|
-| Test suite | `uv run pytest tests -q -p no:cacheprovider` | `219 passed, 1 skipped` |
+| Test suite | `uv run pytest tests -q -p no:cacheprovider` | `255 passed, 1 skipped` |
 | Pipeline verification | `uv run python scripts/verify_pipeline.py` | `11/11 layers passed` |
 | Frontend build | `cd src/dashboard/frontend && npm run build` | PASS |
-| Frontend unit tests | `cd src/dashboard/frontend && npm run test` | PASS — `51 passed` (9 test files) |
-| Browser smoke test | `cd src/dashboard/frontend && npm run test:e2e` | `8 passed` |
+| Frontend unit tests | `cd src/dashboard/frontend && npm run test` | PASS — `67 passed` (19 test files) |
+| Performer recovery suite | `cd src/dashboard/frontend && npm run test -- src/tests/performer-page.test.ts src/tests/action-receipt.test.ts src/tests/performer-preview-panel.test.ts src/tests/performer-validation-panel.test.ts src/tests/api.test.ts` | PASS — `18 passed` |
+| Browser smoke test | `cd src/dashboard/frontend && npm run test:e2e -- e2e/dashboard.spec.ts` | PASS — `13 passed` |
 | Real-mode readiness gate | `uv run python scripts/check_real_mode_readiness.py --json` | `READY FOR REAL MODE` |
-| Fish-Speech operator validation | `uv run python scripts/manage.py validate fish-speech` | PASS — clone assets, config, and sidecar prerequisite checks pass |
-| Fish-Speech voice clone smoke | `MOCK_MODE=false uv run python -c "import asyncio, json; from src.dashboard.api import validate_voice_local_clone; print(json.dumps(asyncio.run(validate_voice_local_clone()), indent=2))"` | PASS — `resolved_engine=fish_speech`, `fallback_active=false`, Indonesian smoke synthesis returns audio bytes in `~31-40s` on local GTX 1650 |
+| Fish-Speech operator validation | `uv run python scripts/manage.py validate fish-speech` | PASS — clone assets, config, canonical checkout/checkpoints, and sidecar reachability checks pass |
+| Unified operator CLI | `uv run pytest tests/test_manage_cli.py tests/test_fish_speech_setup.py tests/test_menu_batch.py -q -p no:cacheprovider` | PASS — `34 passed`; nested setup/start/status/open commands and Windows menu wrapper are covered |
+| Fish-Speech voice clone smoke | `MOCK_MODE=false uv run python -c "import asyncio, json; from src.dashboard.api import validate_voice_local_clone; print(json.dumps(asyncio.run(validate_voice_local_clone()), indent=2))"` | PASS — `resolved_engine=fish_speech`, `fallback_active=false`, Indonesian smoke synthesis returns `393260` bytes in `20884ms` on local GTX 1650 |
 | FFmpeg runtime | `uv run python scripts/setup_ffmpeg.py` | portable FFmpeg verified in `tools/ffmpeg/bin/ffmpeg.exe` |
 | MuseTalk assets | `uv run --extra livetalking python scripts/setup_musetalk_assets.py --sync-only` | models ready, canonical `musetalk_avatar1` ready, reference media present, `can_generate_avatar=True` |
-| LiveTalking setup (UV) | `uv sync --extra dev` then `uv run python scripts/manage.py setup-livetalking --skip-models` | PASS — setup now rehydrates vendor deps in the managed UV env, prints ASCII-safe status, and treats no-GPU machines as advisory warning only |
+| Unified setup flow | `uv run python scripts/manage.py setup all` | PASS — app, LiveTalking, MuseTalk model flow, and Fish-Speech bootstrap now resolve through one CLI surface |
+| Fish-Speech bootstrap | `uv run python scripts/manage.py setup fish-speech` | PASS — upstream checkout pinned to `v1.5.1`, canonical checkpoints downloaded, dedicated UV env created at `external/fish-speech/runtime/.venv` |
 | LiveTalking vendor imports | `uv run --extra livetalking python -c "import flask, flask_sockets, aiohttp_cors, transformers, diffusers, accelerate, omegaconf"` | PASS |
 | LiveTalking smoke validation | `uv run python scripts/manage.py validate livetalking` | PASS — requested/resolved both `musetalk / musetalk_avatar1`, FFmpeg ready, vendor entrypoint/layout verified |
 | Official real-mode operator slice | `uv run python scripts/manage.py serve --real` -> `POST /api/engine/livetalking/start` -> `GET /api/runtime/truth` | PASS — `face_runtime_mode=livetalking_local`, resolved runtime `musetalk / musetalk_avatar1`, `fallback_active=false` |
@@ -40,7 +43,7 @@ See `docs/specs/local_audio_vertical_slice_fish_speech.md`
 
 Active voice runtime: **Fish-Speech local sidecar** (Edge TTS fallback does NOT count as acceptance pass).
 Voice clone assets required: `assets/voice/reference.wav` + `assets/voice/reference.txt`.
-Current local caveat: functional direct-test validation now passes, but observed local smoke latency remains high (`~31-40s`) on the current GTX 1650 box.
+Current local caveat: functional direct-test validation now passes, but observed local smoke latency remains high (`~20.9s`) on the current GTX 1650 box.
 
 ## Overall Verdict
 
@@ -54,9 +57,11 @@ The official non-mock face operator slice is **verified locally**: runtime truth
 Milestone audit is recorded at `docs/audits/AUDIT_LOCAL_VERTICAL_SLICE_REAL_MUSETALK_2026-03-09.md`.
 Health summary alignment is now verified: `GET /api/health/summary` reports `face_pipeline=healthy` on readiness-complete non-mock local setup.
 Fish-Speech audio integration code is **implemented and locally verified** for direct synthesis with clone assets and a reachable sidecar.
+Unified operator setup/runtime commands are now centralized in `scripts/manage.py`, with canonical Fish-Speech layout rooted at `external/fish-speech/`.
+Fish-Speech local install is now replicated in-repo with a dedicated sidecar UV env, so control-plane dependencies no longer get polluted by voice-sidecar packages.
 The global real-mode readiness script is now **READY FOR REAL MODE** with voice prerequisites satisfied.
 Runtime truth now resolves honestly to `voice_runtime_mode=fish_speech_local` after real synthesis, with `resolved_engine=fish_speech` and `fallback_active=false`.
-Observed local smoke latency is still far above the live target on current hardware, so the next bottleneck is performance rather than basic correctness.
+Observed local smoke latency is improved but still above the live target on current hardware, so the next bottleneck is performance rather than basic correctness.
 
 ## Status Legend
 
@@ -72,7 +77,7 @@ Observed local smoke latency is still far above the live target on current hardw
 |------|--------|-------|
 | FastAPI control plane | `LOCAL VERIFIED` | Main app, diagnostics, API, orchestration baseline working |
 | Dashboard baseline | `LOCAL VERIFIED` | Current dashboard path works as operator entrypoint in local lab and is being evolved into a server-hosted ops controller |
-| Svelte dashboard migration | `LOCAL VERIFIED` | Svelte build mounted at `/dashboard`, frontend unit tests passing (40 tests), Playwright browser tests passing (8 tests), requested/resolved LiveTalking state visible in Engine panel, Truth Bar with runtime truth, provenance badges on all panels, action receipts on operator actions, zero silent failures, and tab switching validated in browser |
+| Svelte dashboard migration | `LOCAL VERIFIED` | Svelte build mounted at `/dashboard`, frontend unit tests pass, the operator workflow is consolidated into 6 surfaces, `Avatar & Suara` is restored as a 6-tab workspace, preview fallback is reachability-aware, standalone `performer.html` stays functional, requested/resolved LiveTalking state remains visible, Truth Bar provenance stays active, and operator actions now emit operator-first receipts across setup/live/stream/monitor surfaces |
 | Brain layer | `LOCAL VERIFIED` | Covered by current test suite and verify pipeline |
 | Voice orchestration | `LOCAL VERIFIED` | Fish-Speech health probe, binary request payload, runtime truth, readiness, and local clone smoke validation now pass; current remaining issue is latency on the local GTX 1650 setup |
 | Composition / stream / chat / commerce | `LOCAL VERIFIED` | Covered by tests and verify pipeline |
@@ -88,7 +93,7 @@ Observed local smoke latency is still far above the live target on current hardw
 | `src/face/pipeline.py` MuseTalk path | `PARTIAL` | Still raises `NotImplementedError` for production GPU path |
 | `src/face/pipeline.py` GFPGAN path | `PARTIAL` | Still raises `NotImplementedError` |
 | Unified dashboard for full system validation | `LOCAL VERIFIED` | Operator shell is live, requested/resolved LiveTalking state visible in Engine panel, Truth Bar with runtime truth active, and the ops-controller surfaces now include ops summary, voice operations, validation expansion, incidents, and resource-focused monitoring |
-| Dashboard Single Truth Real Validation | `LOCAL VERIFIED` | Realtime dashboard store, Validation Console, evidence history, and operator controls are locally verified for both the MuseTalk face slice and the local Fish-Speech direct-test voice slice |
+| Dashboard Single Truth Real Validation | `LOCAL VERIFIED` | Realtime dashboard store, Validation Console, performer reconciliation, evidence history, preview target probing, and operator controls are locally verified for both the MuseTalk face slice and the local Fish-Speech direct-test voice slice |
 | RTMP live slice to TikTok/Shopee | `PENDING GPU` | Needs end-to-end run with real target |
 | 18-24 hour stability layer | `PENDING GPU` | Not validated yet |
 
@@ -102,7 +107,7 @@ Observed local smoke latency is still far above the live target on current hardw
 
 ## Immediate Priorities
 
-1. Reduce Fish-Speech latency on the local path so it approaches live-stream expectations instead of `~31-40s`.
+1. Reduce Fish-Speech latency on the local path so it approaches live-stream expectations instead of `~20.9s`.
 2. Capture and store a dedicated local audio audit artifact for the first verified Fish-Speech voice slice.
 3. Continue `Humanization Minimum` with the now-working audio + face baseline.
 4. Run RTMP dry-run and short real live test after audio latency handling is defined.

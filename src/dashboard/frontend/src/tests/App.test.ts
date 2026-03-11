@@ -115,16 +115,17 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('App shell', () => {
-  it('renders affiliate live cockpit navigation links', () => {
+  it('renders the workflow-based operator navigation links', () => {
     render(App);
 
-    expect(screen.getByRole('link', { name: /Live Console/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Products/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Performer/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Stream/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Validation/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Monitor/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /Diagnostics/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Konsol Live/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Setup & Validasi/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Produk & Penawaran/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Avatar & Suara/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Streaming & Platform/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /Monitor & Insiden/i })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Diagnostik$/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /^Validasi$/i })).not.toBeInTheDocument();
   });
 
   it('renders the header', () => {

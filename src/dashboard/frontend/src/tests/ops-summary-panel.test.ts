@@ -22,7 +22,7 @@ describe('OpsSummaryPanel', () => {
 
   it('renders core ops summary metrics', async () => {
     render(OpsSummaryPanel);
-    expect(await screen.findByText(/overall status/i)).toBeInTheDocument();
-    expect(await screen.findByText(/restart count/i)).toBeInTheDocument();
+    expect(await screen.findByText(/status keseluruhan/i)).toBeInTheDocument();
+    expect(await screen.findByText(/jumlah restart/i)).toBeInTheDocument();
   });
 });

@@ -54,6 +54,7 @@ export interface EngineConfig {
   requested_avatar_id: string;
   resolved_avatar_id: string;
   livetalking_dir: string;
+  operator_dashboard?: string;
   debug_urls: {
     webrtcapi: string;
     rtcpushapi: string;
@@ -62,12 +63,66 @@ export interface EngineConfig {
   };
 }
 
+export interface DebugTargetProbe {
+  url: string;
+  reachable: boolean;
+  http_status: number | null;
+  error: string | null;
+}
+
+export interface LiveTalkingDebugTargets {
+  checked_at: string;
+  targets: {
+    webrtcapi: DebugTargetProbe;
+    dashboard_vendor: DebugTargetProbe;
+    rtcpushapi: DebugTargetProbe;
+  };
+}
+
+export type OperatorActionStatus = 'success' | 'blocked' | 'error' | 'pending' | 'warning';
+
+export interface OperatorActionResult {
+  status: OperatorActionStatus | 'fail' | 'pass';
+  message: string;
+  action?: string;
+  provenance?: string;
+  state?: string;
+  blockers?: string[];
+  reason_code?: string;
+  details?: string[];
+  next_step?: string;
+  checks?: Array<{ check: string; passed: boolean; message: string }>;
+}
+
+export interface VoiceTestSpeakResult extends OperatorActionResult {
+  text?: string;
+  latency_ms?: number;
+  duration_ms?: number;
+  audio_length_bytes?: number;
+}
+
 export interface ValidationResult {
   status: 'pass' | 'fail' | 'error' | 'blocked';
   checks: Array<{ check: string; passed: boolean; message: string }>;
   blockers?: string[];
   evidence_id?: number;
   error?: string;
+}
+
+export type PerformerValidationCheckId =
+  | 'runtime_truth'
+  | 'engine'
+  | 'voice_clone'
+  | 'audio_chunking'
+  | 'real_mode'
+  | 'preview_targets';
+
+export interface PerformerValidationEntry {
+  label: string;
+  status: 'pass' | 'fail' | 'blocked' | 'error' | 'pending';
+  summary: string;
+  timestamp: string;
+  details?: string[];
 }
 
 export interface FaceEngineTruth {
@@ -167,4 +222,22 @@ export interface ChatEvent {
   intent: string;
   priority: number;
   timestamp: number;
+}
+
+// UI Constants
+export const STATUS_COLORS = {
+  ready: '#10b981', // Emerald green
+  warning: '#f59e0b', // Amber
+  error: '#ef4444', // Red
+  idle: '#6b7280', // Gray
+  info: '#3b82f6', // Blue
+} as const;
+
+export type StatusType = 'ready' | 'warning' | 'error' | 'idle' | 'info';
+
+export interface StatusBadgeProps {
+  status: StatusType;
+  label: string;
+  size?: 'sm' | 'md' | 'lg';
+  showDot?: boolean;
 }

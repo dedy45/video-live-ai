@@ -101,7 +101,7 @@ describe('ActionReceipt component', () => {
 
     const el = screen.getByTestId('action-receipt');
     expect(el).toBeInTheDocument();
-    expect(el.textContent).toContain('engine.start');
+    expect(el.textContent).toContain('Avatar menerima perintah jalan');
     expect(el.textContent).toContain('Engine started');
     expect(el.classList.contains('receipt-success')).toBe(true);
   });
@@ -118,9 +118,26 @@ describe('ActionReceipt component', () => {
 
     const el = screen.getByTestId('action-receipt');
     expect(el).toBeInTheDocument();
-    expect(el.textContent).toContain('stream.start');
+    expect(el.textContent).toContain('Permintaan mulai streaming dikirim');
     expect(el.textContent).toContain('API 500');
     expect(el.classList.contains('receipt-error')).toBe(true);
+  });
+
+  it('renders blocked receipt with operator-visible styling', () => {
+    const receipt = {
+      action: 'voice.warmup',
+      status: 'blocked' as const,
+      message: 'Voice sidecar is not reachable yet',
+      timestamp: Date.now(),
+    };
+
+    render(ActionReceiptComponent, { props: { receipt } });
+
+    const el = screen.getByTestId('action-receipt');
+    expect(el).toBeInTheDocument();
+    expect(el.textContent).toContain('Permintaan pemanasan suara dikirim');
+    expect(el.textContent).toContain('not reachable');
+    expect(el.classList.contains('receipt-blocked')).toBe(true);
   });
 
   it('does not render when receipt is null', () => {
@@ -156,11 +173,11 @@ describe('StreamPanel — pipeline transition', () => {
     await screen.findByText(/Pipeline state machine/i);
 
     for (const target of ['WARMING', 'LIVE', 'COOLDOWN']) {
-      const btn = screen.getByRole('button', { name: target });
+      const btn = screen.getByRole('button', { name: new RegExp(target, 'i') });
       expect(btn).toBeInTheDocument();
     }
     // IDLE button also exists (disabled since it's current state)
-    const idleBtn = screen.getByRole('button', { name: 'IDLE' });
+    const idleBtn = screen.getByRole('button', { name: /IDLE/i });
     expect(idleBtn).toBeInTheDocument();
   });
 
@@ -170,11 +187,11 @@ describe('StreamPanel — pipeline transition', () => {
     await screen.findByText(/Pipeline state machine/i);
 
     // IDLE is current state, so its button should be disabled
-    const idleBtn = screen.getByRole('button', { name: 'IDLE' });
+    const idleBtn = screen.getByRole('button', { name: /IDLE/i });
     expect(idleBtn).toBeDisabled();
 
     // WARMING should be enabled
-    const warmingBtn = screen.getByRole('button', { name: 'WARMING' });
+    const warmingBtn = screen.getByRole('button', { name: /WARMING/i });
     expect(warmingBtn).not.toBeDisabled();
   });
 
@@ -183,13 +200,13 @@ describe('StreamPanel — pipeline transition', () => {
 
     await screen.findByText(/Pipeline state machine/i);
 
-    const warmingBtn = screen.getByRole('button', { name: 'WARMING' });
+    const warmingBtn = screen.getByRole('button', { name: /WARMING/i });
     await fireEvent.click(warmingBtn);
 
     expect(mockPipelineTransition).toHaveBeenCalledWith('WARMING');
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('pipeline.transition');
+    expect(receipt.textContent).toContain('Perubahan status pipeline diproses');
   });
 
   it('shows error receipt when pipeline transition fails', async () => {
@@ -198,11 +215,11 @@ describe('StreamPanel — pipeline transition', () => {
     render(StreamPanel);
     await screen.findByText(/Pipeline state machine/i);
 
-    const liveBtn = screen.getByRole('button', { name: 'LIVE' });
+    const liveBtn = screen.getByRole('button', { name: /LIVE/i });
     await fireEvent.click(liveBtn);
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('pipeline.transition');
+    expect(receipt.textContent).toContain('Perubahan status pipeline diproses');
     expect(receipt.textContent).toContain('API 400');
     expect(receipt.classList.contains('receipt-error')).toBe(true);
   });
@@ -253,7 +270,7 @@ describe('CommercePanel — product switch', () => {
     expect(mockSwitchProduct).toHaveBeenCalledWith(1);
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('product.switch');
+    expect(receipt.textContent).toContain('Produk aktif berhasil diganti');
     expect(receipt.textContent).toContain('Test Product');
   });
 
@@ -266,7 +283,7 @@ describe('CommercePanel — product switch', () => {
     await fireEvent.click(switchBtn);
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('product.switch');
+    expect(receipt.textContent).toContain('Produk aktif berhasil diganti');
     expect(receipt.textContent).toContain('API 404');
     expect(receipt.classList.contains('receipt-error')).toBe(true);
   });
@@ -300,7 +317,7 @@ describe('DiagnosticsPanel — brain test', () => {
     expect(mockBrainTest).toHaveBeenCalledWith({ user_prompt: 'Halo, perkenalkan produk ini!' });
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('brain.test');
+    expect(receipt.textContent).toContain('Pemeriksaan diagnostik selesai');
     expect(receipt.textContent).toContain('openai');
     expect(receipt.classList.contains('receipt-success')).toBe(true);
   });
@@ -314,7 +331,7 @@ describe('DiagnosticsPanel — brain test', () => {
     await fireEvent.click(btn);
 
     const receipt = await screen.findByTestId('action-receipt');
-    expect(receipt.textContent).toContain('brain.test');
+    expect(receipt.textContent).toContain('Pemeriksaan diagnostik selesai');
     expect(receipt.textContent).toContain('API 503');
     expect(receipt.classList.contains('receipt-error')).toBe(true);
   });

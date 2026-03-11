@@ -21,7 +21,7 @@ import sys
 from pathlib import Path
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 
 # Add src to path for clean imports
@@ -48,6 +48,17 @@ from src.utils.logging import get_logger, setup_logging
 # Frontend paths — prefer Svelte build output, fallback to legacy
 FRONTEND_DIST_DIR = Path(__file__).parent / "dashboard" / "frontend" / "dist"
 FRONTEND_LEGACY_DIR = Path(__file__).parent / "dashboard" / "frontend"
+NO_STORE_PATH_PREFIXES = (
+    "/api/status",
+    "/api/metrics",
+    "/api/runtime/truth",
+    "/api/health/summary",
+    "/api/resources",
+    "/api/ops/summary",
+    "/api/incidents",
+    "/api/ws/dashboard",
+    "/dashboard",
+)
 
 
 def create_app() -> FastAPI:
@@ -203,6 +214,15 @@ def create_app() -> FastAPI:
         logger.info("tracing_middleware_enabled")
     except Exception as e:
         logger.warning("tracing_middleware_failed", error=str(e))
+
+    @app.middleware("http")
+    async def add_no_store_headers(request: Request, call_next):
+        response = await call_next(request)
+        if request.url.path.startswith(NO_STORE_PATH_PREFIXES):
+            response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+            response.headers["Pragma"] = "no-cache"
+            response.headers["Expires"] = "0"
+        return response
 
     # Register routes
     app.include_router(diagnostic_router)
@@ -416,6 +436,7 @@ def _register_health_checks(health_manager, face_pipeline=None) -> None:
 def main() -> None:
     """Start the application server."""
     try:
+        load_env()
         config = load_config()
     except Exception:
         from src.config.loader import Config

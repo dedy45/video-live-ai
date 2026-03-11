@@ -1,5 +1,60 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EngineStatus, EngineConfig, ReadinessResult, SystemStatus, RuntimeTruth } from '../lib/types';
+import { getStatus, getRuntimeTruth, getLiveTalkingDebugTargets, voiceTestSpeak } from '../lib/api';
+
+describe('API request policy', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue({
+      ok: true,
+      json: async () => ({}),
+    });
+    vi.stubGlobal('fetch', fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends operator requests with no-store cache policy', async () => {
+    await getStatus();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.cache).toBe('no-store');
+    expect(options.headers['Cache-Control']).toBe('no-cache');
+    expect(options.headers.Pragma).toBe('no-cache');
+  });
+
+  it('applies the same no-store policy to truth requests', async () => {
+    await getRuntimeTruth();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, options] = fetchMock.mock.calls[0];
+    expect(options.cache).toBe('no-store');
+    expect(options.headers['Cache-Control']).toBe('no-cache');
+  });
+
+  it('sends tes suara text as a query parameter so backend receives operator input', async () => {
+    await voiceTestSpeak('Halo operator');
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain('/voice/test/speak?text=Halo%20operator');
+    expect(options.method).toBe('POST');
+  });
+
+  it('requests preview target probing from the dedicated debug endpoint', async () => {
+    await getLiveTalkingDebugTargets();
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain('/engine/livetalking/debug-targets');
+    expect(options.method ?? 'GET').toBe('GET');
+  });
+});
 
 describe('API response types', () => {
   it('EngineStatus includes requested and resolved fields', () => {

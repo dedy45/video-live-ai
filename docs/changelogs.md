@@ -1,5 +1,81 @@
 # Changelog
 
+## v0.5.18 — 2026-03-11 (Avatar & Suara Recovery Workspace)
+
+### OK `Avatar & Suara` is restored as a tabbed operator workspace
+- `#/performer` and `performer.html` now render a 6-tab workspace: `Ringkasan`, `Suara`, `Avatar`, `Preview`, `Validasi`, and `Teknis`
+- `PerformerPage` is now a shell over the centralized `PerformerWorkspace`, while `PerformerPanel` and `AvatarPanel` remain thin compatibility wrappers
+- `VoicePanel` and `EnginePanel` were refactored into presentational surfaces so performer actions no longer scatter fetch logic across child components
+
+### OK avatar and voice actions now reconcile against runtime truth
+- LiveTalking start/stop actions now emit operator-first receipts and poll runtime truth until the visible state matches the requested engine state
+- `POST /api/engine/livetalking/start` and `stop` now always return `status`, `action`, `message`, `reason_code`, `details`, and `next_step` while preserving legacy engine fields
+- Added `GET /api/engine/livetalking/debug-targets` so preview reachability can be decided from the backend instead of optimistic browser links
+
+### OK preview, validation, and technical recovery surfaces are back
+- Preview is now embedded only when the vendor target is reachable; otherwise the operator sees a fallback card with the failing target, last check time, next step, and a forced-open escape hatch
+- Performer validation now exposes runtime truth, engine, voice clone, audio chunking, real-mode readiness, and preview target checks from one tab
+- Technical details moved into a dedicated tab with engine status, path readiness, vendor URLs, logs, and condensed runtime truth instead of mixing debug surfaces into the main workflow
+
+### Verification
+- `cd src/dashboard/frontend && npm run test -- src/tests/performer-page.test.ts src/tests/action-receipt.test.ts src/tests/performer-preview-panel.test.ts src/tests/performer-validation-panel.test.ts src/tests/api.test.ts` -> `18 passed`
+- `uv run pytest tests/test_dashboard.py -q -p no:cacheprovider -k "livetalking_start_api_returns_operator_receipt_fields or livetalking_stop_api_returns_operator_receipt_fields or livetalking_debug_targets_reports_reachability"` -> `3 passed`
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test:e2e -- e2e/dashboard.spec.ts` -> `13 passed`
+
+## v0.5.17 — 2026-03-11 (Frontend Workflow Cleanup + Standalone Page Realignment)
+
+### OK Operator workflow is now consistently reduced to 6 surfaces
+- Removed standalone `validation` and `diagnostics` operator entrypoints from the dashboard build
+- `Setup & Validasi` now owns readiness, validation gates, and collapsed developer diagnostics
+- `Monitor & Insiden` now owns health, incidents, resource pressure, LLM brain posture, and alert posture
+
+### OK Standalone pages remain first-class without duplicating contracts
+- Production build now emits `index.html`, `setup.html`, `products.html`, `performer.html`, `stream.html`, and `monitor.html`
+- `LiveConsolePanel`, `SetupPage`, `StreamPanel`, and `MonitorPanel` were rebuilt around fresh API reads instead of placeholders or page-specific drift
+- Playwright smoke specs are now aligned to the 6-surface workflow instead of the removed validation/diagnostics pages
+
+### OK Frontend tests are synchronized with the current cockpit contract
+- Updated App, live console, monitor, and operator-action tests to the new menu labels and control semantics
+- Fixed legacy Svelte syntax drift in `AvatarPanel` and modernized `Card` to the current Svelte 5 child-render pattern
+
+### Verification
+- `cd src/dashboard/frontend && npm run test` -> `67 passed` (19 test files)
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test:e2e` -> BLOCKED locally because the Playwright webServer app startup hits a port `8181` bind conflict before browser execution
+- `uv run pytest tests -q -p no:cacheprovider` -> `255 passed, 1 skipped`
+
+## v0.5.16 — 2026-03-11 (Unified Operator CLI + Canonical Fish-Speech Layout)
+
+### OK Operator CLI is now the install/runtime source of truth
+- `scripts/manage.py` now exposes unified setup targets: `setup all`, `setup app`, `setup livetalking`, `setup musetalk-model`, and `setup fish-speech`
+- Runtime surface now includes `start livetalking --mode musetalk|wav2lip`, `start fish-speech`, `stop all`, `status fish-speech`, `status all`, `open performer`, and `open monitor`
+- LiveTalking start commands now use the real vendor contract (`--transport webrtc --model ... --avatar_id ... --listenport 8010`) instead of ad hoc wrapper assumptions
+
+### OK Fish-Speech now has a canonical external sidecar layout
+- `scripts/setup_fish_speech.py` now resolves and bootstraps `external/fish-speech/upstream`, `external/fish-speech/checkpoints`, `external/fish-speech/runtime`, and `external/fish-speech/scripts`
+- Fish-Speech status output now exposes path provenance, pid/log locations, reachability, and checkpoint readiness in a structured payload
+- Start/stop/status entrypoints are now centralized in Python so Windows and server flows can share the same contract
+- Fish-Speech bootstrap now clones upstream `v1.5.1`, downloads the official `fishaudio/fish-speech-1.5` checkpoint set, and creates a dedicated UV env at `external/fish-speech/runtime/.venv`
+- Fixed the first bootstrap regression where Fish-Speech packages polluted the control-plane `.venv`; the sidecar now installs in its own UV-managed env
+- Fixed the first CUDA mismatch regression by pinning the sidecar torch install to the official `cu124` wheels required by Fish-Speech `v1.5.1`
+
+### OK Windows wrapper is reduced to a thin operator launcher
+- Rebuilt `scripts/menu.bat` around the unified `manage.py` commands only
+- Menu now exposes setup, start/stop, status/health, validation, and operator page launch sections
+- Root-level legacy batch files are now deprecated by the centralized CLI path and no longer act as the intended source of truth
+
+### OK Active docs now point to the new workflow
+- Updated `README.md`, `docs/architecture.md`, `docs/workflow.md`, and `docs/task_status.md`
+- Active documentation now points operators to `scripts/manage.py` and the canonical `external/fish-speech/` layout
+
+### Verification
+- `uv run pytest tests/test_manage_cli.py tests/test_fish_speech_setup.py tests/test_menu_batch.py -q -p no:cacheprovider` -> `34 passed`
+- `uv run pytest tests -q -p no:cacheprovider` -> `255 passed, 1 skipped`
+- `uv run python scripts/manage.py setup fish-speech` -> PASS
+- `uv run python scripts/manage.py start fish-speech` -> PASS
+- `MOCK_MODE=false uv run python -c "import asyncio, json; from src.dashboard.api import validate_voice_local_clone; print(json.dumps(asyncio.run(validate_voice_local_clone()), indent=2))"` -> PASS (`393260` bytes in `20884ms`)
+
 ## v0.5.15 — 2026-03-10 (Server-Hosted Ops Controller Surfaces)
 
 ### OK Backend truth contract now exposes ops-controller state

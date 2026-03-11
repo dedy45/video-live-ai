@@ -214,6 +214,263 @@ def test_setup_fish_speech_runs_setup_script() -> None:
     ]
 
 
+def test_parser_accepts_nested_setup_targets() -> None:
+    """Unified setup namespace should expose all, app, livetalking, musetalk-model, fish-speech."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    for target in ("all", "app", "livetalking", "musetalk-model", "fish-speech"):
+        args = parser.parse_args(["setup", target])
+        assert args.command == "setup"
+        assert args.target == target
+
+
+def test_setup_all_runs_expected_sequence() -> None:
+    """setup all should orchestrate app, livetalking, musetalk-model, then fish-speech."""
+    manage = load_manage_module()
+    steps: list[str] = []
+
+    manage.setup_app = lambda: steps.append("app") or 0
+    manage.setup_livetalking = lambda skip_models=False: steps.append("livetalking") or 0
+    manage.setup_musetalk_model = lambda: steps.append("musetalk-model") or 0
+    manage.setup_fish_speech = lambda: steps.append("fish-speech") or 0
+
+    exit_code = manage.main(["setup", "all"])
+
+    assert exit_code == 0
+    assert steps == ["app", "livetalking", "musetalk-model", "fish-speech"]
+
+
+def test_setup_app_runs_uv_sync_dev_only() -> None:
+    """setup app should only sync the main app dependencies."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["setup", "app"])
+
+    assert exit_code == 0
+    assert captured["command"] == ["uv", "sync", "--extra", "dev"]
+
+
+def test_setup_musetalk_model_delegates_to_assets_script() -> None:
+    """setup musetalk-model should delegate to the canonical MuseTalk asset setup script."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["setup", "musetalk-model"])
+
+    assert exit_code == 0
+    assert captured["command"] == [
+        "uv", "run", "--extra", "livetalking", "python", "scripts/setup_musetalk_assets.py",
+    ]
+
+
+def test_parser_accepts_start_fish_speech() -> None:
+    """Unified start namespace should expose fish-speech target."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    args = parser.parse_args(["start", "fish-speech"])
+
+    assert args.command == "start"
+    assert args.target == "fish-speech"
+
+
+def test_start_fish_speech_delegates_to_runtime_helper() -> None:
+    """start fish-speech should delegate to setup_fish_speech.py --start."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["start", "fish-speech"])
+
+    assert exit_code == 0
+    assert captured["command"] == ["uv", "run", "python", "scripts/setup_fish_speech.py", "--start"]
+
+
+def test_start_livetalking_musetalk_uses_canonical_vendor_command() -> None:
+    """start livetalking --mode musetalk should use canonical vendor app.py args."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["start", "livetalking", "--mode", "musetalk"])
+
+    assert exit_code == 0
+    assert captured["command"] == [
+        "uv",
+        "run",
+        "--extra",
+        "livetalking",
+        "python",
+        "external/livetalking/app.py",
+        "--transport",
+        "webrtc",
+        "--model",
+        "musetalk",
+        "--avatar_id",
+        "musetalk_avatar1",
+        "--listenport",
+        "8010",
+    ]
+
+
+def test_start_livetalking_wav2lip_uses_canonical_vendor_command() -> None:
+    """start livetalking --mode wav2lip should use canonical vendor app.py args."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["start", "livetalking", "--mode", "wav2lip"])
+
+    assert exit_code == 0
+    assert captured["command"] == [
+        "uv",
+        "run",
+        "--extra",
+        "livetalking",
+        "python",
+        "external/livetalking/app.py",
+        "--transport",
+        "webrtc",
+        "--model",
+        "wav2lip",
+        "--avatar_id",
+        "wav2lip256_avatar1",
+        "--listenport",
+        "8010",
+    ]
+
+
+def test_parser_accepts_stop_all() -> None:
+    """stop should accept all as an aggregate target."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    args = parser.parse_args(["stop", "all"])
+
+    assert args.command == "stop"
+    assert args.target == "all"
+
+
+def test_stop_fish_speech_delegates_to_runtime_helper() -> None:
+    """stop fish-speech should delegate to setup_fish_speech.py --stop."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["stop", "fish-speech"])
+
+    assert exit_code == 0
+    assert captured["command"] == ["uv", "run", "python", "scripts/setup_fish_speech.py", "--stop"]
+
+
+def test_parser_accepts_status_all() -> None:
+    """status should accept all as an aggregate target."""
+    manage = load_manage_module()
+    parser = manage.build_parser()
+
+    args = parser.parse_args(["status", "all"])
+
+    assert args.command == "status"
+    assert args.target == "all"
+
+
+def test_status_fish_speech_delegates_to_runtime_helper() -> None:
+    """status fish-speech should delegate to setup_fish_speech.py --status."""
+    manage = load_manage_module()
+    captured: dict[str, list[str]] = {}
+
+    def fake_run_command(command: list[str], env=None) -> int:
+        captured["command"] = command
+        return 0
+
+    manage.run_command = fake_run_command
+
+    exit_code = manage.main(["status", "fish-speech"])
+
+    assert exit_code == 0
+    assert captured["command"] == ["uv", "run", "python", "scripts/setup_fish_speech.py", "--status"]
+
+
+def test_print_all_status_reports_fish_speech_target_path(capsys) -> None:
+    """status all should expose the canonical fish-speech target path."""
+    manage = load_manage_module()
+
+    manage.get_runtime_snapshot = lambda: manage.RuntimeSnapshot(
+        state="stopped",
+        pid=None,
+        pid_file_exists=False,
+        pid_running=False,
+        port=8000,
+        port_open=False,
+        base_url="http://127.0.0.1:8000",
+    )
+    manage.is_port_open = lambda port, host="127.0.0.1": False
+
+    exit_code = manage.print_all_status(as_json=True)
+    captured = capsys.readouterr().out
+
+    assert exit_code == 0
+    assert "external\\\\fish-speech" in captured
+
+
+def test_open_target_supports_operator_surfaces() -> None:
+    """open should support performer and monitor operator pages."""
+    manage = load_manage_module()
+    opened: list[str] = []
+
+    manage.webbrowser.open = opened.append
+    manage.get_runtime_snapshot = lambda: manage.RuntimeSnapshot(
+        state="running",
+        pid=123,
+        pid_file_exists=True,
+        pid_running=True,
+        port=8000,
+        port_open=True,
+        base_url="http://127.0.0.1:8000",
+    )
+
+    assert manage.main(["open", "performer"]) == 0
+    assert manage.main(["open", "monitor"]) == 0
+    assert opened == [
+        "http://127.0.0.1:8000/dashboard/performer.html",
+        "http://127.0.0.1:8000/dashboard/monitor.html",
+    ]
+
+
 def test_validate_target_accepts_fish_speech() -> None:
     """validate command must accept fish-speech as a target."""
     manage = load_manage_module()
