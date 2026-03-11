@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import time
+from unittest.mock import AsyncMock
 from unittest.mock import patch
 
 import pytest
@@ -147,6 +148,44 @@ def test_dashboard_record_chat() -> None:
     assert len(_recent_chats) > initial
 
 
+def test_show_director_singleton_tracks_transitions() -> None:
+    """ShowDirector singleton should preserve state and transition history."""
+    from src.orchestrator.show_director import get_show_director, reset_show_director
+
+    reset_show_director()
+    director = get_show_director()
+    snapshot = director.get_runtime_snapshot()
+
+    assert snapshot["state"] == "IDLE"
+    assert snapshot["history"] == []
+
+    transitioned = director.transition("SELLING")
+    assert transitioned["state"] == "SELLING"
+    assert len(transitioned["history"]) == 1
+
+    same = get_show_director()
+    same_snapshot = same.get_runtime_snapshot()
+    assert same is director
+    assert same_snapshot["state"] == "SELLING"
+    assert same_snapshot["history"][0]["to"] == "SELLING"
+
+
+def test_show_director_emergency_stop_and_reset() -> None:
+    """ShowDirector should expose emergency stop and reset lifecycle."""
+    from src.orchestrator.show_director import get_show_director, reset_show_director
+
+    reset_show_director()
+    director = get_show_director()
+
+    stopped = director.emergency_stop()
+    assert stopped["state"] == "STOPPED"
+    assert stopped["emergency_stopped"] is True
+
+    reset = director.reset_emergency()
+    assert reset["state"] == "IDLE"
+    assert reset["emergency_stopped"] is False
+
+
 def test_analytics_singleton() -> None:
     """Analytics should be a singleton."""
     from src.commerce.analytics import get_analytics
@@ -239,12 +278,12 @@ async def test_livetalking_debug_targets_reports_reachability() -> None:
     from src.dashboard.api import engine_livetalking_debug_targets
 
     with patch(
-        "src.dashboard.api._probe_debug_target",
-        side_effect=[
+        "src.dashboard.api._probe_debug_target_async",
+        new=AsyncMock(side_effect=[
             {"url": "http://localhost:8010/webrtcapi.html", "reachable": False, "http_status": None, "error": "Connection refused"},
             {"url": "http://localhost:8010/dashboard.html", "reachable": True, "http_status": 200, "error": None},
             {"url": "http://localhost:8010/rtcpushapi.html", "reachable": False, "http_status": None, "error": "Connection refused"},
-        ],
+        ]),
     ):
         result = await engine_livetalking_debug_targets()
 
@@ -252,6 +291,43 @@ async def test_livetalking_debug_targets_reports_reachability() -> None:
     assert result["targets"]["webrtcapi"]["reachable"] is False
     assert result["targets"]["dashboard_vendor"]["http_status"] == 200
     assert result["targets"]["rtcpushapi"]["error"] == "Connection refused"
+
+
+@pytest.mark.asyncio
+async def test_pipeline_state_endpoint_reads_show_director() -> None:
+    """Pipeline state endpoint should read the persistent ShowDirector runtime."""
+    from src.dashboard.api import get_pipeline_state
+    from src.orchestrator.show_director import get_show_director, reset_show_director
+
+    reset_show_director()
+    director = get_show_director()
+    director.transition("SELLING")
+
+    result = await get_pipeline_state()
+
+    assert result["state"] == "SELLING"
+    assert result["stream_running"] is False
+    assert result["emergency_stopped"] is False
+    assert result["history"][-1]["to"] == "SELLING"
+
+
+@pytest.mark.asyncio
+async def test_director_runtime_endpoint_exposes_brain_and_prompt_metadata() -> None:
+    """Director runtime endpoint should expose aggregated director, brain, and prompt state."""
+    from src.dashboard.api import get_director_runtime
+    from src.orchestrator.show_director import reset_show_director
+
+    reset_show_director()
+
+    result = await get_director_runtime()
+
+    assert "director" in result
+    assert "brain" in result
+    assert "prompt" in result
+    assert "persona" in result
+    assert result["director"]["state"] == "IDLE"
+    assert "active_provider" in result["brain"]
+    assert "active_revision" in result["prompt"]
 
 
 # === Runtime Truth API Tests ===

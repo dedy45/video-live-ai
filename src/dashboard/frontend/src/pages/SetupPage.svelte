@@ -1,16 +1,20 @@
 <script lang="ts">
  import { onMount } from 'svelte';
  import Card from '../components/common/Card.svelte';
+ import BrainPromptPanel from '../components/panels/BrainPromptPanel.svelte';
  import ReadinessPanel from '../components/panels/ReadinessPanel.svelte';
  import ValidationPanel from '../components/panels/ValidationPanel.svelte';
  import DiagnosticsPanel from '../components/panels/DiagnosticsPanel.svelte';
- import { getRuntimeTruth, getOpsSummary } from '../lib/api';
- import type { OpsSummary, RuntimeTruth } from '../lib/types';
+ import { getBrainConfig, getDirectorRuntime, getOpsSummary, getRuntimeTruth } from '../lib/api';
+ import type { BrainConfig, DirectorRuntimeContract, OpsSummary, RuntimeTruth } from '../lib/types';
 
  let truth = $state<RuntimeTruth | null>(null);
  let opsSummary = $state<OpsSummary | null>(null);
+ let brainConfig = $state<BrainConfig | null>(null);
+ let directorRuntime = $state<DirectorRuntimeContract | null>(null);
  let loading = $state(true);
  let error = $state('');
+ let brainPanelError = $state('');
  let refreshKey = $state(0);
 
  function deriveOrigin(nextTruth: RuntimeTruth | null): string {
@@ -23,18 +27,57 @@
   return 'mixed';
  }
 
+ function getErrorMessage(reason: unknown, fallback: string): string {
+  if (reason instanceof Error && reason.message) return reason.message;
+  if (typeof reason === 'string' && reason.trim().length > 0) return reason;
+  return fallback;
+ }
+
  async function loadSummary() {
   loading = true;
   error = '';
+  brainPanelError = '';
   try {
-   const [nextTruth, nextOpsSummary] = await Promise.all([
+   const [truthResult, opsSummaryResult, brainConfigResult, directorRuntimeResult] = await Promise.allSettled([
     getRuntimeTruth() as Promise<RuntimeTruth>,
     getOpsSummary() as Promise<OpsSummary>,
+    getBrainConfig() as Promise<BrainConfig>,
+    getDirectorRuntime() as Promise<DirectorRuntimeContract>,
    ]);
-   truth = nextTruth;
-   opsSummary = nextOpsSummary;
-  } catch (nextError: any) {
-   error = nextError.message || 'Failed to load setup summary';
+
+   const loadErrors: string[] = [];
+
+   if (truthResult.status === 'fulfilled') {
+    truth = truthResult.value;
+   } else {
+    truth = null;
+    loadErrors.push(getErrorMessage(truthResult.reason, 'Runtime truth gagal dimuat.'));
+   }
+
+   if (opsSummaryResult.status === 'fulfilled') {
+    opsSummary = opsSummaryResult.value;
+   } else {
+    opsSummary = null;
+    loadErrors.push(getErrorMessage(opsSummaryResult.reason, 'Ringkasan operasi gagal dimuat.'));
+   }
+
+   if (brainConfigResult.status === 'fulfilled') {
+    brainConfig = brainConfigResult.value;
+   } else {
+    brainConfig = null;
+    brainPanelError = getErrorMessage(brainConfigResult.reason, 'Konfigurasi brain belum bisa dimuat.');
+   }
+
+   if (directorRuntimeResult.status === 'fulfilled') {
+    directorRuntime = directorRuntimeResult.value;
+   } else {
+    directorRuntime = null;
+    brainPanelError = brainPanelError || getErrorMessage(directorRuntimeResult.reason, 'Runtime director belum bisa dimuat.');
+   }
+
+   error = loadErrors.join(' ');
+  } catch (nextError: unknown) {
+   error = getErrorMessage(nextError, 'Failed to load setup summary');
   } finally {
    loading = false;
   }
@@ -107,6 +150,8 @@
    </div>
   </Card>
 
+  <BrainPromptPanel config={brainConfig} runtime={directorRuntime} loading={loading} error={brainPanelError} />
+
   <div class="panel-grid">
    <Card title="System Readiness" size="lg">
     {#key `readiness-${refreshKey}`}
@@ -135,9 +180,8 @@
 
 <style>
  .page {
-  padding: 20px;
-  max-width: 1400px;
-  margin: 0 auto;
+  width: 100%;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 20px;
@@ -186,7 +230,7 @@
  .hero-grid,
  .panel-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   gap: 16px;
  }
  .hero-card {
@@ -214,7 +258,7 @@
  }
  .env-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr));
   gap: 10px;
  }
  .env-row {
@@ -263,7 +307,7 @@
  }
  @media (max-width: 768px) {
   .page {
-   padding: 16px;
+   gap: 16px;
   }
   .page-header {
    flex-direction: column;

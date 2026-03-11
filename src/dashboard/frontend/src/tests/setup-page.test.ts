@@ -54,6 +54,61 @@ vi.mock('../lib/api', () => ({
   getHealthSummary: vi.fn().mockResolvedValue({ status: 'healthy', components: {} }),
   getBrainStats: vi.fn().mockResolvedValue({ adapters: {} }),
   getBrainHealth: vi.fn().mockResolvedValue({ healthy_count: 1, total_count: 1, providers: { groq: true } }),
+  getBrainConfig: vi.fn().mockResolvedValue({
+    daily_budget_usd: 5,
+    fallback_order: ['groq', 'gemini_local_flash', 'local'],
+    routing_table: { chat_reply: ['groq', 'local'] },
+    prompt: {
+      active_revision: 'default-live-commerce:v1',
+      slug: 'default-live-commerce',
+      version: 1,
+      status: 'active',
+    },
+    providers: {
+      groq: { model: 'groq/llama-3.3-70b-versatile', timeout_ms: 8000, backend: 'litellm' },
+      local: { model: 'openai/qwen-local', timeout_ms: 15000, backend: 'litellm' },
+    },
+  }),
+  getDirectorRuntime: vi.fn().mockResolvedValue({
+    director: {
+      state: 'SELLING',
+      current_phase: 'hook',
+      stream_running: true,
+      emergency_stopped: false,
+      manual_override: false,
+      active_provider: 'groq',
+      active_model: 'llama-3.3-70b-versatile',
+      active_prompt_revision: 'default-live-commerce:v1',
+      history: [{ from: 'IDLE', to: 'SELLING', timestamp: 1 }],
+      valid_transitions: ['REACTING', 'ENGAGING', 'PAUSED', 'IDLE'],
+      phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'],
+    },
+    brain: {
+      active_provider: 'groq',
+      active_model: 'llama-3.3-70b-versatile',
+      routing_table: { chat_reply: ['groq', 'local'] },
+      adapter_count: 2,
+      daily_budget_usd: 5,
+    },
+    prompt: {
+      active_revision: 'default-live-commerce:v1',
+      slug: 'default-live-commerce',
+      version: 1,
+      status: 'active',
+      updated_at: '2026-03-12T00:00:00Z',
+    },
+    persona: {
+      name: 'Sari',
+      tone: 'warm',
+      language: 'Indonesian casual',
+      forbidden_topics: ['politik'],
+      catchphrases: ['Siapa yang mau?'],
+    },
+    script: {
+      current_phase: 'hook',
+      phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'],
+    },
+  }),
   brainTest: vi.fn().mockResolvedValue({
     success: true,
     provider: 'groq',
@@ -71,5 +126,7 @@ describe('SetupPage', () => {
     expect((await screen.findAllByText(/Environment/i)).length).toBeGreaterThan(0);
     expect(await screen.findByText(/gpu-01/i)).toBeInTheDocument();
     expect(await screen.findByText(/server_production/i)).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /Brain & Prompt/i })).toBeInTheDocument();
+    expect(await screen.findByText(/default-live-commerce:v1/i)).toBeInTheDocument();
   });
 });

@@ -82,6 +82,46 @@ vi.mock('../lib/api', () => ({
       webrtcapi: 'http://127.0.0.1:8010/webrtcapi.html',
     },
   }),
+  getDirectorRuntime: vi.fn().mockResolvedValue({
+    director: {
+      state: 'SELLING',
+      current_phase: 'hook',
+      stream_running: true,
+      emergency_stopped: false,
+      manual_override: false,
+      active_provider: 'groq',
+      active_model: 'llama-3.3-70b-versatile',
+      active_prompt_revision: 'default-live-commerce:v1',
+      history: [{ from: 'IDLE', to: 'SELLING', timestamp: 1 }],
+      valid_transitions: ['REACTING', 'ENGAGING', 'PAUSED', 'IDLE'],
+      phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'],
+    },
+    brain: {
+      active_provider: 'groq',
+      active_model: 'llama-3.3-70b-versatile',
+      routing_table: { chat_reply: ['groq', 'local'] },
+      adapter_count: 2,
+      daily_budget_usd: 5,
+    },
+    prompt: {
+      active_revision: 'default-live-commerce:v1',
+      slug: 'default-live-commerce',
+      version: 1,
+      status: 'active',
+      updated_at: '2026-03-12T00:00:00Z',
+    },
+    persona: {
+      name: 'Sari',
+      tone: 'warm',
+      language: 'Indonesian casual',
+      forbidden_topics: ['politik'],
+      catchphrases: ['Siapa yang mau?'],
+    },
+    script: {
+      current_phase: 'hook',
+      phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'],
+    },
+  }),
   switchProduct: vi.fn().mockResolvedValue({ product: 'Earbuds Wireless' }),
   voiceTestSpeak: vi.fn().mockResolvedValue({ status: 'success', message: 'Voice test OK' }),
   startLiveTalking: vi.fn().mockResolvedValue({ status: 'success', message: 'Avatar started' }),
@@ -97,6 +137,8 @@ describe('LiveConsolePanel', () => {
     expect(await screen.findByRole('heading', { name: /produk aktif/i })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /skrip panduan/i })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /aksi cepat/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /director runtime/i })).toBeInTheDocument();
+    expect(await screen.findByText(/default-live-commerce:v1/i)).toBeInTheDocument();
     expect((await screen.findAllByText(/Kaos Premium/i)).length).toBeGreaterThan(0);
     expect(await screen.findByRole('button', { name: /Tes Suara/i })).toBeInTheDocument();
   });

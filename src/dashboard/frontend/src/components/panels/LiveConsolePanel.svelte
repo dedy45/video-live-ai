@@ -2,6 +2,7 @@
   import { onMount, onDestroy } from 'svelte';
   import {
     emergencyStop,
+    getDirectorRuntime,
     getLiveTalkingConfig,
     getOpsSummary,
     getProducts,
@@ -15,16 +16,19 @@
   import StatusBadge from '../common/StatusBadge.svelte';
   import Card from '../common/Card.svelte';
   import ActionReceipt from '../common/ActionReceipt.svelte';
+  import DirectorRuntimePanel from './DirectorRuntimePanel.svelte';
   import type { ActionReceipt as ReceiptType } from '../../lib/stores/actions';
-  import type { EngineConfig, OpsSummary, RuntimeTruth } from '../../lib/types';
+  import type { DirectorRuntimeContract, EngineConfig, OpsSummary, RuntimeTruth } from '../../lib/types';
 
   let status = $state<Record<string, any>>({});
   let opsSummary = $state<OpsSummary | null>(null);
   let truth = $state<RuntimeTruth | null>(null);
   let config = $state<EngineConfig | null>(null);
+  let directorRuntime = $state<DirectorRuntimeContract | null>(null);
   let products = $state<any[]>([]);
   let loading = $state(true);
   let error = $state('');
+  let directorError = $state('');
   let receipt = $state<ReceiptType | null>(null);
   let sessionLogs = $state<string[]>([]);
   let pollHandle: number | null = null;
@@ -34,23 +38,71 @@
     sessionLogs = [`${timestamp} — ${message}`, ...sessionLogs].slice(0, 12);
   }
 
+  function getErrorMessage(reason: unknown, fallback: string): string {
+    if (reason instanceof Error && reason.message) return reason.message;
+    if (typeof reason === 'string' && reason.trim().length > 0) return reason;
+    return fallback;
+  }
+
   async function refresh() {
+    directorError = '';
     try {
-      const [nextStatus, nextOpsSummary, nextTruth, nextProducts, nextConfig] = await Promise.all([
+      const [nextStatus, nextOpsSummary, nextTruth, nextProducts, nextConfig, nextDirectorRuntime] = await Promise.allSettled([
         getStatus(),
         getOpsSummary() as Promise<OpsSummary>,
         getRuntimeTruth() as Promise<RuntimeTruth>,
         getProducts(),
         getLiveTalkingConfig() as Promise<EngineConfig>,
+        getDirectorRuntime() as Promise<DirectorRuntimeContract>,
       ]);
 
-      status = nextStatus;
-      opsSummary = nextOpsSummary;
-      truth = nextTruth;
-      products = nextProducts;
-      error = '';
-    } catch (nextError: any) {
-      error = nextError.message || 'Failed to load live console';
+      const loadErrors: string[] = [];
+
+      if (nextStatus.status === 'fulfilled') {
+        status = nextStatus.value;
+      } else {
+        status = {};
+        loadErrors.push(getErrorMessage(nextStatus.reason, 'Status sesi gagal dimuat.'));
+      }
+
+      if (nextOpsSummary.status === 'fulfilled') {
+        opsSummary = nextOpsSummary.value;
+      } else {
+        opsSummary = null;
+        loadErrors.push(getErrorMessage(nextOpsSummary.reason, 'Ringkasan operasi gagal dimuat.'));
+      }
+
+      if (nextTruth.status === 'fulfilled') {
+        truth = nextTruth.value;
+      } else {
+        truth = null;
+        loadErrors.push(getErrorMessage(nextTruth.reason, 'Runtime truth gagal dimuat.'));
+      }
+
+      if (nextProducts.status === 'fulfilled') {
+        products = nextProducts.value;
+      } else {
+        products = [];
+        loadErrors.push(getErrorMessage(nextProducts.reason, 'Daftar produk gagal dimuat.'));
+      }
+
+      if (nextConfig.status === 'fulfilled') {
+        config = nextConfig.value;
+      } else {
+        config = null;
+        loadErrors.push(getErrorMessage(nextConfig.reason, 'Konfigurasi preview avatar gagal dimuat.'));
+      }
+
+      if (nextDirectorRuntime.status === 'fulfilled') {
+        directorRuntime = nextDirectorRuntime.value;
+      } else {
+        directorRuntime = null;
+        directorError = getErrorMessage(nextDirectorRuntime.reason, 'Runtime director belum bisa dimuat.');
+      }
+
+      error = loadErrors.join(' ');
+    } catch (nextError: unknown) {
+      error = getErrorMessage(nextError, 'Failed to load live console');
     } finally {
       loading = false;
     }
@@ -100,7 +152,7 @@
 
   const uptimeMinutes = $derived(Math.floor((status.uptime_sec || 0) / 60));
   const viewerCount = $derived(status.viewer_count || 0);
-  const streamLive = $derived(status.stream_running === true);
+  const streamLive = $derived(directorRuntime?.director?.stream_running ?? status.stream_running === true);
   const faceRunning = $derived(truth?.face_engine?.engine_state === 'running');
   const voiceReady = $derived(Boolean(truth?.voice_engine?.server_reachable && truth?.voice_engine?.reference_ready));
   const totalRestarts = $derived(
@@ -242,7 +294,7 @@
               <StatusBadge status={streamLive ? 'ready' : 'idle'} label={status.stream_status || 'idle'} />
             </div>
           </div>
-          <button class="secondary-btn" onclick={openPreview}>Open Preview Window</button>
+          <button class="secondary-btn" onclick={openPreview}>Buka Preview</button>
         </Card>
 
         <Card title="Skrip Panduan" size="lg">
@@ -252,13 +304,15 @@
       </div>
 
       <div class="command-col">
+        <DirectorRuntimePanel runtime={directorRuntime} loading={loading} error={directorError} />
+
         <Card title="Aksi Cepat" size="lg">
           <div class="action-grid">
             <button class="primary-btn" onclick={handleRotateProduct}>Ganti Produk</button>
             <button class="secondary-btn" onclick={handleVoiceTest}>Tes Suara</button>
-            <button class="secondary-btn" onclick={handleCopyLink}>Copy Link</button>
-            <button class="secondary-btn" onclick={handleAvatarToggle}>{faceRunning ? 'Stop Avatar' : 'Start Avatar'}</button>
-            <button class="critical-btn" onclick={handleEmergencyStop}>Emergency Stop</button>
+            <button class="secondary-btn" onclick={handleCopyLink}>Salin Link</button>
+            <button class="secondary-btn" onclick={handleAvatarToggle}>{faceRunning ? 'Hentikan Avatar' : 'Jalankan Avatar'}</button>
+            <button class="critical-btn" onclick={handleEmergencyStop}>Stop Darurat</button>
           </div>
         </Card>
 
@@ -287,9 +341,8 @@
 
 <style>
   .live-command-center {
-    padding: 24px;
-    max-width: 1400px;
-    margin: 0 auto;
+    width: 100%;
+    padding: 0;
   }
   .command-header {
     display: flex;
@@ -338,7 +391,7 @@
   }
   .command-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
     gap: 20px;
   }
   .command-col {
@@ -461,9 +514,6 @@
     font-size: 12px;
   }
   @media (max-width: 768px) {
-    .live-command-center {
-      padding: 16px;
-    }
     .command-header {
       flex-direction: column;
     }

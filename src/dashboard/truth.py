@@ -15,6 +15,7 @@ from typing import Any
 
 from src.config import is_mock_mode
 from src.dashboard.resources import get_resource_metrics, get_restart_counters
+from src.orchestrator.show_director import get_show_director
 from src.utils.logging import get_logger
 
 logger = get_logger("dashboard.truth")
@@ -138,11 +139,10 @@ def _get_stream_runtime_mode() -> str:
     if is_mock_mode():
         return "mock"
     try:
-        from src.dashboard.api import _stream_running, _emergency_stopped
-
-        if _emergency_stopped:
+        director = get_show_director().get_runtime_snapshot()
+        if director["emergency_stopped"]:
             return "idle"
-        if _stream_running:
+        if director["stream_running"]:
             return "live"
         return "idle"
     except Exception:
@@ -208,6 +208,7 @@ def get_runtime_truth_snapshot(force_refresh: bool = False) -> dict[str, Any]:
         },
         "resource_metrics": get_resource_metrics(),
         "restart_counters": get_restart_counters(),
+        "director": get_show_director().get_runtime_snapshot(),
         "validation_state": "unvalidated",
         "last_validated_at": None,
         "provenance": _get_provenance(),

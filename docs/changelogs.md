@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.5.19 — 2026-03-12 (Performer Load Bottleneck Debug + Lazy Load Hardening)
+
+### OK `#/performer` no longer blocks on preview probes during initial load
+- `GET /api/engine/livetalking/debug-targets` now probes vendor URLs asynchronously with short timeouts, so one dead preview target no longer blocks the FastAPI event loop for every concurrent performer request
+- `PerformerWorkspace` now lazy-loads preview and technical data only when the `Preview` or `Teknis` tab is opened, while still keeping the technical tab complete once it is visited
+- `Teknis` tab refresh now reloads both engine diagnostics and vendor reachability so operator troubleshooting stays accurate without forcing that cost into the initial `Ringkasan` load
+
+### Verification
+- `cd src/dashboard/frontend && npm run test -- src/tests/performer-page.test.ts src/tests/performer-panel.test.ts src/tests/action-receipt.test.ts src/tests/performer-preview-panel.test.ts src/tests/performer-validation-panel.test.ts src/tests/api.test.ts` -> `22 passed`
+- `uv run pytest tests/test_dashboard.py tests/test_brain.py -q -p no:cacheprovider -k "livetalking_debug_targets_reports_reachability or show_director or director_runtime or pipeline_state or prompt_registry or persona"` -> `9 passed`
+- `cd src/dashboard/frontend && npm run test -- src/tests/App.test.ts src/tests/setup-page.test.ts src/tests/live-console-panel.test.ts` -> `11 passed`
+- `cd src/dashboard/frontend && npm run build` -> PASS
+- `cd src/dashboard/frontend && npm run test:e2e -- e2e/dashboard.spec.ts` -> `13 passed`
+- Browser profiling on `http://127.0.0.1:8001/dashboard#/performer` after restarting the local server:
+  - initial workspace render completed in `~536 ms`
+  - `Avatar` tab settled in `~60 ms`
+  - `Teknis` tab settled in `~498 ms`
+  - `Preview` tab settled in `~851 ms`
+  - `GET /api/engine/livetalking/debug-targets` dropped from `~12.2 s` on the stale process to `~452 ms` after the async probe fix was loaded
+
 ## v0.5.18 — 2026-03-11 (Avatar & Suara Recovery Workspace)
 
 ### OK `Avatar & Suara` is restored as a tabbed operator workspace

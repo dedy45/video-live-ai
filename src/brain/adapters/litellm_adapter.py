@@ -325,45 +325,25 @@ class LiteLLMAdapter(BaseLLMAdapter):
         return result
 
     async def health_check(self) -> bool:
-        """Health check dengan request minimal ke provider."""
+        """Lightweight health check - only verify configuration, no actual API call.
+        
+        Actual connectivity is verified on first real request (lazy check).
+        This prevents slow health checks from blocking dashboard load.
+        """
         if is_mock_mode():
             return True
-        try:
-            call_kwargs = self._build_kwargs()
-            call_kwargs["messages"] = [{"role": "user", "content": "hi"}]
-            call_kwargs["max_tokens"] = 5
-            call_kwargs["timeout"] = 5.0
-            call_kwargs["num_retries"] = 0
-            response = await asyncio.wait_for(
-                acompletion(**call_kwargs),
-                timeout=8.0,
-            )
-            ok = bool(response.choices and response.choices[0].message.content)
-            if ok:
-                self.is_available = True
-                logger.info("litellm_health_ok", provider=self.provider_name)
-            else:
-                self.is_available = False
-                logger.warning("litellm_health_empty", provider=self.provider_name)
-            return ok
-        except AuthenticationError as e:
-            self.is_available = False
-            logger.error("litellm_health_auth_error", provider=self.provider_name, error=str(e)[:100])
-            return False
-        except asyncio.TimeoutError:
-            self.is_available = False
-            logger.warning("litellm_health_timeout", provider=self.provider_name)
-            return False
-        except Exception as e:
-            self.is_available = False
-            err_cat = _classify_exc(e)
-            logger.warning(
-                "litellm_health_failed",
-                provider=self.provider_name,
-                error_category=err_cat,
-                error=str(e)[:100],
-            )
-            return False
+        
+        # Just check if we have API key configured
+        # Don't make actual API call - too slow for dashboard
+        has_key = bool(self._api_key)
+        self.is_available = has_key
+        
+        if has_key:
+            logger.debug("litellm_health_ok_config", provider=self.provider_name)
+        else:
+            logger.debug("litellm_health_no_key", provider=self.provider_name)
+        
+        return has_key
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:
         return (input_tokens * self._cost_per_input) + (output_tokens * self._cost_per_output)

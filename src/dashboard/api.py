@@ -18,11 +18,13 @@ import os
 import time
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
+from src.brain.prompt_registry import get_prompt_registry
 from src.commerce.analytics import get_analytics
 from src.commerce.manager import AffiliateTracker, Product, ProductManager
 from src.config import get_config, get_env, is_mock_mode
@@ -32,6 +34,7 @@ from src.dashboard.ops_state import get_ops_state
 from src.dashboard.resources import get_resource_metrics, get_restart_counters
 from src.dashboard.truth import get_runtime_truth_snapshot
 from src.dashboard.validation_history import record_validation, get_history as get_validation_history
+from src.orchestrator.show_director import get_show_director
 from src.utils.ffmpeg import check_ffmpeg_ready
 from src.utils.logging import get_logger
 
@@ -80,7 +83,7 @@ class ChatEventResponse(BaseModel):
 
 class BrainTestRequest(BaseModel):
     """Request to test LLM Brain with a prompt."""
-    system_prompt: str = "Kamu adalah AI host live commerce Indonesia yang ramah dan energik."
+    system_prompt: str = ""
     user_prompt: str = "Halo, perkenalkan produk ini!"
     task_type: str = "chat_reply"
     provider: str | None = None
@@ -105,13 +108,6 @@ class BrainTestResponse(BaseModel):
 _product_manager: ProductManager | None = None
 _affiliate_tracker: AffiliateTracker | None = None
 _system_start_time = time.time()
-_stream_running = False
-_emergency_stopped = False
-
-# Pipeline state machine
-_pipeline_state = "IDLE"  # IDLE, SELLING, REACTING, ENGAGING, PAUSED
-_pipeline_history: list[dict[str, Any]] = []
-MAX_PIPELINE_HISTORY = 100
 
 # Shared LLM Router instance
 _llm_router = None
@@ -119,6 +115,11 @@ _llm_router = None
 # Recent chat events buffer
 _recent_chats: list[dict[str, Any]] = []
 MAX_RECENT_CHATS = 50
+
+# Brain health cache (to avoid slow health checks on every request)
+_brain_health_cache: dict[str, Any] | None = None
+_brain_health_cache_time: float = 0.0
+BRAIN_HEALTH_CACHE_TTL = 30.0  # Cache for 30 seconds
 
 
 def init_dashboard_state(
@@ -153,6 +154,43 @@ def record_chat_event(event: dict[str, Any]) -> None:
         _recent_chats.pop(0)
 
 
+def _get_director_runtime_contract() -> dict[str, Any]:
+    """Build the aggregated director + brain + prompt runtime contract."""
+    director = get_show_director().get_runtime_snapshot()
+    prompt = get_prompt_registry().get_active_revision()
+    router_instance = get_llm_router()
+    routing_table: dict[str, list[str]] = {}
+    adapter_count = 0
+
+    if router_instance is not None:
+        adapter_count = len(router_instance.adapters)
+        for task_type, providers in router_instance.routing_table.items():
+            routing_table[task_type.value] = providers
+
+    return {
+        "director": director,
+        "brain": {
+            "active_provider": director["active_provider"],
+            "active_model": director["active_model"],
+            "routing_table": routing_table,
+            "adapter_count": adapter_count,
+            "daily_budget_usd": get_config().llm_providers.daily_budget_usd,
+        },
+        "prompt": {
+            "active_revision": f'{prompt["slug"]}:v{prompt["version"]}',
+            "slug": prompt["slug"],
+            "version": prompt["version"],
+            "status": prompt["status"],
+            "updated_at": prompt["updated_at"],
+        },
+        "persona": prompt["persona"],
+        "script": {
+            "current_phase": director["current_phase"],
+            "phase_sequence": director["phase_sequence"],
+        },
+    }
+
+
 # ── System Endpoints ─────────────────────────────────────────────
 
 @router.get("/status")
@@ -164,8 +202,9 @@ async def get_status() -> dict[str, Any]:
         current = pm.get_current_product()
         gauges = analytics.get_gauges()
         counters = analytics.get_counters()
+        director = get_show_director().get_runtime_snapshot()
         return {
-            "state": _pipeline_state if not _emergency_stopped else "STOPPED",
+            "state": director["state"],
             "mock_mode": is_mock_mode(),
             "uptime_sec": round(time.time() - _system_start_time, 0),
             "viewer_count": int(gauges.get("viewers", 0)),
@@ -174,19 +213,20 @@ async def get_status() -> dict[str, Any]:
                 "name": current.name,
                 "price": current.price_formatted,
             } if current else None,
-            "stream_status": "stopped" if _emergency_stopped else ("live" if _stream_running else "idle"),
-            "stream_running": _stream_running,
-            "emergency_stopped": _emergency_stopped,
+            "stream_status": "stopped" if director["emergency_stopped"] else ("live" if director["stream_running"] else "idle"),
+            "stream_running": director["stream_running"],
+            "emergency_stopped": director["emergency_stopped"],
             "llm_budget_remaining": gauges.get("llm_budget_remaining", 5.0),
             "safety_incidents": counters.get("safety_incident", 0),
         }
     except Exception as e:
         logger.error("status_endpoint_error", error=str(e), exc_info=True)
+        director = get_show_director().get_runtime_snapshot()
         return {
             "state": "ERROR", "mock_mode": is_mock_mode(),
             "uptime_sec": round(time.time() - _system_start_time, 0),
-            "error": str(e), "stream_running": _stream_running,
-            "emergency_stopped": _emergency_stopped,
+            "error": str(e), "stream_running": director["stream_running"],
+            "emergency_stopped": director["emergency_stopped"],
         }
 
 
@@ -278,10 +318,11 @@ async def get_recent_chats(limit: int = 20) -> list[ChatEventResponse]:
 @router.post("/stream/start")
 async def start_stream() -> dict[str, str]:
     """Start RTMP streaming."""
-    global _stream_running, _emergency_stopped
-    if _emergency_stopped:
-        raise HTTPException(400, "Emergency stop active. Use /api/emergency-reset first.")
-    _stream_running = True
+    director = get_show_director()
+    try:
+        director.start_stream()
+    except RuntimeError as e:
+        raise HTTPException(400, str(e)) from e
     logger.info("stream_start_api")
     return {"status": "started"}
 
@@ -289,8 +330,7 @@ async def start_stream() -> dict[str, str]:
 @router.post("/stream/stop")
 async def stop_stream() -> dict[str, str]:
     """Stop RTMP streaming gracefully."""
-    global _stream_running
-    _stream_running = False
+    get_show_director().stop_stream()
     logger.info("stream_stop_api")
     return {"status": "stopped"}
 
@@ -298,10 +338,7 @@ async def stop_stream() -> dict[str, str]:
 @router.post("/emergency-stop")
 async def emergency_stop() -> dict[str, str]:
     """Emergency stop — halts all operations immediately."""
-    global _stream_running, _emergency_stopped, _pipeline_state
-    _stream_running = False
-    _emergency_stopped = True
-    _pipeline_state = "STOPPED"
+    get_show_director().emergency_stop()
     logger.critical("EMERGENCY_STOP")
     return {"status": "emergency_stopped", "message": "All operations halted. Use /api/emergency-reset to recover."}
 
@@ -309,9 +346,7 @@ async def emergency_stop() -> dict[str, str]:
 @router.post("/emergency-reset")
 async def emergency_reset() -> dict[str, str]:
     """Reset after emergency stop."""
-    global _emergency_stopped, _pipeline_state
-    _emergency_stopped = False
-    _pipeline_state = "IDLE"
+    get_show_director().reset_emergency()
     logger.info("emergency_reset")
     return {"status": "reset", "message": "System ready to restart."}
 
@@ -321,12 +356,13 @@ async def emergency_reset() -> dict[str, str]:
 @router.get("/pipeline/state")
 async def get_pipeline_state() -> dict[str, Any]:
     """Get current pipeline state machine status."""
+    director = get_show_director().get_runtime_snapshot()
     return {
-        "state": _pipeline_state,
-        "stream_running": _stream_running,
-        "emergency_stopped": _emergency_stopped,
-        "history": _pipeline_history[-20:],
-        "valid_transitions": _get_valid_transitions(),
+        "state": director["state"],
+        "stream_running": director["stream_running"],
+        "emergency_stopped": director["emergency_stopped"],
+        "history": director["history"],
+        "valid_transitions": director["valid_transitions"],
     }
 
 
@@ -337,43 +373,20 @@ class TransitionRequest(BaseModel):
 @router.post("/pipeline/transition")
 async def pipeline_transition(request: TransitionRequest) -> dict[str, Any]:
     """Transition pipeline to a new state."""
-    target_state = request.target_state
-    global _pipeline_state
-    valid = _get_valid_transitions()
-    target_upper = target_state.upper()
+    director = get_show_director()
+    previous = director.get_runtime_snapshot()["state"]
+    try:
+        updated = director.transition(request.target_state)
+    except ValueError as e:
+        raise HTTPException(400, str(e)) from e
 
-    if target_upper not in valid:
-        raise HTTPException(
-            400,
-            f"Invalid transition: {_pipeline_state} → {target_upper}. "
-            f"Valid: {valid}"
-        )
-
-    old_state = _pipeline_state
-    _pipeline_state = target_upper
-    _pipeline_history.append({
-        "from": old_state,
-        "to": target_upper,
-        "timestamp": time.time(),
-    })
-    if len(_pipeline_history) > MAX_PIPELINE_HISTORY:
-        _pipeline_history.pop(0)
-
-    logger.info("pipeline_transition", old=old_state, new=target_upper)
-    return {"status": "transitioned", "from": old_state, "to": target_upper}
+    logger.info("pipeline_transition", old=previous, new=updated["state"])
+    return {"status": "transitioned", "from": previous, "to": updated["state"]}
 
 
 def _get_valid_transitions() -> list[str]:
     """Return valid next states from current state."""
-    transitions = {
-        "IDLE": ["SELLING", "PAUSED"],
-        "SELLING": ["REACTING", "ENGAGING", "PAUSED", "IDLE"],
-        "REACTING": ["SELLING", "ENGAGING", "PAUSED"],
-        "ENGAGING": ["SELLING", "REACTING", "PAUSED"],
-        "PAUSED": ["IDLE", "SELLING"],
-        "STOPPED": ["IDLE"],
-    }
-    return transitions.get(_pipeline_state, ["IDLE"])
+    return get_show_director().get_valid_transitions()
 
 
 # ── LLM Brain Endpoints ─────────────────────────────────────────
@@ -426,31 +439,61 @@ async def brain_stats() -> dict[str, Any]:
 
 @router.get("/brain/health")
 async def brain_health() -> dict[str, Any]:
-    """Check health of all LLM providers (quick ping)."""
+    """Check health of all LLM providers (quick ping with caching)."""
+    global _brain_health_cache, _brain_health_cache_time
+    
+    # Return cached result if still fresh
+    now = time.time()
+    if _brain_health_cache is not None and (now - _brain_health_cache_time) < BRAIN_HEALTH_CACHE_TTL:
+        logger.debug("brain_health_cache_hit", age_sec=round(now - _brain_health_cache_time, 1))
+        return _brain_health_cache
+    
     try:
         router_instance = get_llm_router()
         if router_instance is None:
             logger.warning("brain_health_no_router")
-            return {"error": "LLM Router not initialized", "providers": {}}
+            result = {"error": "LLM Router not initialized", "providers": {}}
+            _brain_health_cache = result
+            _brain_health_cache_time = now
+            return result
 
+        # Reduced timeout from 30s to 10s
         health = await asyncio.wait_for(
             router_instance.health_check_all(),
-            timeout=30.0,
+            timeout=10.0,
         )
         healthy_count = sum(1 for v in health.values() if v)
         logger.info("brain_health_ok", healthy=healthy_count, total=len(health))
-        return {
+        
+        # Get current active provider
+        current_provider = getattr(router_instance, 'current_provider', 'groq')
+        
+        result = {
             "providers": health,
             "mock_mode": is_mock_mode(),
             "healthy_count": healthy_count,
             "total_count": len(health),
+            "current_provider": current_provider,  # Tambahkan current provider
         }
+        
+        # Cache the result
+        _brain_health_cache = result
+        _brain_health_cache_time = now
+        return result
+        
     except asyncio.TimeoutError:
         logger.error("brain_health_timeout")
-        return {"error": "Health check timed out", "providers": {}}
+        result = {"error": "Health check timed out", "providers": {}}
+        # Cache error result too (shorter TTL via same mechanism)
+        _brain_health_cache = result
+        _brain_health_cache_time = now
+        return result
     except Exception as e:
         logger.error("brain_health_error", error=str(e), exc_info=True)
-        return {"error": str(e), "providers": {}}
+        result = {"error": str(e), "providers": {}}
+        _brain_health_cache = result
+        _brain_health_cache_time = now
+        return result
 
 
 @router.post("/brain/test")
@@ -480,6 +523,7 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
 
     try:
         from src.brain.adapters.base import TaskType
+        from src.brain.persona import PersonaEngine
         try:
             task = TaskType(request.task_type)
         except ValueError:
@@ -492,14 +536,22 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
             preferred_provider=request.provider or "auto",
         )
 
+        system_prompt = request.system_prompt or PersonaEngine().build_system_prompt(state="SELLING")
+
         response = await asyncio.wait_for(
             router_instance.route(
-                system_prompt=request.system_prompt,
+                system_prompt=system_prompt,
                 user_prompt=request.user_prompt,
                 task_type=task,
                 preferred_provider=request.provider or None,
             ),
             timeout=90.0,  # Max 90s — pro models can be slow
+        )
+
+        get_show_director().update_brain_runtime(
+            provider=response.provider,
+            model=response.model,
+            prompt_revision=_get_director_runtime_contract()["prompt"]["active_revision"],
         )
 
         logger.info(
@@ -561,10 +613,18 @@ async def brain_config() -> dict[str, Any]:
             for task_type, providers in router_instance.routing_table.items():
                 routing_table[task_type.value] = providers
 
+        prompt = get_prompt_registry().get_active_revision()
+
         return {
             "daily_budget_usd": llm_cfg.daily_budget_usd,
             "fallback_order": llm_cfg.fallback_order,
             "routing_table": routing_table,
+            "prompt": {
+                "active_revision": f'{prompt["slug"]}:v{prompt["version"]}',
+                "slug": prompt["slug"],
+                "version": prompt["version"],
+                "status": prompt["status"],
+            },
             "providers": {
                 "gemini": {
                     "model": f"gemini/{llm_cfg.gemini.model}",
@@ -621,6 +681,23 @@ async def brain_config() -> dict[str, Any]:
         return {"error": str(e)}
 
 
+@router.get("/director/runtime")
+async def get_director_runtime() -> dict[str, Any]:
+    """Return aggregated director, brain, prompt, and script runtime state."""
+    try:
+        return _get_director_runtime_contract()
+    except Exception as e:
+        logger.error("director_runtime_error", error=str(e), exc_info=True)
+        return {
+            "director": get_show_director().get_runtime_snapshot(),
+            "brain": {"active_provider": "unknown", "active_model": "unknown", "routing_table": {}},
+            "prompt": {"active_revision": "unknown", "slug": "unknown", "version": 0, "status": "error"},
+            "persona": {},
+            "script": {"current_phase": "unknown", "phase_sequence": []},
+            "error": str(e),
+        }
+
+
 # ── Health Endpoints ─────────────────────────────────────────────
 
 @router.get("/health/summary")
@@ -670,10 +747,12 @@ async def ws_dashboard(websocket: WebSocket) -> None:
         while True:
             analytics = get_analytics()
             snapshot = analytics.get_dashboard_snapshot()
-            snapshot["stream_running"] = _stream_running
-            snapshot["emergency_stopped"] = _emergency_stopped
+            director = get_show_director().get_runtime_snapshot()
+            snapshot["stream_running"] = director["stream_running"]
+            snapshot["emergency_stopped"] = director["emergency_stopped"]
             snapshot["mock_mode"] = is_mock_mode()
-            snapshot["pipeline_state"] = _pipeline_state
+            snapshot["pipeline_state"] = director["state"]
+            snapshot["director"] = director
 
             pm = _product_manager or ProductManager()
             current = pm.get_current_product()
@@ -757,8 +836,21 @@ def _build_engine_action_result(
     }
 
 
-def _probe_debug_target(url: str) -> dict[str, Any]:
-    """Probe a preview/debug URL so the frontend can disable dead links with context."""
+def _normalize_probe_url(url: str) -> str:
+    """Resolve localhost probe URLs to loopback explicitly for faster local checks."""
+    if not url:
+        return url
+
+    parts = urlsplit(url)
+    if parts.hostname != "localhost":
+        return url
+
+    netloc = parts.netloc.replace("localhost", "127.0.0.1", 1)
+    return urlunsplit((parts.scheme, netloc, parts.path, parts.query, parts.fragment))
+
+
+async def _probe_debug_target_async(url: str) -> dict[str, Any]:
+    """Probe a preview/debug URL without blocking the event loop."""
     if not url:
         return {
             "url": "",
@@ -767,15 +859,21 @@ def _probe_debug_target(url: str) -> dict[str, Any]:
             "error": "URL tidak tersedia",
         }
 
+    normalized_url = _normalize_probe_url(url)
+
     try:
-        response = httpx.get(url, follow_redirects=True, timeout=2.5)
-        reachable = response.status_code < 400
-        return {
-            "url": url,
-            "reachable": reachable,
-            "http_status": response.status_code,
-            "error": None if reachable else f"HTTP {response.status_code}",
-        }
+        async with httpx.AsyncClient(
+            follow_redirects=True,
+            timeout=httpx.Timeout(connect=0.35, read=0.85, write=0.35, pool=0.35),
+        ) as client:
+            response = await client.get(normalized_url)
+            reachable = response.status_code < 400
+            return {
+                "url": url,
+                "reachable": reachable,
+                "http_status": response.status_code,
+                "error": None if reachable else f"HTTP {response.status_code}",
+            }
     except httpx.HTTPError as exc:
         return {
             "url": url,
@@ -928,12 +1026,17 @@ async def engine_livetalking_debug_targets() -> dict[str, Any]:
     try:
         config = await engine_livetalking_config()
         debug_urls = config.get("debug_urls", {})
+        webrtcapi, dashboard_vendor, rtcpushapi = await asyncio.gather(
+            _probe_debug_target_async(debug_urls.get("webrtcapi", "")),
+            _probe_debug_target_async(debug_urls.get("dashboard_vendor", "")),
+            _probe_debug_target_async(debug_urls.get("rtcpushapi", "")),
+        )
         return {
             "checked_at": datetime.now(timezone.utc).isoformat(),
             "targets": {
-                "webrtcapi": _probe_debug_target(debug_urls.get("webrtcapi", "")),
-                "dashboard_vendor": _probe_debug_target(debug_urls.get("dashboard_vendor", "")),
-                "rtcpushapi": _probe_debug_target(debug_urls.get("rtcpushapi", "")),
+                "webrtcapi": webrtcapi,
+                "dashboard_vendor": dashboard_vendor,
+                "rtcpushapi": rtcpushapi,
             },
         }
     except Exception as e:
@@ -973,9 +1076,10 @@ async def get_readiness() -> dict[str, Any]:
 async def get_runtime_truth() -> dict[str, Any]:
     """Get consolidated runtime truth snapshot for operator dashboard."""
     try:
-        truth = get_runtime_truth_snapshot()
+        truth = get_runtime_truth_snapshot(force_refresh=True)
         ops_state = get_ops_state()
         incident_summary = get_incident_registry().summary()
+        truth["director"] = get_show_director().get_runtime_snapshot()
         truth["deployment_mode"] = ops_state.deployment_mode
         truth["session_id"] = ops_state.session_id
         truth["host"]["role"] = ops_state.host_role

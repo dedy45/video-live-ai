@@ -21,6 +21,7 @@
   let brainHealth = $state<Record<string, any>>({});
   let brainStats = $state<Record<string, any>>({});
   let loading = $state(true);
+  let brainLoading = $state(true);
   let error = $state('');
   let loadedAt = $state<string | null>(null);
   let receipt = $state<ReceiptType | null>(null);
@@ -28,25 +29,38 @@
 
   async function refresh() {
     try {
-      const [nextChats, nextHealth, nextResources, nextIncidents, nextBrainHealth, nextBrainStats] = await Promise.all([
+      // Load critical data first (fast APIs)
+      const [nextChats, nextHealth, nextResources, nextIncidents] = await Promise.all([
         getRecentChats(),
         getHealthSummary(),
         getResources(),
         getIncidents(),
-        getBrainHealth(),
-        getBrainStats(),
       ]);
       chats = nextChats.slice(0, 5);
       health = nextHealth;
       resources = nextResources;
       incidents = nextIncidents.slice(0, 6);
-      brainHealth = nextBrainHealth;
-      brainStats = nextBrainStats;
       loadedAt = new Date().toISOString();
       error = '';
+      loading = false;
+
+      // Load brain data in background (slow API)
+      brainLoading = true;
+      Promise.all([
+        getBrainHealth(),
+        getBrainStats(),
+      ]).then(([nextBrainHealth, nextBrainStats]) => {
+        brainHealth = nextBrainHealth;
+        brainStats = nextBrainStats;
+        brainLoading = false;
+      }).catch((nextError: any) => {
+        console.error('Brain data load failed:', nextError);
+        brainHealth = { error: 'Failed to load', providers: {} };
+        brainStats = { error: 'Failed to load', adapters: {} };
+        brainLoading = false;
+      });
     } catch (nextError: any) {
       error = nextError.message || 'Failed to load monitor';
-    } finally {
       loading = false;
     }
   }
@@ -156,20 +170,26 @@
 
       <section class="card">
         <div class="section-title">LLM Brain</div>
-        <div class="brain-summary">
-          <div class="brain-row"><span>Active</span><strong>{brainStats.active_provider || 'unknown'} {brainStats.active_model ? `(${brainStats.active_model})` : ''}</strong></div>
-          <div class="brain-row"><span>Healthy</span><strong>{brainHealth.healthy_count || 0}/{brainHealth.total_count || 0}</strong></div>
-        </div>
-        <div class="chip-list compact">
-          {#each Object.entries(brainStats.adapters || {}) as [name, info]}
-            <div class="chip">
-              <span class="dot" class:green={Boolean((info as any).available)} class:red={!Boolean((info as any).available)}></span>
-              <span class="name">{name}</span>
-              <span class="status">{(info as any).model || 'unknown'}</span>
-            </div>
-          {/each}
-        </div>
-        <button class="btn btn-ghost" onclick={handleBrainTest}>Test Brain</button>
+        {#if brainLoading}
+          <p class="muted">Loading brain data...</p>
+        {:else if brainHealth.error || brainStats.error}
+          <p class="error">Failed to load brain data</p>
+        {:else}
+          <div class="brain-summary">
+            <div class="brain-row"><span>Active</span><strong>{brainHealth.current_provider || brainStats.active_provider || 'groq'}</strong></div>
+            <div class="brain-row"><span>Healthy</span><strong>{brainHealth.healthy_count || 0}/{brainHealth.total_count || 0}</strong></div>
+          </div>
+          <div class="chip-list compact">
+            {#each Object.entries(brainHealth.providers || {}) as [name, healthy]}
+              <div class="chip">
+                <span class="dot" class:green={Boolean(healthy)} class:red={!Boolean(healthy)}></span>
+                <span class="name">{name}</span>
+                <span class="status">{brainStats.adapters?.[name]?.model || 'ready'}</span>
+              </div>
+            {/each}
+          </div>
+          <button class="btn btn-ghost" onclick={handleBrainTest}>Test Brain</button>
+        {/if}
       </section>
 
       <section class="card">

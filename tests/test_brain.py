@@ -191,6 +191,35 @@ def test_selling_script_prompt_has_7_phases() -> None:
     assert "7 fase" in prompt
 
 
+def test_prompt_registry_bootstraps_default_revision(tmp_path) -> None:
+    """Prompt registry should always bootstrap a default active revision."""
+    from src.brain.prompt_registry import PromptRegistry
+
+    registry = PromptRegistry(db_path=tmp_path / "prompt-registry.db")
+    active = registry.get_active_revision()
+
+    assert active["slug"] == "default-live-commerce"
+    assert active["status"] == "active"
+    assert active["version"] >= 1
+    assert "templates" in active
+    assert "system_base" in active["templates"]
+
+
+def test_prompt_registry_default_revision_contains_runtime_templates(tmp_path) -> None:
+    """Default prompt registry payload should contain the templates needed by PersonaEngine."""
+    from src.brain.prompt_registry import PromptRegistry
+
+    registry = PromptRegistry(db_path=tmp_path / "prompt-registry.db")
+    active = registry.get_active_revision()
+    templates = active["templates"]
+
+    assert "selling_mode" in templates
+    assert "reacting_mode" in templates
+    assert "engaging_mode" in templates
+    assert "filler" in templates
+    assert "selling_script" in templates
+
+
 # === Safety Filter Tests ===
 
 def test_safety_catches_blacklisted_word() -> None:

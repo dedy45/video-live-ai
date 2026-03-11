@@ -63,10 +63,14 @@
   let receipt = $state<ReceiptType | null>(null);
   let loading = $state(true);
   let error = $state('');
+  let previewLoading = $state(false);
   let technicalLoading = $state(false);
   let technicalError = $state('');
   let busyAction = $state('');
   let runningCheck = $state('');
+  let previewLoaded = $state(false);
+  let technicalLoaded = $state(false);
+  let engineLoaded = $state(false);
 
   const blockers = $derived(readiness?.blocking_issues || []);
   const faceState = $derived(truth?.face_engine?.engine_state || engineStatus?.state || 'unknown');
@@ -86,6 +90,24 @@
     return { label: 'Belum aktif', summary: 'Status suara belum dapat dipastikan.' };
   });
   const previewHealthy = $derived(Boolean(debugTargets?.targets?.webrtcapi?.reachable));
+  const previewState = $derived.by(() => {
+    if (!debugTargets) {
+      return {
+        label: 'Belum dicek',
+        summary: 'Preview vendor baru dicek saat tab Preview dibuka atau validasi preview dijalankan.',
+      };
+    }
+    if (previewHealthy) {
+      return {
+        label: 'Siap',
+        summary: 'Preview vendor bisa dijangkau.',
+      };
+    }
+    return {
+      label: 'Tertahan',
+      summary: 'Preview vendor belum bisa dijangkau.',
+    };
+  });
 
   async function refreshTruth() {
     const snapshot = await bootstrapRuntimeSnapshot();
@@ -100,8 +122,35 @@
     config = await getLiveTalkingConfig();
   }
 
-  async function refreshDebugTargets() {
-    debugTargets = await getLiveTalkingDebugTargets();
+  async function refreshEngineStatus() {
+    engineStatus = await getLiveTalkingStatus();
+    engineLoaded = true;
+  }
+
+  async function refreshPreviewData() {
+    previewLoading = true;
+    try {
+      const tasks: Array<Promise<unknown>> = [];
+
+      if (!config) {
+        tasks.push(
+          getLiveTalkingConfig().then((nextConfig) => {
+            config = nextConfig;
+          }),
+        );
+      }
+
+      tasks.push(
+        getLiveTalkingDebugTargets().then((nextTargets) => {
+          debugTargets = nextTargets;
+        }),
+      );
+
+      await Promise.all(tasks);
+      previewLoaded = true;
+    } finally {
+      previewLoading = false;
+    }
   }
 
   async function refreshTechnical() {
@@ -114,6 +163,8 @@
       ]);
       engineStatus = nextStatus;
       engineLogs = nextLogs.lines || [];
+      engineLoaded = true;
+      technicalLoaded = true;
     } catch (nextError: any) {
       technicalError = nextError?.message ?? 'Gagal memuat data teknis.';
     } finally {
@@ -121,17 +172,31 @@
     }
   }
 
+  async function refreshTechnicalPanelData() {
+    const tasks: Array<Promise<unknown>> = [refreshTechnical()];
+
+    if (!previewLoading) {
+      tasks.push(refreshPreviewData());
+    }
+
+    await Promise.all(tasks);
+  }
+
   async function refreshAll() {
     loading = true;
     error = '';
     try {
-      await Promise.all([
-        refreshTruth(),
-        refreshReadiness(),
-        refreshConfig(),
-        refreshTechnical(),
-        refreshDebugTargets(),
-      ]);
+      const tasks: Array<Promise<unknown>> = [refreshTruth(), refreshReadiness()];
+
+      if (engineLoaded || technicalLoaded || activeTab === 'avatar' || activeTab === 'teknis') {
+        tasks.push(activeTab === 'teknis' || technicalLoaded ? refreshTechnicalPanelData() : refreshEngineStatus());
+      }
+
+      if (previewLoaded || activeTab === 'preview') {
+        tasks.push(refreshPreviewData());
+      }
+
+      await Promise.all(tasks);
     } catch (nextError: any) {
       error = nextError?.message ?? 'Gagal memuat workspace Avatar & Suara.';
     } finally {
@@ -235,9 +300,13 @@
         },
         onStatusUpdate: (nextStatus) => {
           engineStatus = nextStatus;
+          engineLoaded = true;
         },
       });
-      await Promise.all([refreshReadiness(), refreshDebugTargets(), refreshTechnical()]);
+      const followUp: Array<Promise<unknown>> = [refreshReadiness(), refreshEngineStatus()];
+      if (previewLoaded || activeTab === 'preview') followUp.push(refreshPreviewData());
+      if (technicalLoaded || activeTab === 'teknis') followUp.push(refreshTechnical());
+      await Promise.all(followUp);
     });
   }
 
@@ -256,10 +325,32 @@
         },
         onStatusUpdate: (nextStatus) => {
           engineStatus = nextStatus;
+          engineLoaded = true;
         },
       });
-      await Promise.all([refreshReadiness(), refreshDebugTargets(), refreshTechnical()]);
+      const followUp: Array<Promise<unknown>> = [refreshReadiness(), refreshEngineStatus()];
+      if (previewLoaded || activeTab === 'preview') followUp.push(refreshPreviewData());
+      if (technicalLoaded || activeTab === 'teknis') followUp.push(refreshTechnical());
+      await Promise.all(followUp);
     });
+  }
+
+  async function handleTabChange(nextTab: TabId) {
+    activeTab = nextTab;
+
+    if (nextTab === 'avatar' && !engineLoaded && !technicalLoading) {
+      await refreshEngineStatus();
+      return;
+    }
+
+    if (nextTab === 'preview' && !previewLoaded && !previewLoading) {
+      await refreshPreviewData();
+      return;
+    }
+
+    if (nextTab === 'teknis' && !technicalLoaded && !technicalLoading) {
+      await refreshTechnicalPanelData();
+    }
   }
 
   function validationSummary(result: ValidationResult, label: string): PerformerValidationEntry {
@@ -367,7 +458,9 @@
     }
   }
 
-  onMount(refreshAll);
+  onMount(() => {
+    void refreshAll();
+  });
 </script>
 
 <section class="workspace" data-testid="performer-panel">
@@ -378,7 +471,7 @@
           class="tab-button"
           class:is-active={activeTab === tab.id}
           type="button"
-          onclick={() => (activeTab = tab.id)}
+          onclick={() => void handleTabChange(tab.id)}
         >
           {tab.label}
         </button>
@@ -419,8 +512,8 @@
         </article>
         <article class="summary-card">
           <span class="eyebrow">Preview</span>
-          <strong>{previewHealthy ? 'Siap' : 'Tertahan'}</strong>
-          <p>{previewHealthy ? 'Preview vendor bisa dijangkau.' : 'Preview vendor belum bisa dijangkau.'}</p>
+          <strong>{previewState.label}</strong>
+          <p>{previewState.summary}</p>
         </article>
       </section>
 
@@ -486,10 +579,10 @@
       />
     {:else if activeTab === 'preview'}
       <PerformerPreviewPanel
-        loading={loading}
+        loading={previewLoading}
         checkedAt={debugTargets?.checked_at || null}
         targets={debugTargets?.targets || null}
-        onRefresh={refreshDebugTargets}
+        onRefresh={refreshPreviewData}
       />
     {:else if activeTab === 'validasi'}
       <PerformerValidationPanel
@@ -506,7 +599,7 @@
         {debugTargets}
         loading={technicalLoading}
         error={technicalError}
-        onRefresh={refreshTechnical}
+        onRefresh={refreshTechnicalPanelData}
       />
     {/if}
   {/if}

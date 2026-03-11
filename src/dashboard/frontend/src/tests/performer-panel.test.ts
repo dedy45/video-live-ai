@@ -197,6 +197,25 @@ describe('PerformerPanel', () => {
     expect(await screen.findByRole('button', { name: /teknis/i })).toBeInTheDocument();
   });
 
+  it('defers heavy preview and technical requests until the related tab is opened', async () => {
+    render(PerformerPanel);
+
+    await screen.findByRole('button', { name: /ringkasan/i });
+
+    expect(api.getLiveTalkingStatus).not.toHaveBeenCalled();
+    expect(api.getLiveTalkingLogs).not.toHaveBeenCalled();
+    expect(api.getLiveTalkingDebugTargets).not.toHaveBeenCalled();
+
+    await fireEvent.click(await screen.findByRole('button', { name: /^avatar$/i }));
+    expect(api.getLiveTalkingStatus).toHaveBeenCalledTimes(1);
+
+    await fireEvent.click(await screen.findByRole('button', { name: /preview/i }));
+    expect(api.getLiveTalkingDebugTargets).toHaveBeenCalledTimes(1);
+
+    await fireEvent.click(await screen.findByRole('button', { name: /teknis/i }));
+    expect(api.getLiveTalkingLogs).toHaveBeenCalledTimes(1);
+  });
+
   it('routes voice action feedback through the shared operator receipt', async () => {
     render(PerformerPanel);
 

@@ -286,25 +286,24 @@ class GroqAdapter(BaseLLMAdapter):
         return result
 
     async def health_check(self) -> bool:
+        """Lightweight health check - only verify API key is configured.
+        
+        Actual connectivity is verified on first real request.
+        This prevents slow health checks from blocking dashboard load.
+        """
         if is_mock_mode():
             return True
+        
         try:
-            client, _ = self._get_client()
-            # Real connectivity check — list models
-            await asyncio.wait_for(
-                client.models.list(),
-                timeout=5.0,
-            )
-            return True
-        except asyncio.TimeoutError:
-            logger.warning("groq_health_timeout")
-            return False
-        except Exception as e:
-            err_cat = _classify_error(e)
-            if err_cat == "auth_error":
-                logger.error("groq_health_auth_error", error=str(e))
+            # Just verify we have API key - don't make actual API call
+            has_keys = bool(self._api_keys)
+            if has_keys:
+                logger.debug("groq_health_ok_config", key_count=len(self._api_keys))
             else:
-                logger.warning("groq_health_failed", error=str(e))
+                logger.debug("groq_health_no_keys")
+            return has_keys
+        except Exception as e:
+            logger.warning("groq_health_check_error", error=str(e))
             return False
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:

@@ -96,3 +96,18 @@ CREATE INDEX IF NOT EXISTS idx_llm_usage_provider ON llm_usage(provider, created
 CREATE INDEX IF NOT EXISTS idx_system_metrics_name ON system_metrics(metric_name, recorded_at);
 CREATE INDEX IF NOT EXISTS idx_affiliate_platform ON affiliate_events(platform, created_at);
 CREATE INDEX IF NOT EXISTS idx_product_metrics_date ON product_metrics(product_id, date);
+
+-- Prompt registry revisions
+CREATE TABLE IF NOT EXISTS prompt_revisions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug TEXT NOT NULL,
+    version INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    templates_json TEXT NOT NULL,
+    persona_json TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(slug, version)
+);
+
+CREATE INDEX IF NOT EXISTS idx_prompt_revisions_slug_status ON prompt_revisions(slug, status);

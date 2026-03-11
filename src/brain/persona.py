@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from src.brain.prompt_registry import get_prompt_registry
 from src.utils.logging import get_logger
 
 logger = get_logger("brain.persona")
@@ -46,8 +47,25 @@ class PersonaEngine:
     """
 
     def __init__(self, persona: PersonaConfig | None = None) -> None:
-        self.persona = persona or PersonaConfig()
+        if persona is not None:
+            self.persona = persona
+        else:
+            revision = get_prompt_registry().get_active_revision()
+            payload = revision["persona"]
+            self.persona = PersonaConfig(
+                name=payload.get("name", "Sari"),
+                personality=payload.get("personality", "friendly, energetic, knowledgeable"),
+                language=payload.get("language", "Indonesian casual (mixed with slang)"),
+                tone=payload.get("tone", "warm, enthusiastic, persuasive"),
+                expertise=payload.get("expertise", "fashion, beauty, lifestyle products"),
+                catchphrases=list(payload.get("catchphrases", [])),
+                forbidden_topics=list(payload.get("forbidden_topics", [])),
+            )
         logger.info("persona_initialized", name=self.persona.name)
+
+    def _get_templates(self) -> dict[str, str]:
+        revision = get_prompt_registry().get_active_revision()
+        return dict(revision["templates"])
 
     def build_system_prompt(
         self,
@@ -68,41 +86,26 @@ class PersonaEngine:
             Formatted system prompt string.
         """
         p = self.persona
+        templates = self._get_templates()
 
-        base = f"""Kamu adalah {p.name}, seorang host live commerce profesional di Indonesia.
-
-Kepribadian: {p.personality}
-Bahasa: {p.language}
-Nada bicara: {p.tone}
-Keahlian: {p.expertise}
-
-ATURAN KETAT:
-1. JANGAN membahas topik terlarang: {', '.join(p.forbidden_topics)}
-2. Selalu positif dan menyemangati viewers
-3. Gunakan bahasa Indonesia casual, boleh campur slang Jakarta
-4. Maksimal 2-3 kalimat per respons (30-50 kata)
-5. Sertakan Call-to-Action (CTA) di setiap respons jualan
-"""
+        base = templates["system_base"].format(
+            name=p.name,
+            personality=p.personality,
+            language=p.language,
+            tone=p.tone,
+            expertise=p.expertise,
+            forbidden_topics=", ".join(p.forbidden_topics),
+        )
 
         if state == "SELLING" and product_context:
-            base += f"""
-STATUS SAAT INI: SELLING MODE
-Produk yang sedang dijual: {product_context}
-Tugas: Presentasikan produk dengan antusias, highlight benefit utama, dan dorong pembelian.
-"""
+            base += "\n\n" + templates["selling_mode"].format(product_context=product_context)
         elif state == "REACTING":
-            base += """
-STATUS SAAT INI: REACTING MODE
-Tugas: Merespon komentar/pertanyaan viewer dengan cepat dan ramah.
-Prioritaskan pertanyaan tentang harga, stok, dan cara beli.
-"""
+            base += "\n\n" + templates["reacting_mode"]
         elif state == "ENGAGING":
-            base += f"""
-STATUS SAAT INI: ENGAGING MODE
-Jumlah viewers: {viewer_count}
-Tugas: Buat suasana fun! Ajak interaksi, buat humor, bikin viewers betah.
-Gunakan catchphrase: {', '.join(p.catchphrases[:3])}
-"""
+            base += "\n\n" + templates["engaging_mode"].format(
+                viewer_count=viewer_count,
+                catchphrases=", ".join(p.catchphrases[:3]),
+            )
 
         if additional_context:
             base += f"\nKONTEKS TAMBAHAN: {additional_context}"
@@ -120,25 +123,12 @@ Gunakan catchphrase: {', '.join(p.catchphrases[:3])}
 
         Requirements: 2.3 — 7-phase script generation.
         """
-        return f"""Buatkan script live selling untuk produk berikut:
-
-Produk: {product_name}
-Harga: Rp {price:,.0f}
-Fitur utama: {', '.join(features)}
-Durasi target: {target_duration_sec} detik
-
-Format script dalam 7 fase:
-1. HOOK (3 detik): Kalimat pembuka yang menarik perhatian
-2. PROBLEM (5 detik): Sebutkan masalah yang dipecahkan produk ini
-3. SOLUTION (5 detik): Perkenalkan produk sebagai solusi
-4. FEATURES (7 detik): Jelaskan 3 benefit utama
-5. SOCIAL PROOF (3 detik): Testimoni atau angka penjualan
-6. URGENCY (4 detik): Buat urgensi (stok terbatas, promo ending)
-7. CTA (3 detik): Perintah langsung untuk checkout
-
-Gunakan bahasa Indonesia casual dan antusias.
-Setiap fase harus punya timing yang jelas.
-"""
+        return self._get_templates()["selling_script"].format(
+            product_name=product_name,
+            price=price,
+            features=", ".join(features),
+            target_duration_sec=target_duration_sec,
+        )
 
     def build_emotion_prompt(self, chat_message: str) -> str:
         """Build prompt for emotion detection from chat."""
@@ -153,12 +143,4 @@ Jawab HANYA dalam format JSON:
     def get_filler_prompt(self) -> str:
         """Get prompt for generating filler content during transitions."""
         p = self.persona
-        return f"""Kamu adalah {p.name}. Buat kalimat pengisi singkat (1 kalimat, maks 15 kata)
-untuk mengisi jeda transisi produk. Variasikan antara:
-- Sapaan ke viewers
-- Ajakan interaksi (like, share, follow)
-- Humor ringan
-- Teaser produk berikutnya
-
-Harus terasa natural, BUKAN template/kaku.
-"""
+        return self._get_templates()["filler"].format(name=p.name)

@@ -79,6 +79,25 @@ vi.mock('../lib/api', () => ({
   getBrainStats: vi.fn().mockResolvedValue({}),
   getBrainHealth: vi.fn().mockResolvedValue({}),
   getBrainConfig: vi.fn().mockResolvedValue({}),
+  getDirectorRuntime: vi.fn().mockResolvedValue({
+    director: {
+      state: 'IDLE',
+      current_phase: 'hook',
+      stream_running: false,
+      emergency_stopped: false,
+      manual_override: false,
+      active_provider: 'auto',
+      active_model: 'unknown',
+      active_prompt_revision: 'default-live-commerce:v1',
+      history: [],
+      valid_transitions: ['SELLING', 'PAUSED'],
+      phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'],
+    },
+    brain: { active_provider: 'auto', active_model: 'unknown', routing_table: {}, adapter_count: 0, daily_budget_usd: 5 },
+    prompt: { active_revision: 'default-live-commerce:v1', slug: 'default-live-commerce', version: 1, status: 'active' },
+    persona: { name: 'Sari', tone: 'warm', language: 'Indonesian casual', forbidden_topics: [], catchphrases: [] },
+    script: { current_phase: 'hook', phase_sequence: ['hook', 'problem', 'solution', 'features', 'social_proof', 'urgency', 'cta'] },
+  }),
   startStream: vi.fn(),
   stopStream: vi.fn(),
   emergencyStop: vi.fn(),
@@ -133,6 +152,15 @@ describe('App shell', () => {
 
     const header = document.querySelector('.app');
     expect(header).toBeInTheDocument();
+  });
+
+  it('keeps a fixed sidebar shell and centered main content wrapper', () => {
+    render(App);
+
+    expect(screen.getByTestId('app-shell')).toBeInTheDocument();
+    expect(screen.getByTestId('app-sidebar')).toBeInTheDocument();
+    expect(screen.getByTestId('app-main')).toBeInTheDocument();
+    expect(screen.getByTestId('app-content')).toBeInTheDocument();
   });
 
   it('renders the truth bar', async () => {

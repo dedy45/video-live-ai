@@ -1,5 +1,7 @@
 import { API_BASE } from './constants';
 import type {
+  BrainConfig,
+  DirectorRuntimeContract,
   EngineConfig,
   EngineStatus,
   LiveTalkingDebugTargets,
@@ -102,7 +104,8 @@ export const switchProduct = (productId: number) =>
 // Brain
 export const getBrainStats = () => request<Record<string, any>>('/brain/stats');
 export const getBrainHealth = () => request<Record<string, any>>('/brain/health');
-export const getBrainConfig = () => request<Record<string, any>>('/brain/config');
+export const getBrainConfig = () => request<BrainConfig>('/brain/config');
+export const getDirectorRuntime = () => request<DirectorRuntimeContract>('/director/runtime');
 export const brainTest = (payload: { system_prompt?: string; user_prompt?: string; task_type?: string; provider?: string | null }) =>
   request<Record<string, any>>('/brain/test', {
     method: 'POST',

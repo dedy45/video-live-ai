@@ -326,57 +326,25 @@ class ChutesAdapter(BaseLLMAdapter):
         return result
 
     async def health_check(self) -> bool:
-        """Health check — verify API token is present and endpoint is reachable."""
+        """Lightweight health check - only verify API token is configured.
+        
+        Actual connectivity is verified on first real request.
+        This prevents slow health checks from blocking dashboard load.
+        """
         if is_mock_mode():
             return True
+        
         try:
-            import aiohttp
-
-            # Verify token exists
-            self._get_api_key()
-
-            # Quick HEAD/GET to base domain to check connectivity
-            timeout = aiohttp.ClientTimeout(total=5.0)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                # Send a minimal streaming request with 1 max_token as ping
-                headers = self._build_headers()
-                body = {
-                    "model": self.model,
-                    "messages": [{"role": "user", "content": "hi"}],
-                    "stream": True,
-                    "max_tokens": 1,
-                    "temperature": 0.0,
-                }
-                async with session.post(
-                    self._api_url,
-                    headers=headers,
-                    json=body,
-                ) as response:
-                    # 200 or 401 both mean server is reachable
-                    if response.status in (200, 401, 403):
-                        ok = response.status == 200
-                        if not ok:
-                            logger.warning(
-                                "chutes_health_auth_failed",
-                                status=response.status,
-                            )
-                        return ok
-                    logger.warning(
-                        "chutes_health_unexpected_status",
-                        status=response.status,
-                    )
-                    return False
-
-        except asyncio.TimeoutError:
-            logger.warning("chutes_health_timeout")
-            return False
-        except RuntimeError as e:
-            # Missing API key
-            logger.error("chutes_health_no_token", error=str(e))
-            return False
+            # Just verify we have API token - don't make actual API call
+            key = self._api_key or os.getenv("CHUTES_API_TOKEN", "") or os.getenv("CHUTES_API_KEY", "")
+            has_key = bool(key)
+            if has_key:
+                logger.debug("chutes_health_ok_config")
+            else:
+                logger.debug("chutes_health_no_token")
+            return has_key
         except Exception as e:
-            err_cat = _classify_error(e)
-            logger.warning("chutes_health_failed", error_category=err_cat, error=str(e))
+            logger.warning("chutes_health_check_error", error=str(e))
             return False
 
     def estimate_cost(self, input_tokens: int, output_tokens: int) -> float:

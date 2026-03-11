@@ -1,6 +1,6 @@
 # Gap Analysis: Saran3.md vs Current Project Structure
 
-**Tanggal**: 11 Maret 2026  
+**Tanggal**: 12 Maret 2026  
 **Dokumen Sumber**: `docs/ide/saran3.md`  
 **Dokumen Referensi**: `docs/architecture.md`, `docs/README.md`, `scripts/manage.py`
 
@@ -265,6 +265,12 @@ WS   /api/ws/dashboard              - WebSocket real-time updates
 - `ValidationPage.svelte` dan `DiagnosticsPage.svelte` tidak lagi menjadi halaman operator terpisah
 - Browser smoke untuk dashboard performer sekarang lulus, termasuk validasi preview fallback saat vendor target tidak reachable
 
+**Update 2026-03-12 (verified after brain/director runtime recovery):**
+- `ShowDirector` sekarang sudah ada di `src/orchestrator/show_director.py` dan menjadi source of truth runtime live selama proses FastAPI hidup
+- prompt utama tidak lagi hardcoded penuh di `persona.py`; prompt aktif sekarang dibaca dari `PromptRegistry` versioned di `src/brain/prompt_registry.py`
+- UI operator sekarang sudah punya surface baca-saja untuk `Brain & Prompt` di `Setup & Validasi` dan `Director Runtime` di `Konsol Live`
+- shell dashboard sekarang sudah centered, responsive, dan sidebar memakai lebar stabil sehingga tidak ikut bergeser saat halaman tinggi atau viewport mengecil
+
 **File**: `src/dashboard/frontend/src/` ✅ Ada (Svelte)
 
 **Pages yang sudah ada:**
@@ -283,33 +289,40 @@ WS   /api/ws/dashboard              - WebSocket real-time updates
 - ✅ Indonesian UI
 - ✅ Product switching
 - ✅ Single sidebar (fixed duplikasi)
+- ✅ `Brain & Prompt` runtime surface
+- ✅ `Director Runtime` runtime surface
+- ✅ Centered responsive shell dengan sidebar width stabil
 
 **Features yang BELUM ada:**
 - ❌ Stream control buttons (start/stop/pause/resume)
-- ❌ Emergency stop button
+- ⚠️ Emergency stop button ada di Konsol Live, tetapi belum menjadi director-level workflow lengkap dengan pause/resume/override
 - ❌ GPU temperature monitoring
 - ❌ Live badge dengan pulse animation
 - ❌ Alerts panel dengan acknowledge
 - ❌ Sessions history
-- ❌ Mobile-responsive optimization
+- ⚠️ Prompt draft/publish/rollback editor
+- ⚠️ Director manual override UI (pause/resume/skip phase/inject speech)
 
 **Gap Analysis:**
 
 | Feature | Saran3 | Current | Gap |
 |---------|--------|---------|-----|
-| WebSocket updates | ✅ Ada | ❌ Tidak ada | 🔴 HIGH |
+| WebSocket updates | ✅ Ada | ✅ Ada | resolved |
 | Stream control UI | ✅ Ada | ⚠️ Partial | 🔴 HIGH |
 | GPU monitoring | ✅ Ada | ❌ Tidak ada | 🟡 MEDIUM |
 | Alerts system | ✅ Ada | ❌ Tidak ada | 🟡 MEDIUM |
-| Mobile responsive | ✅ Ada | ⚠️ Partial | 🟢 LOW |
+| Mobile responsive | ✅ Ada | ✅ Ada | resolved |
+| Brain/prompt runtime visibility | ✅ Ada | ✅ Ada (read-only) | resolved |
+| Prompt editing workflow | ✅ Ada | ❌ Tidak ada | 🔴 HIGH |
+| Director manual override | ✅ Ada | ❌ Tidak ada | 🔴 HIGH |
 
 **Action Items:**
-1. 🔴 Implement WebSocket client di frontend
-2. 🔴 Add stream control buttons (start/stop/pause/resume/emergency)
-3. 🟡 Add GPU temperature monitoring widget
-4. 🟡 Add alerts panel dengan acknowledge
-5. 🟡 Add sessions history view
-6. 🟢 Improve mobile responsiveness
+1. 🔴 Add director-level controls (pause/resume/skip phase/inject speech)
+2. 🔴 Add prompt draft/test/publish/rollback workflow
+3. 🔴 Add stream control buttons (start/stop/pause/resume) yang tersambung ke director
+4. 🟡 Add GPU temperature monitoring widget
+5. 🟡 Add alerts panel dengan acknowledge
+6. 🟡 Add sessions history view
 
 ---
 
@@ -534,9 +547,10 @@ CREATE TABLE audio_cache (
 
 **Orchestrator:**
 - ⚠️ Ada `src/orchestrator/` folder
-- ❌ Tidak ada `show_director.py`
-- ❌ Tidak ada product rotation logic
-- ❌ Tidak ada script phases
+- ✅ Ada `show_director.py`
+- ⚠️ Sudah ada runtime phase sequence, history, emergency flag, dan stream flag
+- ❌ Belum ada product rotation scheduler
+- ❌ Belum ada automation script phases per product
 
 **Stream:**
 - ⚠️ Ada `src/stream/` folder
@@ -548,17 +562,17 @@ CREATE TABLE audio_cache (
 
 | Feature | Saran3 | Current | Gap |
 |---------|--------|---------|-----|
-| Show Director | ✅ Lengkap | ❌ Tidak ada | 🔴 CRITICAL |
+| Show Director | ✅ Lengkap | ⚠️ Core runtime service ada, control workflow belum lengkap | 🟡 MEDIUM |
 | Product rotation | ✅ Ada | ❌ Tidak ada | 🔴 CRITICAL |
-| Script phases | ✅ 7 phases | ❌ Tidak ada | 🔴 HIGH |
+| Script phases | ✅ 7 phases | ⚠️ Runtime sequence ada, automation belum ada | 🔴 HIGH |
 | RTMP manager | ✅ Ada | ⚠️ Partial | 🟡 MEDIUM |
 | Auto-reconnect | ✅ Ada | ❌ Tidak ada | 🟡 MEDIUM |
 | Multi-platform | ✅ Ada | ❌ Tidak ada | 🟢 LOW |
 
 **Action Items:**
-1. 🔴 Create `src/orchestrator/show_director.py` (BLOCKER)
-2. 🔴 Implement product rotation scheduler
-3. 🔴 Implement script phases (hook, hero, money, etc)
+1. 🔴 Implement product rotation scheduler
+2. 🔴 Implement script phase automation (hook, hero, money, etc)
+3. 🔴 Tambahkan mutation endpoints dan UI untuk `pause`, `resume`, `skip-phase`, `inject-speech`, dan provider override
 4. 🟡 Complete `src/stream/rtmp_manager.py`
 5. 🟡 Add auto-reconnect logic
 6. 🟢 Add multi-platform simultaneous output

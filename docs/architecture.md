@@ -1,7 +1,7 @@
 # VideoLiveAI Architecture
 
 > Version: 0.5.17
-> Last Updated: 2026-03-11  
+> Last Updated: 2026-03-12  
 > Target: Internal live system first  
 > Package Manager Policy: UV only
 
@@ -286,6 +286,8 @@ videoliveai/
   - `Preview`
   - `Validasi`
   - `Teknis`
+- `Setup & Validasi` sekarang juga memuat surface `Brain & Prompt` untuk membaca prompt aktif, routing provider, persona aktif, dan budget runtime
+- `Konsol Live` sekarang memuat surface `Director Runtime` untuk membaca state director, fase show aktif, provider/model aktif, prompt aktif, dan riwayat transisi
 - `Validation` dan `Diagnostics` bukan lagi halaman operator terpisah; keduanya digabung ke `Setup & Validasi` dan `Monitor & Insiden`
 - standalone operator entrypoints tetap didukung untuk debugging production-first:
   - `index.html`
@@ -303,6 +305,31 @@ Dashboard mengikuti truth model yang didefinisikan di:
 
 Setiap data surface diklasifikasikan sebagai: `mock`, `real_local`, `real_live`, `derived`, atau `unknown`.
 Backend menyediakan `GET /api/runtime/truth` sebagai consolidated truth endpoint.
+
+### Brain Runtime Control Plane
+
+Control plane runtime live sekarang tidak lagi bertumpu pada variabel global privat di dashboard API.
+
+- `src/orchestrator/show_director.py` menjadi state service persistent selama proses FastAPI hidup
+- `src/brain/prompt_registry.py` menyimpan prompt revision aktif yang versioned di SQLite
+- `src/brain/persona.py` sekarang berperan sebagai composer yang membaca prompt aktif dari registry
+- `GET /api/director/runtime` menjadi kontrak agregat untuk `director`, `brain`, `prompt`, `persona`, dan `script`
+- `GET /api/runtime/truth` juga membawa snapshot `director` agar shell operator melihat state runtime yang sama dengan backend
+
+Konsekuensinya:
+
+- state `stream`, `emergency`, dan `pipeline` tidak lagi boleh diverifikasi dari browser state lokal
+- prompt aktif, provider aktif, dan fase show aktif bisa dibaca langsung dari UI operator
+- pengembangan berikutnya untuk draft/publish prompt dan override director tinggal menambah mutation endpoints di atas contract ini
+
+### Layout Shell
+
+Shell dashboard operator sekarang mengikuti aturan layout berikut:
+
+- sidebar punya lebar tetap dan sticky, sehingga tidak ikut bergeser saat halaman panjang atau saat viewport berubah
+- content memakai centered frame dengan max-width yang konsisten
+- pada viewport sempit sidebar mengerut ke mode ikon, tetapi kolom sidebar tetap stabil
+- `scrollbar-gutter: stable` dipakai untuk mengurangi layout shift antar halaman
 
 ### Target
 

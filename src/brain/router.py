@@ -9,10 +9,6 @@ Provider yang dikonfigurasi:
   - claude          → Anthropic Claude Sonnet
   - gpt4o           → OpenAI GPT-4o Mini
   - groq            → Groq Llama 3.3 70B (ultra-fast)
-  - chutes          → Chutes.ai MiniMax M2.5 (via custom base_url)
-  - gemini_local_pro   → Local proxy gemini-3.1-pro-high (localhost:8091)
-  - gemini_local_flash → Local proxy gemini-3-flash (localhost:8091)
-  - local           → Local Ollama/vLLM (localhost:11434)
 
 Requirements: 1.1, 1.6, 1.7, 1.8, 1.9, 1.10
 """
@@ -24,7 +20,6 @@ import os
 from typing import Any
 
 from src.brain.adapters.base import BaseLLMAdapter, LLMResponse, TaskType
-from src.brain.adapters.chutes import ChutesAdapter
 from src.brain.adapters.litellm_adapter import LiteLLMAdapter
 from src.config import get_config
 from src.utils.logging import generate_trace_id, get_logger
@@ -32,17 +27,15 @@ from src.utils.logging import generate_trace_id, get_logger
 logger = get_logger("brain.router")
 
 # Default task→provider mapping
-# Prioritaskan Cherry Studio (8091) yang gratis dan sudah terbukti berfungsi
-# Groq sebagai cloud provider tercepat
-# Gemini cloud di akhir karena quota sering habis
+# PRIORITAS: Groq (tercepat) → Gemini → Claude → GPT-4o
 DEFAULT_ROUTING: dict[TaskType, list[str]] = {
-    TaskType.CHAT_REPLY:     ["groq", "gemini_local_flash", "gemini_25_flash", "gpt4o_local", "claude_local", "chutes", "local", "gemini"],
-    TaskType.SELLING_SCRIPT: ["claude_local", "gemini_local_pro", "gpt4o_local", "chutes", "groq", "gemini"],
-    TaskType.HUMOR:          ["groq", "gemini_local_flash", "gemini_25_flash", "gpt4o_local", "local", "gemini"],
-    TaskType.PRODUCT_QA:     ["gemini_local_pro", "claude_local", "gpt4o_local", "chutes", "groq", "gemini"],
-    TaskType.EMOTION_DETECT: ["groq", "gemini_local_flash", "gemini_25_flash", "gpt4o_local", "gemini"],
-    TaskType.FILLER:         ["gemini_local_flash", "groq", "local", "gemini_25_flash", "gemini"],
-    TaskType.SAFETY_CHECK:   ["claude_local", "gemini_local_pro", "gpt4o_local", "groq", "gemini"],
+    TaskType.CHAT_REPLY:     ["groq", "gemini", "claude", "gpt4o"],
+    TaskType.SELLING_SCRIPT: ["claude", "gpt4o", "groq", "gemini"],
+    TaskType.HUMOR:          ["groq", "gemini", "gpt4o", "claude"],
+    TaskType.PRODUCT_QA:     ["claude", "gpt4o", "gemini", "groq"],
+    TaskType.EMOTION_DETECT: ["groq", "gemini", "claude", "gpt4o"],
+    TaskType.FILLER:         ["groq", "gemini", "gpt4o", "claude"],
+    TaskType.SAFETY_CHECK:   ["claude", "gpt4o", "groq", "gemini"],
 }
 
 
@@ -69,8 +62,8 @@ def _load_env() -> None:
 def _build_adapters(llm_cfg: Any) -> dict[str, BaseLLMAdapter]:
     """Bangun semua LiteLLM adapter dari config + env vars.
 
-    Semua adapter menggunakan LiteLLMAdapter — tidak ada custom HTTP client.
-    LiteLLM handles authentication, retry, dan token counting secara internal.
+    Hanya load adapter yang punya API key valid di .env.
+    Adapter tanpa API key akan di-skip untuk performa lebih baik.
     """
     # Pastikan .env sudah ter-load
     _load_env()
@@ -80,167 +73,83 @@ def _build_adapters(llm_cfg: Any) -> dict[str, BaseLLMAdapter]:
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "")
     openai_key    = os.getenv("OPENAI_API_KEY", "")
     groq_key      = os.getenv("GROQ_API_KEY", "")
-    # Chutes: coba CHUTES_API_TOKEN dulu, fallback ke CHUTES_API_KEY
-    chutes_token  = (os.getenv("CHUTES_API_TOKEN", "")
-                     or os.getenv("CHUTES_API_KEY", ""))
-    # Local LLM: bisa Ollama (11434) atau Cherry Studio (8091)
-    local_url     = os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1")
-    local_key     = os.getenv("LOCAL_API", "ollama")
-    local_model   = os.getenv("LOCAL_LLM_MODEL", getattr(llm_cfg.qwen, "model", "qwen2.5:7b"))
-    # Local Gemini proxy (Cherry Studio port 8091)
-    gem_local_url = os.getenv("LOCAL_GEMINI_URL", "http://127.0.0.1:8091/v1")
-    gem_local_key = os.getenv("LOCAL_GEMINI_API_KEY",
-                               os.getenv("LOCAL_API", "sk-231d5e6912b44d929ac0b93ba2d2e033"))
 
     adapters: dict[str, BaseLLMAdapter] = {}
+    
+    # Helper function to check if key is valid (not placeholder)
+    def _is_valid_key(key: str) -> bool:
+        if not key:
+            return False
+        # Check for common placeholder patterns
+        placeholders = ["your_", "changeme", "placeholder", "xxx", "yyy"]
+        key_lower = key.lower()
+        return not any(p in key_lower for p in placeholders)
 
     # ── Google Gemini ──────────────────────────────────────
-    # LiteLLM model string: "gemini/gemini-2.0-flash"
-    adapters["gemini"] = LiteLLMAdapter(
-        provider_name="gemini",
-        litellm_model=f"gemini/{llm_cfg.gemini.model}",
-        max_tokens=llm_cfg.gemini.max_tokens,
-        timeout_ms=llm_cfg.gemini.timeout_ms,
-        api_key=gemini_key or None,
-        cost_per_input_token=0.075 / 1_000_000,
-        cost_per_output_token=0.30 / 1_000_000,
-    )
+    if _is_valid_key(gemini_key):
+        adapters["gemini"] = LiteLLMAdapter(
+            provider_name="gemini",
+            litellm_model=f"gemini/{llm_cfg.gemini.model}",
+            max_tokens=llm_cfg.gemini.max_tokens,
+            timeout_ms=llm_cfg.gemini.timeout_ms,
+            api_key=gemini_key,
+            cost_per_input_token=0.075 / 1_000_000,
+            cost_per_output_token=0.30 / 1_000_000,
+        )
+        logger.info("adapter_loaded", provider="gemini", model=llm_cfg.gemini.model)
+    else:
+        logger.info("adapter_skipped", provider="gemini", reason="no_valid_api_key")
 
     # ── Anthropic Claude ───────────────────────────────────
-    # LiteLLM model string: "anthropic/claude-sonnet-4-5"
-    adapters["claude"] = LiteLLMAdapter(
-        provider_name="claude",
-        litellm_model=f"anthropic/{llm_cfg.claude.model}",
-        max_tokens=llm_cfg.claude.max_tokens,
-        timeout_ms=llm_cfg.claude.timeout_ms,
-        api_key=anthropic_key or None,
-        cost_per_input_token=3.0 / 1_000_000,
-        cost_per_output_token=15.0 / 1_000_000,
-    )
+    if _is_valid_key(anthropic_key):
+        adapters["claude"] = LiteLLMAdapter(
+            provider_name="claude",
+            litellm_model=f"anthropic/{llm_cfg.claude.model}",
+            max_tokens=llm_cfg.claude.max_tokens,
+            timeout_ms=llm_cfg.claude.timeout_ms,
+            api_key=anthropic_key,
+            cost_per_input_token=3.0 / 1_000_000,
+            cost_per_output_token=15.0 / 1_000_000,
+        )
+        logger.info("adapter_loaded", provider="claude", model=llm_cfg.claude.model)
+    else:
+        logger.info("adapter_skipped", provider="claude", reason="no_valid_api_key")
 
     # ── OpenAI GPT-4o ──────────────────────────────────────
-    # LiteLLM model string: "openai/gpt-4o-mini"
-    adapters["gpt4o"] = LiteLLMAdapter(
-        provider_name="gpt4o",
-        litellm_model=f"openai/{llm_cfg.gpt4o.model}",
-        max_tokens=llm_cfg.gpt4o.max_tokens,
-        timeout_ms=llm_cfg.gpt4o.timeout_ms,
-        api_key=openai_key or None,
-        cost_per_input_token=0.15 / 1_000_000,
-        cost_per_output_token=0.60 / 1_000_000,
-    )
+    if _is_valid_key(openai_key):
+        adapters["gpt4o"] = LiteLLMAdapter(
+            provider_name="gpt4o",
+            litellm_model=f"openai/{llm_cfg.gpt4o.model}",
+            max_tokens=llm_cfg.gpt4o.max_tokens,
+            timeout_ms=llm_cfg.gpt4o.timeout_ms,
+            api_key=openai_key,
+            cost_per_input_token=0.15 / 1_000_000,
+            cost_per_output_token=0.60 / 1_000_000,
+        )
+        logger.info("adapter_loaded", provider="gpt4o", model=llm_cfg.gpt4o.model)
+    else:
+        logger.info("adapter_skipped", provider="gpt4o", reason="no_valid_api_key")
 
     # ── Groq (ultra-fast Llama 3.3) ────────────────────────
-    # LiteLLM model string: "groq/llama-3.3-70b-versatile"
-    adapters["groq"] = LiteLLMAdapter(
-        provider_name="groq",
-        litellm_model="groq/llama-3.3-70b-versatile",
-        max_tokens=300,
-        timeout_ms=8000,
-        api_key=groq_key or None,
-        cost_per_input_token=0.59 / 1_000_000,
-        cost_per_output_token=0.79 / 1_000_000,
-    )
-
-    # ── Chutes.ai MiniMax M2.5 ─────────────────────────────
-    # Chutes pakai SSE streaming custom — LiteLLM tidak bisa handle dengan benar
-    # Gunakan ChutesAdapter (aiohttp) yang sudah terbukti berfungsi
-    _chutes_model = os.getenv("CHUTES_MODEL", "MiniMaxAI/MiniMax-M2.5-TEE")
-    adapters["chutes"] = ChutesAdapter(
-        model=_chutes_model,
-        max_tokens=1024,
-        timeout_ms=30000,
-        api_key=chutes_token,
-        max_retries=2,
-    )
-
-    # ── Local Gemini Proxy Flash (localhost:8091) — FAST ──────────
-    adapters["gemini_local_flash"] = LiteLLMAdapter(
-        provider_name="gemini_local_flash",
-        litellm_model="openai/gemini-3-flash",
-        max_tokens=500,
-        timeout_ms=15000,  # Raised: Cherry Studio bisa lambat
-        api_key=gem_local_key,
-        api_base=gem_local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
-    )
-
-    # ── Local Gemini 2.5 Flash (localhost:8091) — FAST ALT ────────
-    adapters["gemini_25_flash"] = LiteLLMAdapter(
-        provider_name="gemini_25_flash",
-        litellm_model="openai/gemini-2.5-flash",
-        max_tokens=500,
-        timeout_ms=15000,
-        api_key=gem_local_key,
-        api_base=gem_local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
-    )
-
-    # ── Local Gemini Proxy Pro (localhost:8091) — HIGH QUALITY ────
-    adapters["gemini_local_pro"] = LiteLLMAdapter(
-        provider_name="gemini_local_pro",
-        litellm_model="openai/gemini-3.1-pro-high",
-        max_tokens=1000,
-        timeout_ms=60000,  # Pro model butuh waktu lebih lama
-        api_key=gem_local_key,
-        api_base=gem_local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
-    )
-
-    # ── Local Claude Sonnet via Cherry Studio (localhost:8091) ────
-    adapters["claude_local"] = LiteLLMAdapter(
-        provider_name="claude_local",
-        litellm_model="openai/claude-sonnet-4-5",
-        max_tokens=1000,
-        timeout_ms=30000,
-        api_key=gem_local_key,
-        api_base=gem_local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
-    )
-
-    # ── Local GPT-4o via Cherry Studio (localhost:8091) ───────────
-    adapters["gpt4o_local"] = LiteLLMAdapter(
-        provider_name="gpt4o_local",
-        litellm_model="openai/gpt-4o",
-        max_tokens=500,
-        timeout_ms=20000,
-        api_key=gem_local_key,
-        api_base=gem_local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
-    )
-
-    # ── Local Ollama/vLLM / Cherry Studio fallback ─────────────────────────────────────────
-    # LOCAL_LLM_URL bisa Ollama (11434) atau Cherry Studio (8091)
-    # Jika LOCAL_LLM_URL sama dengan gem_local_url → pakai model yang sama (gemini-3-flash)
-    # Jika berbeda → pakai model dari config (qwen2.5:7b untuk Ollama)
-    # Normalize URL untuk perbandingan (localhost == 127.0.0.1, trailing slash)
-    def _norm_url(u: str) -> str:
-        return u.rstrip("/").replace("localhost", "127.0.0.1")
-
-    if _norm_url(local_url) == _norm_url(gem_local_url):
-        # LOCAL_LLM_URL menunjuk ke Cherry Studio — pakai model yang tersedia di sana
-        _local_model_name = os.getenv("LOCAL_LLM_MODEL", "gemini-3-flash")
-        _local_key = gem_local_key
-        logger.info("local_adapter_using_cherry_studio", url=local_url, model=_local_model_name)
+    if _is_valid_key(groq_key):
+        adapters["groq"] = LiteLLMAdapter(
+            provider_name="groq",
+            litellm_model="groq/llama-3.3-70b-versatile",
+            max_tokens=300,
+            timeout_ms=8000,
+            api_key=groq_key,
+            cost_per_input_token=0.59 / 1_000_000,
+            cost_per_output_token=0.79 / 1_000_000,
+        )
+        logger.info("adapter_loaded", provider="groq", model="llama-3.3-70b-versatile")
     else:
-        _local_model_name = local_model
-        _local_key = local_key or "ollama"
-        logger.info("local_adapter_using_ollama", url=local_url, model=_local_model_name)
+        logger.info("adapter_skipped", provider="groq", reason="no_valid_api_key")
 
-    adapters["local"] = LiteLLMAdapter(
-        provider_name="local",
-        litellm_model=f"openai/{_local_model_name}",
-        max_tokens=getattr(llm_cfg.qwen, "max_tokens", 300),
-        timeout_ms=getattr(llm_cfg.qwen, "timeout_ms", 15000),
-        api_key=_local_key,
-        api_base=local_url,
-        cost_per_input_token=0.0,
-        cost_per_output_token=0.0,
+    # Log summary
+    logger.info(
+        "adapters_build_complete",
+        total_loaded=len(adapters),
+        providers=list(adapters.keys()),
     )
 
     return adapters
@@ -259,15 +168,76 @@ class LLMRouter:
 
         self.adapters: dict[str, BaseLLMAdapter] = _build_adapters(llm_cfg)
         self.daily_budget_usd = llm_cfg.daily_budget_usd
-        self.routing_table = DEFAULT_ROUTING.copy()
+        
+        # Build routing table dynamically based on loaded adapters
+        self.routing_table = self._build_routing_table()
         self._total_cost_today = 0.0
+        
+        # Track current active provider (untuk dashboard)
+        self.current_provider: str = "groq"  # Default ke Groq
 
         logger.info(
             "router_initialized",
             backend="litellm",
             adapters=list(self.adapters.keys()),
             budget_usd=self.daily_budget_usd,
+            default_provider=self.current_provider,
         )
+
+    def _build_routing_table(self) -> dict[TaskType, list[str]]:
+        """Build routing table dynamically based on loaded adapters.
+        
+        Only include adapters that are actually loaded (have valid API keys).
+        PRIORITAS: Groq → Gemini → Claude → GPT-4o
+        """
+        loaded = set(self.adapters.keys())
+        
+        # Helper to filter providers that are loaded
+        def _filter(providers: list[str]) -> list[str]:
+            return [p for p in providers if p in loaded]
+        
+        # Routing berdasarkan task type
+        routing: dict[TaskType, list[str]] = {}
+        
+        # Chat replies - prioritize speed
+        routing[TaskType.CHAT_REPLY] = _filter(["groq", "gemini", "claude", "gpt4o"])
+        
+        # Selling scripts - prioritize quality
+        routing[TaskType.SELLING_SCRIPT] = _filter(["claude", "gpt4o", "groq", "gemini"])
+        
+        # Humor - prioritize speed
+        routing[TaskType.HUMOR] = _filter(["groq", "gemini", "gpt4o", "claude"])
+        
+        # Product QA - prioritize accuracy
+        routing[TaskType.PRODUCT_QA] = _filter(["claude", "gpt4o", "gemini", "groq"])
+        
+        # Emotion detection - prioritize speed
+        routing[TaskType.EMOTION_DETECT] = _filter(["groq", "gemini", "claude", "gpt4o"])
+        
+        # Filler - prioritize speed
+        routing[TaskType.FILLER] = _filter(["groq", "gemini", "gpt4o", "claude"])
+        
+        # Safety check - prioritize accuracy
+        routing[TaskType.SAFETY_CHECK] = _filter(["claude", "gpt4o", "groq", "gemini"])
+        
+        # Ensure every task type has at least one provider
+        for task_type, providers in routing.items():
+            if not providers:
+                # Fallback to any loaded adapter
+                routing[task_type] = list(loaded)[:4]  # Use first 4 loaded
+                logger.warning(
+                    "routing_fallback",
+                    task=task_type.value,
+                    providers=routing[task_type],
+                )
+        
+        logger.info(
+            "routing_table_built",
+            tasks=len(routing),
+            total_providers=len(loaded),
+        )
+        
+        return routing
 
     async def route(
         self,
@@ -359,6 +329,8 @@ class LLMRouter:
 
             if response.success:
                 self._total_cost_today += response.cost_usd
+                # Update current active provider
+                self.current_provider = provider_name
                 logger.info(
                     "route_success",
                     provider=provider_name,
@@ -395,11 +367,24 @@ class LLMRouter:
         )
 
     async def health_check_all(self) -> dict[str, bool]:
-        """Check health of all providers."""
-        results: dict[str, bool] = {}
-        for name, adapter in self.adapters.items():
-            results[name] = await adapter.health_check()
-        return results
+        """Check health of all providers in parallel."""
+        tasks = {
+            name: adapter.health_check()
+            for name, adapter in self.adapters.items()
+        }
+        # Run all health checks concurrently
+        results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+        
+        # Map results back to provider names
+        health_status: dict[str, bool] = {}
+        for (name, _), result in zip(tasks.items(), results):
+            if isinstance(result, Exception):
+                logger.warning("health_check_exception", provider=name, error=str(result))
+                health_status[name] = False
+            else:
+                health_status[name] = result
+        
+        return health_status
 
     def get_usage_stats(self) -> dict[str, dict[str, Any]]:
         """Get usage stats for all providers."""

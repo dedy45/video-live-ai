@@ -79,6 +79,77 @@ export interface LiveTalkingDebugTargets {
   };
 }
 
+export interface BrainProviderConfig {
+  model: string;
+  timeout_ms: number;
+  backend: string;
+  api_base?: string;
+  cost?: string;
+}
+
+export interface PromptRuntimeSummary {
+  active_revision: string;
+  slug: string;
+  version: number;
+  status: string;
+  updated_at?: string;
+}
+
+export interface BrainConfig {
+  daily_budget_usd: number;
+  fallback_order: string[];
+  routing_table: Record<string, string[]>;
+  prompt: PromptRuntimeSummary;
+  providers: Record<string, BrainProviderConfig>;
+  task_types?: string[];
+  error?: string;
+}
+
+export interface DirectorTransition {
+  from: string;
+  to: string;
+  timestamp: number | string;
+}
+
+export interface DirectorSnapshot {
+  state: string;
+  stream_running: boolean;
+  emergency_stopped: boolean;
+  manual_override: boolean;
+  current_phase: string;
+  phase_sequence: string[];
+  active_provider: string;
+  active_model: string;
+  active_prompt_revision: string;
+  uptime_sec?: number;
+  history: DirectorTransition[];
+  valid_transitions: string[];
+}
+
+export interface DirectorRuntimeContract {
+  director: DirectorSnapshot;
+  brain: {
+    active_provider: string;
+    active_model: string;
+    routing_table: Record<string, string[]>;
+    adapter_count: number;
+    daily_budget_usd: number;
+  };
+  prompt: PromptRuntimeSummary;
+  persona: {
+    name?: string;
+    tone?: string;
+    language?: string;
+    forbidden_topics?: string[];
+    catchphrases?: string[];
+  };
+  script: {
+    current_phase: string;
+    phase_sequence: string[];
+  };
+  error?: string;
+}
+
 export type OperatorActionStatus = 'success' | 'blocked' | 'error' | 'pending' | 'warning';
 
 export interface OperatorActionResult {
@@ -195,6 +266,7 @@ export interface RuntimeTruth {
   deployment_mode?: string;
   incident_summary?: { open_count: number; highest_severity: string };
   guardrails?: { restart_storm: boolean; disk_pressure: boolean };
+  director?: DirectorSnapshot;
   face_runtime_mode: string;
   face_engine?: FaceEngineTruth;
   voice_engine?: VoiceEngineTruth;

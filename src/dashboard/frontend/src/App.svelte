@@ -102,12 +102,12 @@
  );
 </script>
 
-<div class="app">
+<div class="app" data-testid="app-root">
  <Header />
 
- <div class="layout-container">
+ <div class="app-shell" data-testid="app-shell">
  <!-- Fixed Sidebar Navigation -->
- <aside class="sidebar">
+ <aside class="sidebar" data-testid="app-sidebar">
  <nav class="sidebar-nav">
  {#each navSections as section, sectionIndex}
  <div class="nav-section">
@@ -139,10 +139,12 @@
  </aside>
 
  <!-- Main Content Area -->
- <main class="main-content">
+ <main class="main-content" data-testid="app-main">
  <TruthBar />
- <div class="page-content">
+ <div class="page-content" data-testid="app-content">
+ <div class="page-frame">
  <ActiveComponent />
+ </div>
  </div>
  </main>
  </div>
@@ -156,13 +158,16 @@
  background: var(--bg);
  }
 
- .layout-container {
- display: flex;
+ .app-shell {
+ display: grid;
+ grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
  flex: 1;
+ align-items: start;
+ min-height: 0;
  }
 
  .sidebar {
- width: 220px;
+ width: var(--sidebar-width);
  background: var(--card);
  border-right: 1px solid var(--border);
  padding: 16px 0;
@@ -239,18 +244,31 @@
  display: flex;
  flex-direction: column;
  min-width: 0;
+ min-height: 100vh;
  }
 
  .page-content {
  flex: 1;
- padding: 24px;
- max-width: 1200px;
  width: 100%;
+ display: flex;
+ justify-content: center;
+ padding: clamp(16px, 2.4vw, 32px);
  }
 
- @media (max-width: 768px) {
+ .page-frame {
+ width: min(100%, var(--content-max-width));
+ display: flex;
+ flex-direction: column;
+ gap: 24px;
+ }
+
+ @media (max-width: 920px) {
+ .app-shell {
+ grid-template-columns: var(--sidebar-width-compact) minmax(0, 1fr);
+ }
+
  .sidebar {
- width: 60px;
+ width: var(--sidebar-width-compact);
  }
 
  .nav-label {
@@ -259,6 +277,10 @@
 
  .nav-icon {
  margin: 0 auto;
+ }
+
+ .page-content {
+ padding: 16px;
  }
  }
 </style>
