@@ -6,6 +6,7 @@ import { resolve } from 'node:path';
 const htmlInputs = {
  index: resolve(__dirname, 'index.html'),
  setup: resolve(__dirname, 'setup.html'),
+ aibrain: resolve(__dirname, 'aibrain.html'),
  performer: resolve(__dirname, 'performer.html'),
  monitor: resolve(__dirname, 'monitor.html'),
  stream: resolve(__dirname, 'stream.html'),

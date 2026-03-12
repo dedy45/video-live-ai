@@ -1,170 +1,138 @@
 <script lang="ts">
-  import Card from '../common/Card.svelte';
-  import type { DirectorRuntimeContract } from '../../lib/types';
+ interface Props {
+   runtime: any | null;
+ }
 
-  interface Props {
-    runtime: DirectorRuntimeContract | null;
-    loading?: boolean;
-    error?: string;
-  }
-
-  let { runtime, loading = false, error = '' }: Props = $props();
-
-  function labelPhase(phase: string): string {
-    return phase.replaceAll('_', ' ');
-  }
-
-  function labelFlag(active: boolean, onLabel: string, offLabel: string): string {
-    return active ? onLabel : offLabel;
-  }
+ let { runtime }: Props = $props();
 </script>
 
-<Card title="Director Runtime" size="lg">
-  <p class="panel-copy">Status show director yang menentukan fase live, provider aktif, prompt aktif, dan jalur transisi sesi.</p>
+<div class="director-runtime-panel">
+ {#if !runtime}
+   <div class="empty-state">
+     <p>📊 No runtime data available</p>
+     <p class="hint">Director runtime information will appear here when the system is active.</p>
+   </div>
+ {:else}
+   <div class="runtime-grid">
+     <div class="runtime-card">
+       <div class="card-header">
+         <span class="icon">🎯</span>
+         <h4>Current State</h4>
+       </div>
+       <div class="card-value">{runtime.current_state || 'IDLE'}</div>
+     </div>
 
-  {#if loading}
-    <div class="panel-state">Memuat runtime director...</div>
-  {:else if error}
-    <div class="panel-state panel-state-error" role="status">{error}</div>
-  {:else if !runtime}
-    <div class="panel-state">Runtime director belum tersedia.</div>
-  {:else}
-    <div class="summary-grid">
-      <div class="summary-card">
-        <span class="summary-label">State</span>
-        <strong>{runtime.director.state}</strong>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">Fase aktif</span>
-        <strong>{labelPhase(runtime.script.current_phase)}</strong>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">Provider aktif</span>
-        <strong>{runtime.brain.active_provider}</strong>
-      </div>
-      <div class="summary-card">
-        <span class="summary-label">Prompt aktif</span>
-        <strong>{runtime.prompt.active_revision}</strong>
-      </div>
-    </div>
+     <div class="runtime-card">
+       <div class="card-header">
+         <span class="icon">📦</span>
+         <h4>Active Product</h4>
+       </div>
+       <div class="card-value">{runtime.active_product || 'None'}</div>
+     </div>
 
-    <div class="flag-strip">
-      <span class="flag-chip">{labelFlag(runtime.director.stream_running, 'Stream berjalan', 'Stream belum jalan')}</span>
-      <span class="flag-chip">{labelFlag(runtime.director.emergency_stopped, 'Stop darurat aktif', 'Stop darurat aman')}</span>
-      <span class="flag-chip">{labelFlag(runtime.director.manual_override, 'Override manual aktif', 'Mode otomatis')}</span>
-    </div>
+     <div class="runtime-card">
+       <div class="card-header">
+         <span class="icon">⏱️</span>
+         <h4>Uptime</h4>
+       </div>
+       <div class="card-value">{runtime.uptime || '0s'}</div>
+     </div>
 
-    <div class="phase-track">
-      {#each runtime.script.phase_sequence as phase}
-        <div class:phase-active={phase === runtime.script.current_phase} class="phase-pill">{labelPhase(phase)}</div>
-      {/each}
-    </div>
+     <div class="runtime-card">
+       <div class="card-header">
+         <span class="icon">💬</span>
+         <h4>Messages Processed</h4>
+       </div>
+       <div class="card-value">{runtime.messages_processed || 0}</div>
+     </div>
+   </div>
 
-    <div class="history-block">
-      <div class="summary-label">Transisi terakhir</div>
-      {#if runtime.director.history.length > 0}
-        {#each runtime.director.history.slice(-3).reverse() as item}
-          <div class="history-row">
-            <span>{item.from}</span>
-            <strong>{item.to}</strong>
-          </div>
-        {/each}
-      {:else}
-        <div class="panel-copy">Belum ada riwayat transisi pada sesi ini.</div>
-      {/if}
-    </div>
-  {/if}
-</Card>
+   <div class="runtime-details">
+     <h3>Runtime Details</h3>
+     <pre>{JSON.stringify(runtime, null, 2)}</pre>
+   </div>
+ {/if}
+</div>
 
 <style>
-  .panel-copy,
-  .panel-state {
-    color: var(--muted);
-    line-height: 1.6;
-  }
+ .director-runtime-panel {
+   padding: 1rem;
+ }
 
-  .panel-state {
-    margin-top: 16px;
-    padding: 16px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: rgba(255, 255, 255, 0.03);
-  }
+ .empty-state {
+   text-align: center;
+   padding: 3rem 2rem;
+   color: var(--text-secondary);
+ }
 
-  .panel-state-error {
-    border-color: rgba(233, 69, 96, 0.28);
-    color: var(--text);
-  }
+ .empty-state .hint {
+   font-size: 14px;
+   margin-top: 8px;
+ }
 
-  .summary-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(190px, 100%), 1fr));
-    gap: 12px;
-    margin-top: 16px;
-  }
+ .runtime-grid {
+   display: grid;
+   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+   gap: 16px;
+   margin-bottom: 24px;
+ }
 
-  .summary-card,
-  .history-row {
-    padding: 14px;
-    border-radius: var(--radius);
-    background: rgba(255, 255, 255, 0.03);
-    border: 1px solid rgba(255, 255, 255, 0.06);
-  }
+ .runtime-card {
+   padding: 16px;
+   background: rgba(255, 255, 255, 0.03);
+   border-radius: 8px;
+   border: 1px solid var(--border);
+ }
 
-  .summary-label {
-    display: block;
-    margin-bottom: 8px;
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
+ .card-header {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   margin-bottom: 12px;
+ }
 
-  .flag-strip,
-  .phase-track {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 16px;
-  }
+ .icon {
+   font-size: 20px;
+ }
 
-  .flag-chip,
-  .phase-pill {
-    padding: 9px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(34, 211, 238, 0.2);
-    background: rgba(34, 211, 238, 0.08);
-    font-size: 12px;
-    font-weight: 700;
-  }
+ .card-header h4 {
+   margin: 0;
+   font-size: 14px;
+   font-weight: 600;
+   color: var(--text-secondary);
+ }
 
-  .phase-pill {
-    border-color: rgba(255, 255, 255, 0.08);
-    background: rgba(255, 255, 255, 0.04);
-    color: var(--muted);
-    text-transform: capitalize;
-  }
+ .card-value {
+   font-size: 24px;
+   font-weight: 700;
+   color: var(--text);
+ }
 
-  .phase-active {
-    background: rgba(233, 69, 96, 0.18);
-    border-color: rgba(233, 69, 96, 0.26);
-    color: var(--text);
-  }
+ .runtime-details {
+   padding: 16px;
+   background: rgba(0, 0, 0, 0.2);
+   border-radius: 8px;
+   border: 1px solid var(--border);
+ }
 
-  .history-block {
-    display: grid;
-    gap: 10px;
-    margin-top: 18px;
-  }
+ .runtime-details h3 {
+   margin: 0 0 12px;
+   font-size: 16px;
+   font-weight: 700;
+   color: var(--text);
+ }
 
-  .history-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
-  }
+ .runtime-details pre {
+   margin: 0;
+   font-size: 13px;
+   line-height: 1.5;
+   color: var(--text-secondary);
+   overflow-x: auto;
+ }
 
-  .history-row span {
-    color: var(--muted);
-  }
+ @media (max-width: 768px) {
+   .runtime-grid {
+     grid-template-columns: 1fr;
+   }
+ }
 </style>

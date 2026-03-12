@@ -14,6 +14,7 @@ Error handling strategy:
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 import time
 from datetime import datetime, timezone
@@ -696,6 +697,341 @@ async def get_director_runtime() -> dict[str, Any]:
             "script": {"current_phase": "unknown", "phase_sequence": []},
             "error": str(e),
         }
+
+
+# ── Prompt Registry CRUD Endpoints ──────────────────────────────
+
+@router.get("/brain/prompts")
+async def list_prompt_revisions() -> list[dict[str, Any]]:
+    """List all prompt revisions."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            rows = conn.execute(
+                """
+                SELECT id, slug, version, status, created_at, updated_at
+                FROM prompt_revisions
+                ORDER BY updated_at DESC
+                """
+            ).fetchall()
+        return [
+            {
+                "id": row["id"],
+                "slug": row["slug"],
+                "version": row["version"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ]
+    except Exception as e:
+        logger.error("list_prompts_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to list prompts: {e}")
+
+
+@router.get("/brain/prompts/{revision_id}")
+async def get_prompt_revision(revision_id: int) -> dict[str, Any]:
+    """Get a specific prompt revision by ID."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            row = conn.execute(
+                """
+                SELECT id, slug, version, status, templates_json, persona_json, created_at, updated_at
+                FROM prompt_revisions
+                WHERE id = ?
+                """,
+                (revision_id,)
+            ).fetchone()
+        
+        if row is None:
+            raise HTTPException(404, f"Prompt revision {revision_id} not found")
+        
+        return {
+            "id": row["id"],
+            "slug": row["slug"],
+            "version": row["version"],
+            "status": row["status"],
+            "templates": json.loads(row["templates_json"]),
+            "persona": json.loads(row["persona_json"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("get_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to get prompt: {e}")
+
+
+class CreatePromptRequest(BaseModel):
+    slug: str
+    templates: dict[str, str]
+    persona: dict[str, Any]
+
+
+@router.post("/brain/prompts")
+async def create_prompt_revision(request: CreatePromptRequest) -> dict[str, Any]:
+    """Create a new prompt revision (always starts as draft)."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            # Get next version for this slug
+            max_version = conn.execute(
+                "SELECT MAX(version) as max_v FROM prompt_revisions WHERE slug = ?",
+                (request.slug,)
+            ).fetchone()
+            next_version = (max_version["max_v"] or 0) + 1
+            
+            # Insert new revision
+            cursor = conn.execute(
+                """
+                INSERT INTO prompt_revisions (slug, version, status, templates_json, persona_json)
+                VALUES (?, ?, 'draft', ?, ?)
+                """,
+                (
+                    request.slug,
+                    next_version,
+                    json.dumps(request.templates, ensure_ascii=False),
+                    json.dumps(request.persona, ensure_ascii=False),
+                )
+            )
+            new_id = cursor.lastrowid
+        
+        logger.info("prompt_created", id=new_id, slug=request.slug, version=next_version)
+        return {"id": new_id, "slug": request.slug, "version": next_version, "status": "draft"}
+    except Exception as e:
+        logger.error("create_prompt_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to create prompt: {e}")
+
+
+class UpdatePromptRequest(BaseModel):
+    templates: dict[str, str]
+    persona: dict[str, Any]
+
+
+@router.put("/brain/prompts/{revision_id}")
+async def update_prompt_revision(revision_id: int, request: UpdatePromptRequest) -> dict[str, Any]:
+    """Update a draft prompt revision (only drafts can be edited)."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            # Check if exists and is draft
+            row = conn.execute(
+                "SELECT status FROM prompt_revisions WHERE id = ?",
+                (revision_id,)
+            ).fetchone()
+            
+            if row is None:
+                raise HTTPException(404, f"Prompt revision {revision_id} not found")
+            
+            if row["status"] != "draft":
+                raise HTTPException(400, f"Cannot edit {row['status']} revision (only drafts can be edited)")
+            
+            # Update
+            conn.execute(
+                """
+                UPDATE prompt_revisions
+                SET templates_json = ?, persona_json = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    json.dumps(request.templates, ensure_ascii=False),
+                    json.dumps(request.persona, ensure_ascii=False),
+                    revision_id,
+                )
+            )
+        
+        logger.info("prompt_updated", id=revision_id)
+        return {"id": revision_id, "status": "updated"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("update_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to update prompt: {e}")
+
+
+@router.post("/brain/prompts/{revision_id}/publish")
+async def publish_prompt_revision(revision_id: int) -> dict[str, Any]:
+    """Publish a draft revision (deactivates current active, activates this one)."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            # Check if exists and is draft
+            row = conn.execute(
+                "SELECT status, slug FROM prompt_revisions WHERE id = ?",
+                (revision_id,)
+            ).fetchone()
+            
+            if row is None:
+                raise HTTPException(404, f"Prompt revision {revision_id} not found")
+            
+            if row["status"] != "draft":
+                raise HTTPException(400, f"Cannot publish {row['status']} revision (only drafts can be published)")
+            
+            # Deactivate current active for this slug
+            conn.execute(
+                "UPDATE prompt_revisions SET status = 'inactive' WHERE slug = ? AND status = 'active'",
+                (row["slug"],)
+            )
+            
+            # Activate this revision
+            conn.execute(
+                "UPDATE prompt_revisions SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (revision_id,)
+            )
+        
+        logger.info("prompt_published", id=revision_id, slug=row["slug"])
+        return {"id": revision_id, "status": "active", "slug": row["slug"]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("publish_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to publish prompt: {e}")
+
+
+@router.delete("/brain/prompts/{revision_id}")
+async def delete_prompt_revision(revision_id: int) -> dict[str, Any]:
+    """Delete a draft prompt revision (only drafts can be deleted)."""
+    try:
+        registry = get_prompt_registry()
+        with registry._connect() as conn:
+            # Check if exists and is draft
+            row = conn.execute(
+                "SELECT status FROM prompt_revisions WHERE id = ?",
+                (revision_id,)
+            ).fetchone()
+            
+            if row is None:
+                raise HTTPException(404, f"Prompt revision {revision_id} not found")
+            
+            if row["status"] != "draft":
+                raise HTTPException(400, f"Cannot delete {row['status']} revision (only drafts can be deleted)")
+            
+            # Delete
+            conn.execute("DELETE FROM prompt_revisions WHERE id = ?", (revision_id,))
+        
+        logger.info("prompt_deleted", id=revision_id)
+        return {"id": revision_id, "status": "deleted"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("delete_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to delete prompt: {e}")
+
+
+class GeneratePromptRequest(BaseModel):
+    """Request to generate prompt templates using LLM."""
+    product_context: str = "Produk fashion dan lifestyle"
+    persona_name: str = "Sari"
+    persona_traits: str = "friendly, energetic, knowledgeable"
+    language: str = "Indonesian casual"
+    provider: str | None = None  # Optional: specify LLM provider
+
+
+@router.post("/brain/prompts/generate")
+async def generate_prompt_templates(request: GeneratePromptRequest) -> dict[str, Any]:
+    """Generate prompt templates using LLM based on product context and persona."""
+    try:
+        router_instance = get_llm_router()
+        if router_instance is None:
+            raise HTTPException(500, "LLM Router not initialized")
+        
+        from src.brain.adapters.base import TaskType
+        
+        # Build generation prompt
+        system_prompt = """Kamu adalah AI assistant yang ahli dalam membuat prompt templates untuk live commerce host.
+Tugasmu adalah menghasilkan prompt templates yang natural, engaging, dan efektif untuk host live streaming."""
+        
+        user_prompt = f"""Buatkan prompt templates untuk host live commerce dengan karakteristik berikut:
+
+Nama Host: {request.persona_name}
+Kepribadian: {request.persona_traits}
+Bahasa: {request.language}
+Konteks Produk: {request.product_context}
+
+Hasilkan dalam format JSON dengan struktur berikut:
+{{
+  "persona": {{
+    "name": "{request.persona_name}",
+    "personality": "{request.persona_traits}",
+    "language": "{request.language}",
+    "tone": "...",
+    "expertise": "...",
+    "catchphrases": ["...", "...", "..."],
+    "forbidden_topics": ["politik", "agama", "SARA"]
+  }},
+  "templates": {{
+    "system_base": "...",
+    "selling_mode": "...",
+    "reacting_mode": "...",
+    "engaging_mode": "...",
+    "filler": "...",
+    "selling_script": "..."
+  }}
+}}
+
+Pastikan:
+1. Catchphrases natural dan sesuai karakter
+2. Templates menggunakan placeholder {{variable}} untuk dynamic content
+3. Tone konsisten dengan personality
+4. Selling script template mencakup 7 fase (HOOK, PROBLEM, SOLUTION, FEATURES, SOCIAL PROOF, URGENCY, CTA)
+"""
+        
+        logger.info("generating_prompt_templates", provider=request.provider or "auto")
+        
+        response = await asyncio.wait_for(
+            router_instance.route(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                task_type=TaskType.SELLING_SCRIPT,
+                preferred_provider=request.provider,
+            ),
+            timeout=60.0,
+        )
+        
+        if not response.success:
+            raise HTTPException(500, f"LLM generation failed: {response.error}")
+        
+        # Parse JSON response
+        try:
+            # Extract JSON from response (handle markdown code blocks)
+            text = response.text.strip()
+            if "```json" in text:
+                text = text.split("```json")[1].split("```")[0].strip()
+            elif "```" in text:
+                text = text.split("```")[1].split("```")[0].strip()
+            
+            generated = json.loads(text)
+            
+            logger.info(
+                "prompt_templates_generated",
+                provider=response.provider,
+                model=response.model,
+                latency_ms=response.latency_ms,
+            )
+            
+            return {
+                "success": True,
+                "persona": generated.get("persona", {}),
+                "templates": generated.get("templates", {}),
+                "provider": response.provider,
+                "model": response.model,
+                "latency_ms": round(response.latency_ms, 1),
+            }
+        except json.JSONDecodeError as je:
+            logger.error("prompt_generation_json_parse_error", error=str(je), text=response.text[:500])
+            raise HTTPException(500, f"Failed to parse LLM response as JSON: {je}")
+        
+    except asyncio.TimeoutError:
+        logger.error("prompt_generation_timeout")
+        raise HTTPException(504, "Prompt generation timed out after 60 seconds")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("generate_prompt_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to generate prompt: {e}")
 
 
 # ── Health Endpoints ─────────────────────────────────────────────

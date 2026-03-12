@@ -7,6 +7,7 @@
  import StreamPage from './pages/StreamPage.svelte';
  import SetupPage from './pages/SetupPage.svelte';
  import MonitorPage from './pages/MonitorPage.svelte';
+ import AIBrainPage from './pages/AIBrainPage.svelte';
 
  // Color coding definitions
  const STATUS_COLORS = {
@@ -30,6 +31,7 @@
      items: [
        { path: '/setup', name: 'Setup & Validasi', icon: '🔧' },
        { path: '/products', name: 'Produk & Penawaran', icon: '📦' },
+       { path: '/aibrain', name: 'AI Brain & Persona', icon: '🧠' },
        { path: '/performer', name: 'Avatar & Suara', icon: '🎭' }
      ]
    },
@@ -88,6 +90,7 @@
  const pageComponents: Record<string, any> = {
  '/': LiveConsolePage,
  '/products': ProductsPage,
+ '/aibrain': AIBrainPage,
  '/performer': PerformerPage,
  '/stream': StreamPage,
  '/setup': SetupPage,
