@@ -1,6 +1,6 @@
 [
   {
-    "id": 1773250953341,
+    "id": 1773278012926,
     "check_name": "runtime-truth",
     "status": "pass",
     "checks": [
@@ -32,15 +32,15 @@
       {
         "check": "timestamp_present",
         "passed": true,
-        "message": "2026-03-11T17:42:33.274441+00:00"
+        "message": "2026-03-12T01:13:32.864768+00:00"
       }
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-11T17:42:33.341323+00:00"
+    "timestamp": "2026-03-12T01:13:32.926701+00:00"
   },
   {
-    "id": 1773250953347,
+    "id": 1773278012935,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -87,10 +87,10 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-11T17:42:33.347250+00:00"
+    "timestamp": "2026-03-12T01:13:32.935362+00:00"
   },
   {
-    "id": 1773250953568,
+    "id": 1773278013149,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -137,10 +137,10 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-11T17:42:33.568918+00:00"
+    "timestamp": "2026-03-12T01:13:33.149333+00:00"
   },
   {
-    "id": 1773250961856,
+    "id": 1773278021392,
     "check_name": "voice-local-clone",
     "status": "fail",
     "checks": [
@@ -167,186 +167,6 @@
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-11T17:42:41.856511+00:00"
-  },
-  {
-    "id": 1773251016405,
-    "check_name": "real-mode-readiness",
-    "status": "blocked",
-    "checks": [
-      {
-        "check": "mock_mode_off",
-        "passed": false,
-        "message": "MOCK_MODE=true"
-      },
-      {
-        "check": "avatar_reference_video",
-        "passed": true,
-        "message": "assets\\avatar\\reference.mp4"
-      },
-      {
-        "check": "avatar_reference_audio",
-        "passed": true,
-        "message": "assets\\avatar\\reference.wav"
-      },
-      {
-        "check": "rtmp_configured",
-        "passed": true,
-        "message": "configured"
-      },
-      {
-        "check": "livetalking_entrypoint",
-        "passed": true,
-        "message": "external\\livetalking\\app.py"
-      },
-      {
-        "check": "product_data_source",
-        "passed": true,
-        "message": "Found: products.json"
-      },
-      {
-        "check": "products_loaded",
-        "passed": true,
-        "message": "10 products"
-      },
-      {
-        "check": "ffmpeg_available",
-        "passed": true,
-        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
-      }
-    ],
-    "provenance": "real_local",
-    "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-11T17:43:36.405178+00:00"
-  },
-  {
-    "id": 1773251017714,
-    "check_name": "runtime-truth",
-    "status": "pass",
-    "checks": [
-      {
-        "check": "mock_mode_explicit",
-        "passed": true,
-        "message": "MOCK_MODE=True"
-      },
-      {
-        "check": "face_runtime_mode",
-        "passed": true,
-        "message": "mock"
-      },
-      {
-        "check": "voice_runtime_mode",
-        "passed": true,
-        "message": "mock"
-      },
-      {
-        "check": "stream_runtime_mode",
-        "passed": true,
-        "message": "mock"
-      },
-      {
-        "check": "provenance_complete",
-        "passed": true,
-        "message": "5 surfaces"
-      },
-      {
-        "check": "timestamp_present",
-        "passed": true,
-        "message": "2026-03-11T17:43:37.094208+00:00"
-      }
-    ],
-    "provenance": "mock",
-    "context": "",
-    "timestamp": "2026-03-11T17:43:37.714759+00:00"
-  },
-  {
-    "id": 1773255953530,
-    "check_name": "real-mode-readiness",
-    "status": "pass",
-    "checks": [
-      {
-        "check": "mock_mode_off",
-        "passed": true,
-        "message": "MOCK_MODE=false"
-      },
-      {
-        "check": "avatar_reference_video",
-        "passed": true,
-        "message": "assets\\avatar\\reference.mp4"
-      },
-      {
-        "check": "avatar_reference_audio",
-        "passed": true,
-        "message": "assets\\avatar\\reference.wav"
-      },
-      {
-        "check": "rtmp_configured",
-        "passed": true,
-        "message": "configured"
-      },
-      {
-        "check": "livetalking_entrypoint",
-        "passed": true,
-        "message": "external\\livetalking\\app.py"
-      },
-      {
-        "check": "product_data_source",
-        "passed": true,
-        "message": "Found: products.json"
-      },
-      {
-        "check": "products_loaded",
-        "passed": true,
-        "message": "10 products"
-      },
-      {
-        "check": "ffmpeg_available",
-        "passed": true,
-        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
-      }
-    ],
-    "provenance": "real_local",
-    "context": "blockers: []",
-    "timestamp": "2026-03-11T19:05:53.530148+00:00"
-  },
-  {
-    "id": 1773255954801,
-    "check_name": "runtime-truth",
-    "status": "fail",
-    "checks": [
-      {
-        "check": "mock_mode_explicit",
-        "passed": true,
-        "message": "MOCK_MODE=False"
-      },
-      {
-        "check": "face_runtime_mode",
-        "passed": true,
-        "message": "livetalking_stopped"
-      },
-      {
-        "check": "voice_runtime_mode",
-        "passed": false,
-        "message": "unknown"
-      },
-      {
-        "check": "stream_runtime_mode",
-        "passed": true,
-        "message": "idle"
-      },
-      {
-        "check": "provenance_complete",
-        "passed": true,
-        "message": "5 surfaces"
-      },
-      {
-        "check": "timestamp_present",
-        "passed": true,
-        "message": "2026-03-11T19:05:54.182822+00:00"
-      }
-    ],
-    "provenance": "real_local",
-    "context": "",
-    "timestamp": "2026-03-11T19:05:54.801459+00:00"
+    "timestamp": "2026-03-12T01:13:41.392895+00:00"
   }
 ]
