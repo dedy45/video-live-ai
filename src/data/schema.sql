@@ -210,6 +210,97 @@ CREATE TABLE IF NOT EXISTS runtime_events (
 CREATE INDEX IF NOT EXISTS idx_runtime_events_session
 ON runtime_events(session_id, created_at);
 
+-- Voice lab profiles and generations
+CREATE TABLE IF NOT EXISTS voice_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    engine TEXT NOT NULL DEFAULT 'fish_speech',
+    profile_type TEXT NOT NULL DEFAULT 'quick_clone',
+    reference_wav_path TEXT NOT NULL,
+    reference_text TEXT NOT NULL,
+    language TEXT DEFAULT 'id',
+    supported_languages_json TEXT DEFAULT '["id"]',
+    quality_tier TEXT DEFAULT 'quick',
+    guidance_json TEXT DEFAULT '{}',
+    notes TEXT DEFAULT '',
+    is_active BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_voice_profiles_single_active
+ON voice_profiles(is_active)
+WHERE is_active = 1;
+
+CREATE TABLE IF NOT EXISTS voice_generations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    mode TEXT NOT NULL,
+    profile_id INTEGER,
+    source_type TEXT NOT NULL DEFAULT 'manual_text',
+    input_text TEXT NOT NULL,
+    language TEXT DEFAULT 'id',
+    emotion TEXT DEFAULT 'neutral',
+    style_preset TEXT DEFAULT 'natural',
+    stability REAL DEFAULT 0.75,
+    similarity REAL DEFAULT 0.8,
+    speed REAL DEFAULT 1.0,
+    status TEXT NOT NULL,
+    audio_path TEXT NOT NULL,
+    audio_filename TEXT DEFAULT '',
+    download_name TEXT DEFAULT '',
+    audio_size_bytes INTEGER DEFAULT 0,
+    latency_ms REAL DEFAULT 0.0,
+    duration_ms REAL DEFAULT 0.0,
+    attached_to_avatar BOOLEAN DEFAULT 0,
+    avatar_session_id TEXT DEFAULT '',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (profile_id) REFERENCES voice_profiles(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_generations_created
+ON voice_generations(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS voice_lab_state (
+    id INTEGER PRIMARY KEY CHECK (id = 1),
+    mode TEXT NOT NULL DEFAULT 'standalone',
+    active_profile_id INTEGER,
+    preview_session_id TEXT DEFAULT '',
+    selected_avatar_id TEXT DEFAULT '',
+    selected_language TEXT DEFAULT 'id',
+    selected_profile_type TEXT DEFAULT 'quick_clone',
+    selected_revision_id INTEGER,
+    selected_style_preset TEXT DEFAULT 'natural',
+    selected_stability REAL DEFAULT 0.75,
+    selected_similarity REAL DEFAULT 0.8,
+    draft_text TEXT DEFAULT '',
+    last_generation_id INTEGER,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (active_profile_id) REFERENCES voice_profiles(id),
+    FOREIGN KEY (last_generation_id) REFERENCES voice_generations(id)
+);
+
+CREATE TABLE IF NOT EXISTS voice_training_jobs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    profile_id INTEGER NOT NULL,
+    job_type TEXT NOT NULL DEFAULT 'studio_voice_training',
+    status TEXT NOT NULL DEFAULT 'queued',
+    current_stage TEXT DEFAULT 'queued',
+    progress_pct REAL DEFAULT 0.0,
+    dataset_path TEXT DEFAULT '',
+    log_path TEXT DEFAULT '',
+    meta_json TEXT DEFAULT '{}',
+    error_text TEXT DEFAULT '',
+    queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    started_at TIMESTAMP,
+    finished_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (profile_id) REFERENCES voice_profiles(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_voice_training_jobs_created
+ON voice_training_jobs(created_at DESC);
+
 -- Prompt registry revisions
 CREATE TABLE IF NOT EXISTS prompt_revisions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

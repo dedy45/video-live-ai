@@ -158,6 +158,112 @@ def test_dashboard_record_chat() -> None:
     assert len(_recent_chats) > initial
 
 
+@pytest.mark.asyncio
+async def test_ingest_chat_event_detects_intent_and_records_recent_event() -> None:
+    """Chat ingest should classify intent/priority and append the event to recent chat feed."""
+    from src.dashboard.api import ChatIngestRequest, get_recent_chats, ingest_chat_event
+
+    result = await ingest_chat_event(
+        ChatIngestRequest(
+            platform="tiktok",
+            username="Ayu",
+            message="Harga berapa kak?",
+        )
+    )
+
+    recent = await get_recent_chats(limit=1)
+
+    assert result["status"] == "recorded"
+    assert result["event"]["intent"] == "question"
+    assert result["event"]["priority"] == 2
+    assert recent[0].message == "Harga berapa kak?"
+    assert recent[0].intent == "question"
+
+
+@pytest.mark.asyncio
+async def test_ingest_chat_event_auto_pauses_live_session_for_priority_question(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Priority viewer question should auto-pause active live session and attach an answer draft."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+
+    await dashboard_api.create_stream_target(
+        dashboard_api.StreamTargetMutationRequest(
+            platform="tiktok",
+            label="Primary TikTok",
+            rtmp_url="rtmp://push.tiktok.test/live/",
+            stream_key="abc123",
+        )
+    )
+    active_target = (await dashboard_api.list_stream_targets())[0]
+    await dashboard_api.activate_stream_target(active_target["id"])
+    await dashboard_api.start_live_session(
+        dashboard_api.LiveSessionStartRequest(platform="tiktok")
+    )
+    created_product = await dashboard_api.create_product(
+        dashboard_api.ProductMutationRequest(
+            name="Wireless Earbuds Pro ANC",
+            price=249000,
+            category="electronics",
+            affiliate_links={"tiktok": "https://vt.tiktok.test/earbuds"},
+            selling_points=["ANC aktif", "Battery 40 jam", "Waterproof untuk olahraga"],
+            commission_rate=12.0,
+            compliance_notes="Produk elektronik bergaransi resmi. Jangan klaim tahan air untuk menyelam.",
+        )
+    )
+    await dashboard_api.add_live_session_products(
+        dashboard_api.SessionProductsRequest(product_ids=[created_product["id"]])
+    )
+    session_summary = dashboard_api.get_control_plane_store().get_active_live_session()
+    only_item = session_summary["products"][0]
+    await dashboard_api.set_live_session_focus(
+        dashboard_api.FocusProductRequest(session_product_id=int(only_item["id"]))
+    )
+
+    class DummyRouter:
+        async def route(self, **kwargs: object) -> LLMResponse:
+            if kwargs["task_type"] == TaskType.SAFETY_CHECK:
+                return LLMResponse(
+                    text='{"safe": true, "reason_code": "ok", "rewrite": "Halo kak, dari info toko ini produk resminya dicek lewat link dan rating ya."}',
+                    provider="gemini",
+                    model="gemini/safety",
+                    task_type=TaskType.SAFETY_CHECK,
+                    latency_ms=11.0,
+                    success=True,
+                )
+            return LLMResponse(
+                text="Halo kak, dari info toko ini produk resminya dicek lewat link dan rating ya.",
+                provider="groq",
+                model="groq/chat",
+                task_type=TaskType.CHAT_REPLY,
+                latency_ms=8.0,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await dashboard_api.ingest_chat_event(
+        dashboard_api.ChatIngestRequest(
+            platform="tiktok",
+            username="Ayu",
+            message="Kak ini ori ga?",
+        )
+    )
+
+    live_session = await dashboard_api.get_live_session()
+    director_runtime = await dashboard_api.get_director_runtime()
+
+    assert result["status"] == "recorded"
+    assert result["auto_paused"] is True
+    assert result["event"]["intent"] == "question"
+    assert live_session["state"]["rotation_paused"] is True
+    assert live_session["state"]["pending_question"]["text"] == "Kak ini ori ga?"
+    assert live_session["state"]["pending_question"]["answer_draft"] == "Halo kak, dari info toko ini produk resminya dicek lewat link dan rating ya."
+    assert director_runtime["director"]["state"] == "PAUSED"
+
+
 def test_show_director_singleton_tracks_transitions() -> None:
     """ShowDirector singleton should preserve state and transition history."""
     from src.orchestrator.show_director import get_show_director, reset_show_director
@@ -268,6 +374,33 @@ async def test_livetalking_start_api_returns_operator_receipt_fields() -> None:
 
 
 @pytest.mark.asyncio
+async def test_livetalking_start_api_returns_error_when_engine_fails_fast_exit() -> None:
+    """Start endpoint must surface vendor startup failure as error, not operator-blocked ambiguity."""
+    from src.dashboard.api import engine_livetalking_start
+
+    class DummyStatus:
+        def to_dict(self) -> dict[str, object]:
+            return {
+                "state": "error",
+                "port": 8010,
+                "transport": "webrtc",
+                "last_error": "Process exited with code 1",
+            }
+
+    class DummyManager:
+        def start(self) -> DummyStatus:
+            return DummyStatus()
+
+    with patch("src.face.livetalking_manager.get_livetalking_manager", return_value=DummyManager()):
+        result = await engine_livetalking_start()
+
+    assert result["status"] == "error"
+    assert result["reason_code"] == "engine_start_failed"
+    assert result["state"] == "error"
+    assert "Process exited with code 1" in " ".join(result.get("details", []))
+
+
+@pytest.mark.asyncio
 async def test_livetalking_stop_api_returns_operator_receipt_fields() -> None:
     """Stop endpoint should return operator receipt metadata alongside engine state."""
     from src.dashboard.api import engine_livetalking_stop
@@ -304,32 +437,39 @@ async def test_livetalking_debug_targets_reports_reachability() -> None:
 
 
 @pytest.mark.asyncio
-async def test_pipeline_state_endpoint_reads_show_director() -> None:
-    """Pipeline state endpoint should read the persistent ShowDirector runtime."""
-    from src.dashboard.api import get_pipeline_state
-    from src.orchestrator.show_director import get_show_director, reset_show_director
+async def test_pipeline_state_endpoint_reads_show_director(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pipeline state endpoint should reflect the active control-plane live session."""
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
 
-    reset_show_director()
-    director = get_show_director()
-    director.transition("SELLING")
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    target = await dashboard_api.create_stream_target(
+        dashboard_api.StreamTargetMutationRequest(
+            platform="tiktok",
+            label="Primary TikTok",
+            rtmp_url="rtmp://push.tiktok.test/live/",
+            stream_key="abc123",
+        )
+    )
+    await dashboard_api.activate_stream_target(target["id"])
+    await dashboard_api.start_live_session(
+        dashboard_api.LiveSessionStartRequest(platform="tiktok")
+    )
 
-    result = await get_pipeline_state()
+    result = await dashboard_api.get_pipeline_state()
 
     assert result["state"] == "SELLING"
-    assert result["stream_running"] is False
+    assert result["stream_running"] is True
     assert result["emergency_stopped"] is False
     assert result["history"][-1]["to"] == "SELLING"
 
 
 @pytest.mark.asyncio
-async def test_director_runtime_endpoint_exposes_brain_and_prompt_metadata() -> None:
+async def test_director_runtime_endpoint_exposes_brain_and_prompt_metadata(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Director runtime endpoint should expose aggregated director, brain, and prompt state."""
-    from src.dashboard.api import get_director_runtime
-    from src.orchestrator.show_director import reset_show_director
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
 
-    reset_show_director()
-
-    result = await get_director_runtime()
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    result = await dashboard_api.get_director_runtime()
 
     assert "director" in result
     assert "brain" in result
@@ -672,6 +812,7 @@ async def test_pause_live_session_generates_affiliate_safe_answer_draft(tmp_path
             question="Kak ini ori ga?",
         )
     )
+    director_runtime = await dashboard_api.get_director_runtime()
 
     assert paused["status"] == "paused"
     assert paused["state"]["rotation_paused"] is True
@@ -680,6 +821,7 @@ async def test_pause_live_session_generates_affiliate_safe_answer_draft(tmp_path
     assert paused["state"]["pending_question"]["task_type"] == "chat_reply"
     assert paused["state"]["pending_question"]["answer_provider"] == "groq"
     assert paused["state"]["pending_question"]["safety"]["safe"] is True
+    assert director_runtime["director"]["state"] == "PAUSED"
 
 
 # === Runtime Truth API Tests ===
@@ -834,6 +976,268 @@ async def test_voice_test_speak_uses_fish_speech_engine_path(monkeypatch: pytest
     assert result["status"] == "success"
     assert result["text"] == "halo production"
     assert result["audio_length_bytes"] == len(b"WAVDATA")
+
+
+@pytest.mark.asyncio
+async def test_voice_lab_profile_crud_and_state_endpoints(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+
+    created = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path="assets/voice/sari.wav",
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            notes="utama",
+        )
+    )
+    activated = await dashboard_api.activate_voice_profile(created["id"])
+    state = await dashboard_api.update_voice_lab_state(
+        dashboard_api.VoiceLabStateRequest(
+            mode="standalone",
+            active_profile_id=created["id"],
+            preview_session_id="",
+            selected_avatar_id="wav2lip256_avatar1",
+            draft_text="halo voice lab",
+        )
+    )
+    listed = await dashboard_api.list_voice_profiles()
+
+    assert created["id"] > 0
+    assert activated["is_active"] is True
+    assert state["mode"] == "standalone"
+    assert state["active_profile_id"] == created["id"]
+    assert listed[0]["name"] == "Sari Fish"
+
+
+@pytest.mark.asyncio
+async def test_voice_generate_standalone_persists_audio_result(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    created = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path="assets/voice/sari.wav",
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            notes="utama",
+        )
+    )
+
+    class DummyVoiceEngine:
+        async def health_check(self) -> bool:
+            return True
+
+        async def synthesize_with_profile(
+            self,
+            *,
+            text: str,
+            reference_wav_path: str,
+            reference_text: str,
+            emotion: str = "neutral",
+            speed: float = 1.0,
+            trace_id: str = "",
+        ):
+            from src.voice.engine import AudioResult
+
+            return AudioResult(
+                audio_data=b"WAVDATA",
+                duration_ms=1250.0,
+                text=text,
+                emotion=emotion,
+                latency_ms=42.0,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+
+    result = await dashboard_api.generate_voice(
+        dashboard_api.VoiceGenerationRequest(
+            mode="standalone",
+            profile_id=created["id"],
+            text="Halo operator",
+            emotion="friendly",
+            speed=1.0,
+            attach_to_avatar=False,
+        )
+    )
+    history = await dashboard_api.list_voice_generations()
+
+    assert result["status"] == "success"
+    assert result["attached_to_avatar"] is False
+    assert result["audio_url"].endswith(f"/api/voice/audio/{result['generation_id']}")
+    assert history[0]["input_text"] == "Halo operator"
+
+
+@pytest.mark.asyncio
+async def test_voice_generate_persists_language_and_download_metadata(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    created = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path="assets/voice/sari.wav",
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            notes="utama",
+        )
+    )
+
+    class DummyVoiceEngine:
+        async def health_check(self) -> bool:
+            return True
+
+        async def synthesize_with_profile(
+            self,
+            *,
+            text: str,
+            reference_wav_path: str,
+            reference_text: str,
+            emotion: str = "neutral",
+            speed: float = 1.0,
+            trace_id: str = "",
+            language: str = "id",
+            style_preset: str = "natural",
+            stability: float = 0.75,
+            similarity: float = 0.8,
+        ):
+            from src.voice.engine import AudioResult
+
+            return AudioResult(
+                audio_data=b"WAVDATA",
+                duration_ms=1250.0,
+                text=text,
+                emotion=emotion,
+                latency_ms=42.0,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+
+    result = await dashboard_api.generate_voice(
+        dashboard_api.VoiceGenerationRequest(
+            mode="standalone",
+            profile_id=created["id"],
+            text="Hello operator",
+            emotion="neutral",
+            speed=1.0,
+            attach_to_avatar=False,
+            language="en",
+            style_preset="conversational",
+            stability=0.68,
+            similarity=0.88,
+        )
+    )
+    history = await dashboard_api.list_voice_generations()
+    downloaded = await dashboard_api.get_voice_generation_audio_download(result["generation_id"])
+
+    assert result["language"] == "en"
+    assert result["style_preset"] == "conversational"
+    assert result["download_url"].endswith(f"/api/voice/audio/{result['generation_id']}/download")
+    assert history[0]["language"] == "en"
+    assert history[0]["download_url"].endswith(f"/api/voice/audio/{result['generation_id']}/download")
+    assert downloaded.headers["content-disposition"].startswith("attachment;")
+
+
+@pytest.mark.asyncio
+async def test_voice_generate_attach_blocks_without_preview_session_or_avatar(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    created = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path="assets/voice/sari.wav",
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            notes="utama",
+        )
+    )
+
+    class DummyVoiceEngine:
+        async def health_check(self) -> bool:
+            return True
+
+        async def synthesize_with_profile(
+            self,
+            *,
+            text: str,
+            reference_wav_path: str,
+            reference_text: str,
+            emotion: str = "neutral",
+            speed: float = 1.0,
+            trace_id: str = "",
+        ):
+            from src.voice.engine import AudioResult
+
+            return AudioResult(
+                audio_data=b"WAVDATA",
+                duration_ms=1250.0,
+                text=text,
+                emotion=emotion,
+                latency_ms=42.0,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+
+    with pytest.raises(HTTPException, match="preview session") as exc_info:
+        await dashboard_api.generate_voice(
+            dashboard_api.VoiceGenerationRequest(
+                mode="attach_avatar",
+                profile_id=created["id"],
+                text="Halo avatar",
+                emotion="friendly",
+                speed=1.0,
+                attach_to_avatar=True,
+            )
+        )
+
+    assert exc_info.value.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_voice_training_job_is_blocked_while_live_session_active(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    target = await dashboard_api.create_stream_target(
+        dashboard_api.StreamTargetMutationRequest(
+            platform="tiktok",
+            label="Primary TikTok",
+            rtmp_url="rtmp://push.tiktok.test/live/",
+            stream_key="abc123",
+        )
+    )
+    await dashboard_api.activate_stream_target(target["id"])
+    await dashboard_api.start_live_session(
+        dashboard_api.LiveSessionStartRequest(platform="tiktok")
+    )
+
+    profile = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Studio Sari",
+            reference_wav_path="assets/voice/sari.wav",
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            profile_type="studio_voice",
+            supported_languages=["id", "en"],
+            quality_tier="studio",
+        )
+    )
+
+    with pytest.raises(HTTPException, match="active live session") as exc_info:
+        await dashboard_api.create_voice_training_job(
+            dashboard_api.VoiceTrainingJobRequest(
+                profile_id=profile["id"],
+                job_type="studio_voice_training",
+            )
+        )
+
+    assert exc_info.value.status_code == 409
 
 
 def test_products_api_exposes_affiliate_fields() -> None:

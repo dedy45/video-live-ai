@@ -9,6 +9,7 @@ Runtime contract: see docs/specs/livetalking_runtime_contract.md
 from __future__ import annotations
 
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -59,6 +60,10 @@ class EngineStatus:
     avatar_path_exists: bool = False
     requested_model: str = DEFAULT_MODEL
     requested_avatar_id: str = DEFAULT_AVATAR_ID
+    python_executable: str = sys.executable
+    python_executable_exists: bool = True
+    startup_timeout_sec: float = 60.0
+    push_url: str = "http://localhost:1985/rtc/v1/whip/?app=live&stream=livestream"
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -77,6 +82,10 @@ class EngineStatus:
             "app_py_exists": self.app_py_exists,
             "model_path_exists": self.model_path_exists,
             "avatar_path_exists": self.avatar_path_exists,
+            "python_executable": self.python_executable,
+            "python_executable_exists": self.python_executable_exists,
+            "startup_timeout_sec": round(self.startup_timeout_sec, 1),
+            "push_url": self.push_url,
         }
 
 
@@ -100,6 +109,15 @@ class LiveTalkingManager:
         # Settings from env
         self.port = int(os.getenv("LIVETALKING_PORT", str(DEFAULT_PORT)))
         self.transport = os.getenv("LIVETALKING_TRANSPORT", "webrtc")
+        self.push_url = os.getenv(
+            "LIVETALKING_PUSH_URL",
+            "http://localhost:1985/rtc/v1/whip/?app=live&stream=livestream",
+        )
+        self.python_executable = os.getenv("LIVETALKING_PYTHON_EXE", "").strip() or sys.executable
+        self.startup_timeout_sec = max(
+            0.0,
+            float(os.getenv("LIVETALKING_STARTUP_TIMEOUT_SEC", "60")),
+        )
         self.requested_avatar_id = os.getenv("LIVETALKING_AVATAR_ID", DEFAULT_AVATAR_ID)
 
         # Resolve engine: musetalk → wav2lip fallback if models missing
@@ -123,20 +141,27 @@ class LiveTalkingManager:
             resolved_model=self.model,
             requested_avatar_id=self.requested_avatar_id,
             avatar_id=self.avatar_id,
+            python_executable=self.python_executable,
+            startup_timeout_sec=self.startup_timeout_sec,
         )
 
     def build_launch_command(self) -> list[str]:
         """Build the exact command to launch LiveTalking."""
-        python_exe = sys.executable
         cmd = [
-            python_exe,
+            self.python_executable,
             "app.py",
             "--transport", self.transport,
             "--model", self.model,
             "--avatar_id", self.avatar_id,
             "--listenport", str(self.port),
         ]
+        if self.transport == "rtcpush":
+            cmd.extend(["--push_url", self.push_url])
         return cmd
+
+    def _python_executable_exists(self) -> bool:
+        candidate = Path(self.python_executable)
+        return candidate.exists() or shutil.which(self.python_executable) is not None
 
     def _check_port_free(self) -> bool:
         """Check if the engine port is available."""
@@ -161,15 +186,87 @@ class LiveTalkingManager:
     def _read_process_output(self) -> None:
         """Background thread to read process stdout/stderr."""
         proc = self._process
-        if proc is None or proc.stderr is None:
+        if proc is None:
+            return
+        stream = getattr(proc, "stdout", None) or getattr(proc, "stderr", None)
+        if stream is None:
             return
         try:
-            for line in iter(proc.stderr.readline, b""):
+            for line in iter(stream.readline, b""):
                 decoded = line.decode("utf-8", errors="replace").rstrip()
                 if decoded:
                     self._log_buffer.append(decoded)
         except Exception:
             pass
+
+    def _summarize_recent_logs(self, tail: int = 6) -> str:
+        recent_lines = [line.strip() for line in self.get_logs(tail=tail) if line.strip()]
+        if not recent_lines:
+            return ""
+        return " | ".join(recent_lines[-tail:])
+
+    def _build_child_env(self) -> dict[str, str]:
+        """Build a clean environment for the sidecar interpreter."""
+        child_env = {key: value for key, value in os.environ.items()}
+        for key in ("PYTHONHOME", "PYTHONPATH", "__PYVENV_LAUNCHER__", "VIRTUAL_ENV"):
+            child_env.pop(key, None)
+        child_env["PYTHONUNBUFFERED"] = "1"
+        return child_env
+
+    def _terminate_process(self) -> None:
+        """Stop the child process without mutating the public manager state."""
+        proc = self._process
+        if proc is None:
+            return
+        try:
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=5)
+        except Exception:
+            pass
+        finally:
+            self._process = None
+
+    def _wait_for_startup(self) -> EngineStatus:
+        """Wait until the preview port is reachable or startup fails."""
+        deadline = time.monotonic() + self.startup_timeout_sec
+        while True:
+            if self._check_port_reachable():
+                self._state = EngineState.RUNNING
+                self._last_error = ""
+                logger.info("livetalking_ready", port=self.port, pid=self._process.pid if self._process else None)
+                return self.get_status()
+
+            proc = self._process
+            if proc is None:
+                self._state = EngineState.ERROR
+                self._last_error = "LiveTalking process disappeared during startup"
+                return self.get_status()
+
+            poll = proc.poll()
+            if poll is not None:
+                log_hint = self._summarize_recent_logs()
+                self._state = EngineState.ERROR
+                self._last_error = (
+                    f"Process exited with code {poll}"
+                    + (f": {log_hint}" if log_hint else "")
+                )
+                self._process = None
+                return self.get_status()
+
+            if time.monotonic() >= deadline:
+                self._state = EngineState.ERROR
+                self._last_error = (
+                    f"Preview port {self.port} did not become reachable within "
+                    f"{self.startup_timeout_sec:.1f}s"
+                )
+                self._terminate_process()
+                return self.get_status()
+
+            time.sleep(1.0)
 
     def start(self) -> EngineStatus:
         """Start the LiveTalking engine subprocess."""
@@ -188,6 +285,11 @@ class LiveTalkingManager:
             self._last_error = f"app.py not found: {self.app_py}"
             return self.get_status()
 
+        if not self._python_executable_exists():
+            self._state = EngineState.ERROR
+            self._last_error = f"Python executable not found: {self.python_executable}"
+            return self.get_status()
+
         if not self._check_port_free():
             self._state = EngineState.ERROR
             self._last_error = f"Port {self.port} is already in use"
@@ -204,11 +306,11 @@ class LiveTalkingManager:
                 cmd,
                 cwd=str(self.livetalking_dir),
                 stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                env={**os.environ},
+                stderr=subprocess.STDOUT,
+                env=self._build_child_env(),
             )
             self._start_time = time.time()
-            self._state = EngineState.RUNNING
+            self._state = EngineState.STARTING
             self._last_error = ""
 
             # Start log reader thread
@@ -218,6 +320,7 @@ class LiveTalkingManager:
             self._log_thread.start()
 
             logger.info("livetalking_started", pid=self._process.pid)
+            return self._wait_for_startup()
 
         except Exception as e:
             self._state = EngineState.ERROR
@@ -305,6 +408,10 @@ class LiveTalkingManager:
             avatar_path_exists=(self.avatars_dir / self.avatar_id).exists(),
             requested_model=self.requested_model,
             requested_avatar_id=self.requested_avatar_id,
+            python_executable=self.python_executable,
+            python_executable_exists=self._python_executable_exists(),
+            startup_timeout_sec=self.startup_timeout_sec,
+            push_url=self.push_url,
         )
 
     def get_config_dict(self) -> dict[str, Any]:
@@ -324,6 +431,12 @@ class LiveTalkingManager:
             "avatars_dir": str(self.avatars_dir),
             "supported_transports": list(SUPPORTED_TRANSPORTS),
             "supported_models": list(SUPPORTED_MODELS),
+            "python_executable": self.python_executable,
+            "python_executable_exists": self._python_executable_exists(),
+            "startup_timeout_sec": self.startup_timeout_sec,
+            "push_url": self.push_url,
+            "rtcpush_requires_local_relay": True,
+            "rtcpush_local_fallback": "direct-webrtc-preview",
             "launch_command": " ".join(self.build_launch_command()),
         }
 

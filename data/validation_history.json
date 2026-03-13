@@ -1,6 +1,6 @@
 [
   {
-    "id": 1773353034448,
+    "id": 1773439078446,
     "check_name": "runtime-truth",
     "status": "pass",
     "checks": [
@@ -32,15 +32,65 @@
       {
         "check": "timestamp_present",
         "passed": true,
-        "message": "2026-03-12T22:03:54.387940+00:00"
+        "message": "2026-03-13T21:57:57.315538+00:00"
       }
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-12T22:03:54.448511+00:00"
+    "timestamp": "2026-03-13T21:57:58.446812+00:00"
   },
   {
-    "id": 1773353034454,
+    "id": 1773439078455,
+    "check_name": "real-mode-readiness",
+    "status": "blocked",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": false,
+        "message": "MOCK_MODE=true"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": false,
+        "message": "0 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: ['mock_mode_off', 'products_loaded']",
+    "timestamp": "2026-03-13T21:57:58.455453+00:00"
+  },
+  {
+    "id": 1773439078958,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -87,60 +137,10 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-12T22:03:54.454794+00:00"
+    "timestamp": "2026-03-13T21:57:58.958724+00:00"
   },
   {
-    "id": 1773353034745,
-    "check_name": "real-mode-readiness",
-    "status": "blocked",
-    "checks": [
-      {
-        "check": "mock_mode_off",
-        "passed": false,
-        "message": "MOCK_MODE=true"
-      },
-      {
-        "check": "avatar_reference_video",
-        "passed": true,
-        "message": "assets\\avatar\\reference.mp4"
-      },
-      {
-        "check": "avatar_reference_audio",
-        "passed": true,
-        "message": "assets\\avatar\\reference.wav"
-      },
-      {
-        "check": "rtmp_configured",
-        "passed": true,
-        "message": "configured"
-      },
-      {
-        "check": "livetalking_entrypoint",
-        "passed": true,
-        "message": "external\\livetalking\\app.py"
-      },
-      {
-        "check": "product_data_source",
-        "passed": true,
-        "message": "Found: products.json"
-      },
-      {
-        "check": "products_loaded",
-        "passed": true,
-        "message": "10 products"
-      },
-      {
-        "check": "ffmpeg_available",
-        "passed": true,
-        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
-      }
-    ],
-    "provenance": "real_local",
-    "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-12T22:03:54.745305+00:00"
-  },
-  {
-    "id": 1773353042975,
+    "id": 1773439087214,
     "check_name": "voice-local-clone",
     "status": "fail",
     "checks": [
@@ -167,6 +167,6 @@
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-12T22:04:02.975468+00:00"
+    "timestamp": "2026-03-13T21:58:07.214281+00:00"
   }
 ]

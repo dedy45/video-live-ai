@@ -13,6 +13,11 @@ import type {
   StreamTarget,
   SystemStatus,
   ValidationResult,
+  VoiceGeneration,
+  VoiceGenerationResult,
+  VoiceLabState,
+  VoiceProfile,
+  VoiceTrainingJob,
   VoiceTestSpeakResult,
 } from './types';
 
@@ -83,6 +88,11 @@ export const getRevenue = (hours = 1) => request<Record<string, any>>(`/analytic
 
 // Chat
 export const getRecentChats = (limit = 20) => request<any[]>(`/chat/recent?limit=${limit}`);
+export const ingestChatEvent = (payload: { platform: string; username: string; message: string; trace_id?: string; raw_data?: Record<string, any> }) =>
+  request<Record<string, any>>('/chat/ingest', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
 
 // Runtime Truth
 export const getRuntimeTruth = () => request<RuntimeTruth>('/runtime/truth');
@@ -96,6 +106,78 @@ export const voiceRestart = () => request<OperatorActionResult>('/voice/restart'
 export const voiceTestSpeak = (text: string) =>
   request<VoiceTestSpeakResult>(`/voice/test/speak?text=${encodeURIComponent(text)}`, {
     method: 'POST',
+  });
+export const getVoiceProfiles = () => request<VoiceProfile[]>('/voice/profiles');
+export const createVoiceProfile = (payload: {
+  name: string;
+  reference_wav_path: string;
+  reference_text: string;
+  language?: string;
+  supported_languages?: string[];
+  profile_type?: string;
+  quality_tier?: string;
+  guidance?: Record<string, any>;
+  notes?: string;
+  engine?: string;
+}) =>
+  request<VoiceProfile>('/voice/profiles', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const activateVoiceProfile = (profileId: number) =>
+  request<VoiceProfile>(`/voice/profiles/${profileId}/activate`, { method: 'POST' });
+export const getVoiceLabState = () => request<VoiceLabState>('/voice/lab');
+export const updateVoiceLabState = (payload: {
+  mode: string;
+  active_profile_id?: number | null;
+  preview_session_id?: string;
+  selected_avatar_id?: string;
+  selected_language?: string;
+  selected_profile_type?: string;
+  selected_revision_id?: number | null;
+  selected_style_preset?: string;
+  selected_stability?: number;
+  selected_similarity?: number;
+  draft_text?: string;
+  last_generation_id?: number | null;
+}) =>
+  request<VoiceLabState>('/voice/lab', {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+export const updateVoiceLabPreviewSession = (payload: {
+  preview_session_id: string;
+  selected_avatar_id?: string;
+}) =>
+  request<VoiceLabState>('/voice/lab/preview-session', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const generateVoice = (payload: {
+  mode: string;
+  profile_id?: number | null;
+  text: string;
+  language?: string;
+  emotion?: string;
+  style_preset?: string;
+  stability?: number;
+  similarity?: number;
+  speed?: number;
+  attach_to_avatar?: boolean;
+  avatar_id?: string;
+  preview_session_id?: string;
+  source_type?: string;
+}) =>
+  request<VoiceGenerationResult>('/voice/generate', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const getVoiceGenerations = (limit = 20) => request<VoiceGeneration[]>(`/voice/generations?limit=${limit}`);
+export const getVoiceTrainingJobs = (limit = 20) => request<VoiceTrainingJob[]>(`/voice/training-jobs?limit=${limit}`);
+export const createVoiceTrainingJob = (payload: { profile_id: number; job_type?: string; dataset_path?: string }) =>
+  request<Record<string, any>>('/voice/training-jobs', {
+    method: 'POST',
+    body: JSON.stringify(payload),
   });
 
 // Stream Control

@@ -139,6 +139,192 @@ def test_control_plane_store_tracks_session_product_pool_focus_and_pause(tmp_pat
     assert summary["state"]["pending_question"] is None
 
 
+def test_control_plane_store_manages_voice_profiles_and_lab_state(tmp_path: Path) -> None:
+    from src.control_plane.store import ControlPlaneStore
+
+    store = ControlPlaneStore(db_path=tmp_path / "control-plane.db")
+    created = store.create_voice_profile(
+        name="Sari Fish",
+        reference_wav_path="assets/voice/sari.wav",
+        reference_text="Halo semuanya, aku Sari.",
+        language="id",
+        notes="profile utama",
+    )
+    updated = store.update_voice_profile(
+        created["id"],
+        name="Sari Fish Pro",
+        reference_wav_path="assets/voice/sari-pro.wav",
+        reference_text="Halo semuanya, aku Sari Pro.",
+        language="id",
+        notes="profile utama update",
+    )
+    activated = store.activate_voice_profile(created["id"])
+    lab_state = store.update_voice_lab_state(
+        mode="attach_avatar",
+        active_profile_id=created["id"],
+        preview_session_id="884422",
+        selected_avatar_id="wav2lip256_avatar1",
+        draft_text="Tes voice lab",
+    )
+    profiles = store.list_voice_profiles()
+    current_state = store.get_voice_lab_state()
+
+    assert created["id"] > 0
+    assert updated["name"] == "Sari Fish Pro"
+    assert activated["is_active"] is True
+    assert len(profiles) == 1
+    assert profiles[0]["is_active"] is True
+    assert lab_state["mode"] == "attach_avatar"
+    assert lab_state["preview_session_id"] == "884422"
+    assert current_state["active_profile_id"] == created["id"]
+
+
+def test_control_plane_store_records_voice_generations(tmp_path: Path) -> None:
+    from src.control_plane.store import ControlPlaneStore
+
+    store = ControlPlaneStore(db_path=tmp_path / "control-plane.db")
+    profile = store.create_voice_profile(
+        name="Sari Fish",
+        reference_wav_path="assets/voice/sari.wav",
+        reference_text="Halo semuanya, aku Sari.",
+        language="id",
+        notes="profile utama",
+    )
+    generation = store.create_voice_generation(
+        mode="standalone",
+        profile_id=profile["id"],
+        source_type="manual_text",
+        input_text="Halo operator",
+        emotion="friendly",
+        speed=1.0,
+        status="success",
+        audio_path="data/runtime/voice/voice-1.wav",
+        audio_size_bytes=4096,
+        latency_ms=321.5,
+        duration_ms=1500.0,
+        attached_to_avatar=False,
+        avatar_session_id="",
+    )
+    history = store.list_voice_generations()
+    loaded = store.get_voice_generation(generation["id"])
+
+    assert generation["id"] > 0
+    assert history[0]["input_text"] == "Halo operator"
+    assert history[0]["profile_name"] == "Sari Fish"
+    assert loaded["audio_path"] == "data/runtime/voice/voice-1.wav"
+    assert loaded["attached_to_avatar"] is False
+
+
+def test_control_plane_store_voice_lab_tracks_richer_generator_defaults(tmp_path: Path) -> None:
+    from src.control_plane.store import ControlPlaneStore
+
+    store = ControlPlaneStore(db_path=tmp_path / "control-plane.db")
+    profile = store.create_voice_profile(
+        name="Sari Quick Clone",
+        reference_wav_path="assets/voice/sari.wav",
+        reference_text="Halo semuanya, aku Sari.",
+        language="id",
+    )
+
+    updated = store.update_voice_lab_state(
+        mode="standalone",
+        active_profile_id=profile["id"],
+        preview_session_id="",
+        selected_avatar_id="wav2lip256_avatar1",
+        draft_text="Hello from voice lab",
+        last_generation_id=None,
+        selected_language="en",
+        selected_profile_type="quick_clone",
+        selected_revision_id=None,
+        selected_style_preset="conversational",
+        selected_stability=0.72,
+        selected_similarity=0.81,
+    )
+
+    assert updated["selected_language"] == "en"
+    assert updated["selected_profile_type"] == "quick_clone"
+    assert updated["selected_style_preset"] == "conversational"
+    assert updated["selected_stability"] == 0.72
+    assert updated["selected_similarity"] == 0.81
+
+
+def test_control_plane_store_voice_generation_exposes_library_metadata(tmp_path: Path) -> None:
+    from src.control_plane.store import ControlPlaneStore
+
+    store = ControlPlaneStore(db_path=tmp_path / "control-plane.db")
+    profile = store.create_voice_profile(
+        name="Sari Quick Clone",
+        reference_wav_path="assets/voice/sari.wav",
+        reference_text="Halo semuanya, aku Sari.",
+        language="id",
+    )
+
+    generation = store.create_voice_generation(
+        mode="standalone",
+        profile_id=profile["id"],
+        source_type="manual_text",
+        input_text="Hello operator",
+        emotion="neutral",
+        speed=1.0,
+        status="success",
+        audio_path="data/runtime/voice/voice-99.wav",
+        audio_size_bytes=12345,
+        latency_ms=321.0,
+        duration_ms=1450.0,
+        attached_to_avatar=False,
+        avatar_session_id="",
+        language="en",
+        style_preset="conversational",
+        stability=0.61,
+        similarity=0.84,
+        audio_filename="voice-99.wav",
+        download_name="sari-quick-clone-en.wav",
+    )
+
+    history = store.list_voice_generations(limit=5)
+
+    assert generation["language"] == "en"
+    assert generation["style_preset"] == "conversational"
+    assert generation["stability"] == 0.61
+    assert generation["similarity"] == 0.84
+    assert generation["download_name"] == "sari-quick-clone-en.wav"
+    assert history[0]["audio_url"] == f"/api/voice/audio/{generation['id']}"
+    assert history[0]["download_url"] == f"/api/voice/audio/{generation['id']}/download"
+
+
+def test_control_plane_store_training_job_round_trip(tmp_path: Path) -> None:
+    from src.control_plane.store import ControlPlaneStore
+
+    store = ControlPlaneStore(db_path=tmp_path / "control-plane.db")
+    profile = store.create_voice_profile(
+        name="Studio Sari",
+        reference_wav_path="assets/voice/sari.wav",
+        reference_text="Halo semuanya, aku Sari.",
+        language="id",
+        profile_type="studio_voice",
+        supported_languages=["id", "en"],
+        quality_tier="studio",
+    )
+
+    job = store.create_voice_training_job(
+        profile_id=profile["id"],
+        job_type="studio_voice_training",
+        status="queued",
+        current_stage="queued",
+        progress_pct=0.0,
+        dataset_path="data/runtime/voice/datasets/studio-sari",
+        log_path="data/runtime/voice/training/studio-sari.log",
+        meta={"languages": ["id", "en"]},
+    )
+
+    jobs = store.list_voice_training_jobs()
+
+    assert job["profile_id"] == profile["id"]
+    assert job["status"] == "queued"
+    assert jobs[0]["job_type"] == "studio_voice_training"
+    assert jobs[0]["profile_name"] == "Studio Sari"
+
+
 @pytest.mark.asyncio
 async def test_dashboard_product_crud_uses_sqlite_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
@@ -217,7 +403,9 @@ async def test_dashboard_stream_target_and_session_flow_uses_single_source_of_tr
     paused = await dashboard_api.pause_live_session(
         dashboard_api.LiveSessionPauseRequest(reason="viewer_question", question="Harga berapa?")
     )
+    paused_runtime = await dashboard_api.get_director_runtime()
     resumed = await dashboard_api.resume_live_session()
+    resumed_runtime = await dashboard_api.get_director_runtime()
     summary = await dashboard_api.get_live_session()
     status = await dashboard_api.get_status()
 
@@ -227,7 +415,9 @@ async def test_dashboard_stream_target_and_session_flow_uses_single_source_of_tr
     assert assignments["count"] == 1
     assert focus["state"]["current_focus_product_id"] == product["id"]
     assert paused["state"]["rotation_paused"] is True
+    assert paused_runtime["director"]["state"] == "PAUSED"
     assert resumed["state"]["rotation_paused"] is False
+    assert resumed_runtime["director"]["state"] == "SELLING"
     assert summary["session"]["id"] == session["session"]["id"]
     assert status["current_product"]["id"] == product["id"]
 
@@ -281,6 +471,34 @@ async def test_dashboard_start_live_session_starts_stream_runtime_from_persisted
     assert runtime.started_target["stream_key"] == "abc123"
     assert session["session"]["status"] == "active"
     assert summary["state"]["stream_status"] == "live"
+
+
+@pytest.mark.asyncio
+async def test_dashboard_stop_live_session_moves_director_to_idle(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+
+    target = await dashboard_api.create_stream_target(
+        dashboard_api.StreamTargetMutationRequest(
+            platform="tiktok",
+            label="Primary TikTok",
+            rtmp_url="rtmp://push.tiktok.test/live/",
+            stream_key="abc123",
+        )
+    )
+    await dashboard_api.activate_stream_target(target["id"])
+    await dashboard_api.start_live_session(
+        dashboard_api.LiveSessionStartRequest(platform="tiktok")
+    )
+
+    stopped = await dashboard_api.stop_live_session()
+    director_runtime = await dashboard_api.get_director_runtime()
+
+    assert stopped["status"] == "stopped"
+    assert director_runtime["director"]["state"] == "IDLE"
+    assert director_runtime["director"]["stream_running"] is False
 
 
 @pytest.mark.asyncio

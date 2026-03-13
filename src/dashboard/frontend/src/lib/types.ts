@@ -172,6 +172,99 @@ export interface VoiceTestSpeakResult extends OperatorActionResult {
   audio_length_bytes?: number;
 }
 
+export interface VoiceProfile {
+  id: number;
+  name: string;
+  engine: string;
+  profile_type?: string;
+  supported_languages?: string[];
+  quality_tier?: string;
+  reference_wav_path: string;
+  reference_text: string;
+  language: string;
+  notes: string;
+  guidance?: Record<string, any>;
+  is_active: boolean;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface VoiceLabState {
+  mode: 'standalone' | 'attach_avatar' | string;
+  active_profile_id: number | null;
+  preview_session_id: string;
+  selected_avatar_id: string;
+  selected_language: 'id' | 'en' | string;
+  selected_profile_type: 'quick_clone' | 'studio_voice' | string;
+  selected_revision_id?: number | null;
+  selected_style_preset?: string;
+  selected_stability?: number;
+  selected_similarity?: number;
+  draft_text: string;
+  last_generation_id?: number | null;
+  updated_at?: string;
+}
+
+export interface VoiceGenerationResult extends OperatorActionResult {
+  generation_id: number;
+  audio_url: string;
+  download_url?: string;
+  latency_ms?: number;
+  duration_ms?: number;
+  audio_length_bytes?: number;
+  attached_to_avatar: boolean;
+  avatar_session_id?: string;
+  language?: string;
+  style_preset?: string;
+  stability?: number;
+  similarity?: number;
+  profile?: VoiceProfile;
+  lab_state?: VoiceLabState;
+}
+
+export interface VoiceGeneration {
+  id: number;
+  mode: string;
+  profile_id: number | null;
+  profile_name?: string | null;
+  source_type: string;
+  input_text: string;
+  language?: string;
+  emotion: string;
+  style_preset?: string;
+  stability?: number;
+  similarity?: number;
+  speed: number;
+  status: string;
+  audio_path: string;
+  audio_filename?: string;
+  download_name?: string;
+  audio_url?: string;
+  download_url?: string;
+  audio_size_bytes: number;
+  latency_ms: number;
+  duration_ms: number;
+  attached_to_avatar: boolean;
+  avatar_session_id: string;
+  created_at?: string;
+}
+
+export interface VoiceTrainingJob {
+  id: number;
+  profile_id: number;
+  profile_name?: string | null;
+  job_type: string;
+  status: string;
+  current_stage: string;
+  progress_pct: number;
+  dataset_path: string;
+  log_path: string;
+  meta?: Record<string, any>;
+  error_text?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface ValidationResult {
   status: 'pass' | 'fail' | 'error' | 'blocked';
   checks: Array<{ check: string; passed: boolean; message: string }>;

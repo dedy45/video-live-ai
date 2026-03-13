@@ -13,7 +13,7 @@ logger = get_logger("control_plane.store")
 
 
 def _json_dumps(value: Any) -> str:
-    return json.dumps(value or {}, ensure_ascii=True)
+    return json.dumps({} if value is None else value, ensure_ascii=True)
 
 
 def _json_loads(raw: str | None, default: Any) -> Any:
@@ -151,6 +151,113 @@ class ControlPlaneStore:
             "active_provider": row["active_provider"] or "",
             "active_model": row["active_model"] or "",
             "stream_status": row["stream_status"] or "idle",
+        }
+
+    def _voice_profile_from_row(self, row: Any | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "engine": row["engine"] or "fish_speech",
+            "profile_type": row["profile_type"] or "quick_clone",
+            "reference_wav_path": row["reference_wav_path"] or "",
+            "reference_text": row["reference_text"] or "",
+            "language": row["language"] or "id",
+            "supported_languages": _json_loads(row["supported_languages_json"], [row["language"] or "id"]),
+            "quality_tier": row["quality_tier"] or "quick",
+            "guidance": _json_loads(row["guidance_json"], {}),
+            "notes": row["notes"] or "",
+            "is_active": bool(row["is_active"]),
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _voice_lab_state_from_row(self, row: Any | None) -> dict[str, Any]:
+        if row is None:
+            return {
+                "mode": "standalone",
+                "active_profile_id": None,
+                "preview_session_id": "",
+                "selected_avatar_id": "",
+                "selected_language": "id",
+                "selected_profile_type": "quick_clone",
+                "selected_revision_id": None,
+                "selected_style_preset": "natural",
+                "selected_stability": 0.75,
+                "selected_similarity": 0.8,
+                "draft_text": "",
+                "last_generation_id": None,
+            }
+        return {
+            "mode": row["mode"] or "standalone",
+            "active_profile_id": row["active_profile_id"],
+            "preview_session_id": row["preview_session_id"] or "",
+            "selected_avatar_id": row["selected_avatar_id"] or "",
+            "selected_language": row["selected_language"] or "id",
+            "selected_profile_type": row["selected_profile_type"] or "quick_clone",
+            "selected_revision_id": row["selected_revision_id"],
+            "selected_style_preset": row["selected_style_preset"] or "natural",
+            "selected_stability": float(row["selected_stability"] or 0.75),
+            "selected_similarity": float(row["selected_similarity"] or 0.8),
+            "draft_text": row["draft_text"] or "",
+            "last_generation_id": row["last_generation_id"],
+            "updated_at": row["updated_at"],
+        }
+
+    def _voice_generation_from_row(self, row: Any | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        generation_id = int(row["id"])
+        audio_filename = row["audio_filename"] or Path(row["audio_path"] or "").name
+        download_name = row["download_name"] or audio_filename or f"voice-{generation_id}.wav"
+        return {
+            "id": generation_id,
+            "mode": row["mode"],
+            "profile_id": row["profile_id"],
+            "profile_name": row["profile_name"] if "profile_name" in row.keys() else None,
+            "source_type": row["source_type"] or "manual_text",
+            "input_text": row["input_text"] or "",
+            "language": row["language"] or "id",
+            "emotion": row["emotion"] or "neutral",
+            "style_preset": row["style_preset"] or "natural",
+            "stability": float(row["stability"] or 0.75),
+            "similarity": float(row["similarity"] or 0.8),
+            "speed": float(row["speed"] or 1.0),
+            "status": row["status"],
+            "audio_path": row["audio_path"] or "",
+            "audio_filename": audio_filename,
+            "download_name": download_name,
+            "audio_url": f"/api/voice/audio/{generation_id}",
+            "download_url": f"/api/voice/audio/{generation_id}/download",
+            "audio_size_bytes": int(row["audio_size_bytes"] or 0),
+            "latency_ms": float(row["latency_ms"] or 0.0),
+            "duration_ms": float(row["duration_ms"] or 0.0),
+            "attached_to_avatar": bool(row["attached_to_avatar"]),
+            "avatar_session_id": row["avatar_session_id"] or "",
+            "created_at": row["created_at"],
+        }
+
+    def _voice_training_job_from_row(self, row: Any | None) -> dict[str, Any] | None:
+        if row is None:
+            return None
+        return {
+            "id": row["id"],
+            "profile_id": row["profile_id"],
+            "profile_name": row["profile_name"] if "profile_name" in row.keys() else None,
+            "job_type": row["job_type"] or "studio_voice_training",
+            "status": row["status"] or "queued",
+            "current_stage": row["current_stage"] or "queued",
+            "progress_pct": float(row["progress_pct"] or 0.0),
+            "dataset_path": row["dataset_path"] or "",
+            "log_path": row["log_path"] or "",
+            "meta": _json_loads(row["meta_json"], {}),
+            "error_text": row["error_text"] or "",
+            "queued_at": row["queued_at"],
+            "started_at": row["started_at"],
+            "finished_at": row["finished_at"],
+            "created_at": row["created_at"],
+            "updated_at": row["updated_at"],
         }
 
     def list_products(self, include_inactive: bool = False) -> list[dict[str, Any]]:
@@ -793,3 +900,408 @@ class ControlPlaneStore:
             params = (session_id,)
         with self._connection() as conn:
             return int(conn.execute(query, params).fetchone()[0])
+
+    def list_voice_profiles(self) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                "SELECT * FROM voice_profiles ORDER BY is_active DESC, id ASC"
+            ).fetchall()
+        return [self._voice_profile_from_row(row) or {} for row in rows]
+
+    def get_voice_profile(self, profile_id: int) -> dict[str, Any] | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT * FROM voice_profiles WHERE id = ?",
+                (profile_id,),
+            ).fetchone()
+        return self._voice_profile_from_row(row)
+
+    def create_voice_profile(
+        self,
+        *,
+        name: str,
+        reference_wav_path: str,
+        reference_text: str,
+        language: str = "id",
+        notes: str = "",
+        engine: str = "fish_speech",
+        profile_type: str = "quick_clone",
+        supported_languages: list[str] | None = None,
+        quality_tier: str = "quick",
+        guidance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_languages = supported_languages or [language or "id"]
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO voice_profiles (
+                    name, engine, profile_type, reference_wav_path, reference_text, language,
+                    supported_languages_json, quality_tier, guidance_json, notes, is_active
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """,
+                (
+                    name,
+                    engine,
+                    profile_type,
+                    reference_wav_path,
+                    reference_text,
+                    language,
+                    _json_dumps(resolved_languages),
+                    quality_tier,
+                    _json_dumps(guidance or {}),
+                    notes,
+                ),
+            )
+            profile_id = int(cursor.lastrowid)
+        self._record_command("voice.profile.create", "completed", {"profile_id": profile_id, "name": name})
+        return self.get_voice_profile(profile_id) or {}
+
+    def update_voice_profile(
+        self,
+        profile_id: int,
+        *,
+        name: str,
+        reference_wav_path: str,
+        reference_text: str,
+        language: str = "id",
+        notes: str = "",
+        engine: str = "fish_speech",
+        profile_type: str = "quick_clone",
+        supported_languages: list[str] | None = None,
+        quality_tier: str = "quick",
+        guidance: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        resolved_languages = supported_languages or [language or "id"]
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE voice_profiles
+                SET name = ?, engine = ?, profile_type = ?, reference_wav_path = ?, reference_text = ?,
+                    language = ?, supported_languages_json = ?, quality_tier = ?, guidance_json = ?,
+                    notes = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (
+                    name,
+                    engine,
+                    profile_type,
+                    reference_wav_path,
+                    reference_text,
+                    language,
+                    _json_dumps(resolved_languages),
+                    quality_tier,
+                    _json_dumps(guidance or {}),
+                    notes,
+                    profile_id,
+                ),
+            )
+        profile = self.get_voice_profile(profile_id)
+        if profile is None:
+            raise RuntimeError(f"Voice profile {profile_id} not found")
+        self._record_command("voice.profile.update", "completed", {"profile_id": profile_id})
+        return profile
+
+    def delete_voice_profile(self, profile_id: int) -> dict[str, Any]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id, name FROM voice_profiles WHERE id = ?",
+                (profile_id,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(f"Voice profile {profile_id} not found")
+            conn.execute(
+                """
+                UPDATE voice_lab_state
+                SET active_profile_id = NULL,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE active_profile_id = ?
+                """,
+                (profile_id,),
+            )
+            conn.execute("DELETE FROM voice_profiles WHERE id = ?", (profile_id,))
+        self._record_command("voice.profile.delete", "completed", {"profile_id": profile_id})
+        return {"status": "deleted", "id": profile_id, "name": row["name"]}
+
+    def activate_voice_profile(self, profile_id: int) -> dict[str, Any]:
+        with self._connection() as conn:
+            row = conn.execute(
+                "SELECT id FROM voice_profiles WHERE id = ?",
+                (profile_id,),
+            ).fetchone()
+            if row is None:
+                raise RuntimeError(f"Voice profile {profile_id} not found")
+            conn.execute("UPDATE voice_profiles SET is_active = 0, updated_at = CURRENT_TIMESTAMP")
+            conn.execute(
+                """
+                UPDATE voice_profiles
+                SET is_active = 1, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (profile_id,),
+            )
+            conn.execute(
+                """
+                INSERT INTO voice_lab_state (id, active_profile_id, updated_at)
+                VALUES (1, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    active_profile_id = excluded.active_profile_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (profile_id,),
+            )
+        self._record_command("voice.profile.activate", "completed", {"profile_id": profile_id})
+        profile = self.get_voice_profile(profile_id)
+        if profile is None:
+            raise RuntimeError(f"Voice profile {profile_id} not found")
+        return profile
+
+    def get_voice_lab_state(self) -> dict[str, Any]:
+        with self._connection() as conn:
+            row = conn.execute("SELECT * FROM voice_lab_state WHERE id = 1").fetchone()
+        return self._voice_lab_state_from_row(row)
+
+    def update_voice_lab_state(
+        self,
+        *,
+        mode: str,
+        active_profile_id: int | None = None,
+        preview_session_id: str = "",
+        selected_avatar_id: str = "",
+        selected_language: str = "id",
+        selected_profile_type: str = "quick_clone",
+        selected_revision_id: int | None = None,
+        selected_style_preset: str = "natural",
+        selected_stability: float = 0.75,
+        selected_similarity: float = 0.8,
+        draft_text: str = "",
+        last_generation_id: int | None = None,
+    ) -> dict[str, Any]:
+        with self._connection() as conn:
+            conn.execute(
+                """
+                INSERT INTO voice_lab_state (
+                    id, mode, active_profile_id, preview_session_id,
+                    selected_avatar_id, selected_language, selected_profile_type,
+                    selected_revision_id, selected_style_preset, selected_stability,
+                    selected_similarity, draft_text, last_generation_id, updated_at
+                )
+                VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                    mode = excluded.mode,
+                    active_profile_id = excluded.active_profile_id,
+                    preview_session_id = excluded.preview_session_id,
+                    selected_avatar_id = excluded.selected_avatar_id,
+                    selected_language = excluded.selected_language,
+                    selected_profile_type = excluded.selected_profile_type,
+                    selected_revision_id = excluded.selected_revision_id,
+                    selected_style_preset = excluded.selected_style_preset,
+                    selected_stability = excluded.selected_stability,
+                    selected_similarity = excluded.selected_similarity,
+                    draft_text = excluded.draft_text,
+                    last_generation_id = excluded.last_generation_id,
+                    updated_at = CURRENT_TIMESTAMP
+                """,
+                (
+                    mode,
+                    active_profile_id,
+                    preview_session_id,
+                    selected_avatar_id,
+                    selected_language,
+                    selected_profile_type,
+                    selected_revision_id,
+                    selected_style_preset,
+                    float(selected_stability),
+                    float(selected_similarity),
+                    draft_text,
+                    last_generation_id,
+                ),
+            )
+        self._record_command(
+            "voice.lab.update",
+            "completed",
+            {
+                "mode": mode,
+                "active_profile_id": active_profile_id,
+                "preview_session_id": preview_session_id,
+                "selected_avatar_id": selected_avatar_id,
+                "selected_language": selected_language,
+                "selected_profile_type": selected_profile_type,
+            },
+        )
+        return self.get_voice_lab_state()
+
+    def create_voice_generation(
+        self,
+        *,
+        mode: str,
+        profile_id: int | None,
+        source_type: str,
+        input_text: str,
+        emotion: str,
+        speed: float,
+        status: str,
+        audio_path: str,
+        audio_size_bytes: int,
+        latency_ms: float,
+        duration_ms: float,
+        attached_to_avatar: bool,
+        avatar_session_id: str = "",
+        language: str = "id",
+        style_preset: str = "natural",
+        stability: float = 0.75,
+        similarity: float = 0.8,
+        audio_filename: str = "",
+        download_name: str = "",
+    ) -> dict[str, Any]:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO voice_generations (
+                    mode, profile_id, source_type, input_text, language, emotion, style_preset,
+                    stability, similarity, speed, status, audio_path, audio_filename, download_name,
+                    audio_size_bytes, latency_ms, duration_ms,
+                    attached_to_avatar, avatar_session_id
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    mode,
+                    profile_id,
+                    source_type,
+                    input_text,
+                    language,
+                    emotion,
+                    style_preset,
+                    float(stability),
+                    float(similarity),
+                    float(speed),
+                    status,
+                    audio_path,
+                    audio_filename,
+                    download_name,
+                    int(audio_size_bytes),
+                    float(latency_ms),
+                    float(duration_ms),
+                    int(attached_to_avatar),
+                    avatar_session_id,
+                ),
+            )
+            generation_id = int(cursor.lastrowid)
+        self._record_command(
+            "voice.generation.create",
+            "completed",
+            {
+                "generation_id": generation_id,
+                "mode": mode,
+                "profile_id": profile_id,
+                "status": status,
+                "language": language,
+                "attached_to_avatar": attached_to_avatar,
+            },
+        )
+        return self.get_voice_generation(generation_id) or {}
+
+    def create_voice_training_job(
+        self,
+        *,
+        profile_id: int,
+        job_type: str,
+        status: str,
+        current_stage: str,
+        progress_pct: float,
+        dataset_path: str = "",
+        log_path: str = "",
+        meta: dict[str, Any] | None = None,
+        error_text: str = "",
+    ) -> dict[str, Any]:
+        with self._connection() as conn:
+            cursor = conn.execute(
+                """
+                INSERT INTO voice_training_jobs (
+                    profile_id, job_type, status, current_stage, progress_pct,
+                    dataset_path, log_path, meta_json, error_text, updated_at
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (
+                    profile_id,
+                    job_type,
+                    status,
+                    current_stage,
+                    float(progress_pct),
+                    dataset_path,
+                    log_path,
+                    _json_dumps(meta or {}),
+                    error_text,
+                ),
+            )
+            job_id = int(cursor.lastrowid)
+        self._record_command(
+            "voice.training_job.create",
+            "completed",
+            {"job_id": job_id, "profile_id": profile_id, "job_type": job_type, "status": status},
+        )
+        return self.get_voice_training_job(job_id) or {}
+
+    def list_voice_training_jobs(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    vtj.*,
+                    vp.name AS profile_name
+                FROM voice_training_jobs vtj
+                LEFT JOIN voice_profiles vp ON vp.id = vtj.profile_id
+                ORDER BY vtj.id DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        return [self._voice_training_job_from_row(row) or {} for row in rows]
+
+    def get_voice_training_job(self, job_id: int) -> dict[str, Any] | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    vtj.*,
+                    vp.name AS profile_name
+                FROM voice_training_jobs vtj
+                LEFT JOIN voice_profiles vp ON vp.id = vtj.profile_id
+                WHERE vtj.id = ?
+                """,
+                (job_id,),
+            ).fetchone()
+        return self._voice_training_job_from_row(row)
+
+    def list_voice_generations(self, limit: int = 20) -> list[dict[str, Any]]:
+        with self._connection() as conn:
+            rows = conn.execute(
+                """
+                SELECT
+                    vg.*,
+                    vp.name AS profile_name
+                FROM voice_generations vg
+                LEFT JOIN voice_profiles vp ON vp.id = vg.profile_id
+                ORDER BY vg.id DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        return [self._voice_generation_from_row(row) or {} for row in rows]
+
+    def get_voice_generation(self, generation_id: int) -> dict[str, Any] | None:
+        with self._connection() as conn:
+            row = conn.execute(
+                """
+                SELECT
+                    vg.*,
+                    vp.name AS profile_name
+                FROM voice_generations vg
+                LEFT JOIN voice_profiles vp ON vp.id = vg.profile_id
+                WHERE vg.id = ?
+                """,
+                (generation_id,),
+            ).fetchone()
+        return self._voice_generation_from_row(row)

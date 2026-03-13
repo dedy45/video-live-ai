@@ -18,11 +18,13 @@ import json
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from src.brain.prompt_registry import get_prompt_registry
@@ -85,6 +87,14 @@ class ChatEventResponse(BaseModel):
     timestamp: float
 
 
+class ChatIngestRequest(BaseModel):
+    platform: str
+    username: str
+    message: str
+    trace_id: str = ""
+    raw_data: dict[str, Any] = {}
+
+
 class ProductMutationRequest(BaseModel):
     name: str
     price: float
@@ -123,6 +133,56 @@ class FocusProductRequest(BaseModel):
 class LiveSessionPauseRequest(BaseModel):
     reason: str
     question: str | None = None
+
+
+class VoiceProfileMutationRequest(BaseModel):
+    name: str
+    reference_wav_path: str
+    reference_text: str
+    language: str = "id"
+    supported_languages: list[str] = ["id"]
+    profile_type: str = "quick_clone"
+    quality_tier: str = "quick"
+    guidance: dict[str, Any] = {}
+    notes: str = ""
+    engine: str = "fish_speech"
+
+
+class VoiceLabStateRequest(BaseModel):
+    mode: str = "standalone"
+    active_profile_id: int | None = None
+    preview_session_id: str = ""
+    selected_avatar_id: str = ""
+    selected_language: str = "id"
+    selected_profile_type: str = "quick_clone"
+    selected_revision_id: int | None = None
+    selected_style_preset: str = "natural"
+    selected_stability: float = 0.75
+    selected_similarity: float = 0.8
+    draft_text: str = ""
+    last_generation_id: int | None = None
+
+
+class VoiceGenerationRequest(BaseModel):
+    mode: str = "standalone"
+    profile_id: int | None = None
+    text: str
+    language: str = "id"
+    emotion: str = "neutral"
+    style_preset: str = "natural"
+    stability: float = 0.75
+    similarity: float = 0.8
+    speed: float = 1.0
+    attach_to_avatar: bool = False
+    avatar_id: str = ""
+    preview_session_id: str = ""
+    source_type: str = "manual_text"
+
+
+class VoiceTrainingJobRequest(BaseModel):
+    profile_id: int
+    job_type: str = "studio_voice_training"
+    dataset_path: str = ""
 
 
 class BrainTestRequest(BaseModel):
@@ -172,6 +232,7 @@ MAX_RECENT_CHATS = 50
 _brain_health_cache: dict[str, Any] | None = None
 _brain_health_cache_time: float = 0.0
 BRAIN_HEALTH_CACHE_TTL = 30.0  # Cache for 30 seconds
+VOICE_RUNTIME_DIR = Path("data/runtime/voice")
 
 
 def init_dashboard_state(
@@ -247,19 +308,40 @@ def record_chat_event(event: dict[str, Any]) -> None:
         _recent_chats.pop(0)
 
 
+def _serialize_chat_event(event: Any) -> dict[str, Any]:
+    return {
+        "platform": event.platform,
+        "username": event.username,
+        "message": event.message,
+        "intent": event.intent,
+        "priority": int(event.priority),
+        "trace_id": event.trace_id,
+        "timestamp": float(event.timestamp),
+        "raw_data": event.raw_data,
+    }
+
+
 def _task_type_names() -> list[str]:
     from src.brain.adapters.base import TaskType
 
     return [task.value for task in TaskType]
 
 
+def _get_router_adapters(router_instance: Any | None) -> dict[str, Any]:
+    adapters = getattr(router_instance, "adapters", {}) if router_instance is not None else {}
+    if not isinstance(adapters, dict):
+        return {}
+    return adapters
+
+
 def _build_brain_provider_payload(router_instance: Any | None) -> dict[str, dict[str, Any]]:
     providers: dict[str, dict[str, Any]] = {}
-    if router_instance is None:
+    adapters = _get_router_adapters(router_instance)
+    if not adapters:
         return providers
 
-    for provider_name in sorted(router_instance.adapters.keys()):
-        adapter = router_instance.adapters[provider_name]
+    for provider_name in sorted(adapters.keys()):
+        adapter = adapters[provider_name]
         payload = {
             "model": getattr(adapter, "_litellm_model", getattr(adapter, "model", "unknown")),
             "timeout_ms": int(getattr(adapter, "timeout_ms", 0)),
@@ -296,13 +378,111 @@ def _build_brain_config_payload(router_instance: Any | None = None) -> dict[str,
     }
 
 
+def _get_voice_runtime_dir() -> Path:
+    VOICE_RUNTIME_DIR.mkdir(parents=True, exist_ok=True)
+    return VOICE_RUNTIME_DIR
+
+
+def _get_voice_audio_path() -> Path:
+    timestamp_ms = int(time.time() * 1000)
+    return _get_voice_runtime_dir() / f"voice-{timestamp_ms}.wav"
+
+
+def _ensure_default_voice_profile() -> None:
+    store = get_control_plane_store()
+    if store.list_voice_profiles():
+        return
+    config = get_config()
+    ref_wav = Path(config.voice.clone_reference_wav)
+    ref_txt = Path(config.voice.clone_reference_text)
+    if not ref_wav.exists() or not ref_txt.exists():
+        return
+    ref_text = ref_txt.read_text(encoding="utf-8").strip()
+    if not ref_text:
+        return
+    profile = store.create_voice_profile(
+        name="Default Fish Clone",
+        reference_wav_path=str(ref_wav),
+        reference_text=ref_text,
+        language="id",
+        supported_languages=["id"],
+        profile_type="quick_clone",
+        quality_tier="quick",
+        notes="Seeded from config.voice clone reference",
+    )
+    store.activate_voice_profile(profile["id"])
+
+
+def get_voice_lab_engine():
+    from src.voice.lab import get_voice_lab_engine as _get_engine
+
+    return _get_engine()
+
+
+async def _attach_audio_to_livetalking(*, audio_path: Path, session_id: str) -> None:
+    from src.face.livetalking_manager import get_livetalking_manager
+
+    manager = get_livetalking_manager()
+    status = manager.get_status()
+    if status.state.value != "running":
+        raise HTTPException(status_code=409, detail="Avatar is not running for attach mode")
+
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            with audio_path.open("rb") as audio_file:
+                response = await client.post(
+                    f"http://127.0.0.1:{status.port}/humanaudio",
+                    data={"sessionid": session_id},
+                    files={"file": (audio_path.name, audio_file, "audio/wav")},
+                )
+        if response.status_code >= 400:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Avatar attach failed: {response.status_code}",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Avatar attach failed: {exc}") from exc
+
+
+def _sync_show_director_with_live_session(active_live: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Align the operator-facing director state with SQLite control-plane truth."""
+    director = get_show_director()
+    snapshot = director.get_runtime_snapshot()
+    if snapshot["emergency_stopped"]:
+        return snapshot
+
+    try:
+        live = active_live if active_live is not None else get_control_plane_store().get_active_live_session()
+    except Exception:
+        return snapshot
+
+    session = (live or {}).get("session")
+    state = (live or {}).get("state") or {}
+    if session is None:
+        if snapshot["stream_running"]:
+            snapshot = director.stop_stream()
+        if snapshot["state"] != "IDLE" and "IDLE" in director.get_valid_transitions():
+            snapshot = director.transition("IDLE")
+        return snapshot
+
+    if not snapshot["stream_running"]:
+        snapshot = director.start_stream()
+
+    desired_state = "PAUSED" if bool(state.get("rotation_paused")) else "SELLING"
+    if snapshot["state"] != desired_state and desired_state in director.get_valid_transitions():
+        snapshot = director.transition(desired_state)
+    return snapshot
+
+
 def _get_director_runtime_contract() -> dict[str, Any]:
     """Build the aggregated director + brain + prompt runtime contract."""
-    director = get_show_director().get_runtime_snapshot()
+    director = _sync_show_director_with_live_session()
     prompt = get_prompt_registry().get_active_revision()
     router_instance = get_llm_router()
     runtime = get_brain_runtime_config().snapshot(router_instance)
-    adapter_count = len(router_instance.adapters) if router_instance is not None else 0
+    adapter_count = len(_get_router_adapters(router_instance))
 
     return {
         "director": director,
@@ -338,7 +518,7 @@ async def get_status() -> dict[str, Any]:
         control = get_control_plane_store()
         gauges = analytics.get_gauges()
         counters = analytics.get_counters()
-        director = get_show_director().get_runtime_snapshot()
+        director = _sync_show_director_with_live_session()
         stream_runtime = get_stream_runtime_service().get_snapshot()
         active_live = control.get_active_live_session()
         current = None
@@ -507,6 +687,61 @@ async def switch_product(product_id: int) -> dict[str, Any]:
 
 # ── Chat Endpoints ───────────────────────────────────────────────
 
+@router.post("/chat/ingest")
+async def ingest_chat_event(payload: ChatIngestRequest) -> dict[str, Any]:
+    """Ingest a chat event into dashboard truth and auto-pause live session when needed."""
+    try:
+        from src.chat.monitor import ChatEvent, EventPriority, IntentDetector
+
+        detector = IntentDetector()
+        priority, intent = detector.detect(payload.message)
+        event = ChatEvent(
+            platform=payload.platform,
+            username=payload.username,
+            message=payload.message,
+            priority=priority,
+            intent=intent,
+            raw_data=payload.raw_data,
+            trace_id=payload.trace_id,
+        )
+        serialized = _serialize_chat_event(event)
+        record_chat_event(serialized)
+
+        auto_paused = False
+        state: dict[str, Any] | None = None
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is not None and event.priority <= EventPriority.P2_QUESTION:
+            state = store.pause_rotation(
+                session_id=int(active["session"]["id"]),
+                reason="viewer_question",
+                question=event.message,
+            )
+            pending_question = await _generate_affiliate_answer_draft(
+                question=event.message,
+                reason="viewer_question",
+                active_session=store.get_active_live_session(),
+            )
+            pending_question["viewer_name"] = event.username
+            pending_question["source_platform"] = event.platform
+            state = store.update_pending_question(
+                session_id=int(active["session"]["id"]),
+                pending_question=pending_question,
+            )
+            _sync_show_director_with_live_session(store.get_active_live_session())
+            auto_paused = True
+
+        return {
+            "status": "recorded",
+            "event": serialized,
+            "auto_paused": auto_paused,
+            "state": state,
+        }
+    except Exception as e:
+        logger.error("ingest_chat_event_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to ingest chat event: {e}") from e
+
+
 @router.get("/chat/recent", response_model=list[ChatEventResponse])
 async def get_recent_chats(limit: int = 20) -> list[ChatEventResponse]:
     """Get recent chat events."""
@@ -658,6 +893,7 @@ async def start_live_session(payload: LiveSessionStartRequest) -> dict[str, Any]
             session = store.start_live_session(platform=payload.platform, stream_target_id=int(target["id"]))
             stream_status = str(runtime_state.get("stream_status") or runtime_state.get("status") or "live")
             state = store.set_session_stream_status(session_id=int(session["id"]), stream_status=stream_status)
+            _sync_show_director_with_live_session(store.get_active_live_session())
             return {"status": "started", "session": session, "stream_target": target, "state": state}
         except RuntimeError as e:
             await runtime.stop_active()
@@ -700,6 +936,7 @@ async def stop_live_session() -> dict[str, Any]:
             runtime_errors.append(f"show_director: {e}")
 
         result = store.stop_live_session()
+        _sync_show_director_with_live_session(store.get_active_live_session())
         if runtime_errors:
             return {"status": "degraded", **result, "errors": runtime_errors}
         return {"status": "stopped", **result}
@@ -780,6 +1017,7 @@ async def pause_live_session(payload: LiveSessionPauseRequest) -> dict[str, Any]
                 session_id=int(active["session"]["id"]),
                 pending_question=updated_pending_question,
             )
+        _sync_show_director_with_live_session(store.get_active_live_session())
         return {"status": "paused", "state": state}
     except HTTPException:
         raise
@@ -799,6 +1037,7 @@ async def resume_live_session() -> dict[str, Any]:
         if active["session"] is None:
             raise HTTPException(409, "No active live session")
         state = store.resume_rotation(session_id=int(active["session"]["id"]))
+        _sync_show_director_with_live_session(store.get_active_live_session())
         return {"status": "resumed", "state": state}
     except HTTPException:
         raise
@@ -852,7 +1091,7 @@ async def emergency_reset() -> dict[str, str]:
 @router.get("/pipeline/state")
 async def get_pipeline_state() -> dict[str, Any]:
     """Get current pipeline state machine status."""
-    director = get_show_director().get_runtime_snapshot()
+    director = _sync_show_director_with_live_session()
     return {
         "state": director["state"],
         "stream_running": director["stream_running"],
@@ -1462,7 +1701,7 @@ async def get_director_runtime() -> dict[str, Any]:
     except Exception as e:
         logger.error("director_runtime_error", error=str(e), exc_info=True)
         return {
-            "director": get_show_director().get_runtime_snapshot(),
+            "director": _sync_show_director_with_live_session(),
             "brain": {"active_provider": "unknown", "active_model": "unknown", "routing_table": {}},
             "prompt": {"active_revision": "unknown", "slug": "unknown", "version": 0, "status": "error"},
             "persona": {},
@@ -1769,7 +2008,7 @@ async def ws_dashboard(websocket: WebSocket) -> None:
         while True:
             analytics = get_analytics()
             snapshot = analytics.get_dashboard_snapshot()
-            director = get_show_director().get_runtime_snapshot()
+            director = _sync_show_director_with_live_session()
             snapshot["stream_running"] = director["stream_running"]
             snapshot["emergency_stopped"] = director["emergency_stopped"]
             snapshot["mock_mode"] = is_mock_mode()
@@ -1924,29 +2163,47 @@ async def engine_livetalking_start() -> dict[str, Any]:
         from src.face.livetalking_manager import get_livetalking_manager
         mgr = get_livetalking_manager()
         status = mgr.start()
-        logger.info("engine_livetalking_start_api", state=status.state.value)
         payload = status.to_dict()
         state = payload.get("state", "unknown")
-        receipt_status = "success" if state == "running" else "blocked"
+        logger.info("engine_livetalking_start_api", state=state)
+        if state == "running":
+            receipt_status = "success"
+        elif state == "error":
+            receipt_status = "error"
+        else:
+            receipt_status = "blocked"
         return _build_engine_action_result(
             action="engine.start",
             status=receipt_status,
             message=(
                 "Avatar menerima perintah jalan."
                 if receipt_status == "success"
-                else "Perintah jalan sudah dikirim, tetapi avatar belum melapor berjalan."
+                else (
+                    "Avatar gagal dijalankan."
+                    if receipt_status == "error"
+                    else "Perintah jalan sudah dikirim, tetapi avatar belum melapor berjalan."
+                )
             ),
-            reason_code="engine_start_requested" if receipt_status == "success" else "engine_start_not_confirmed",
+            reason_code=(
+                "engine_start_requested"
+                if receipt_status == "success"
+                else ("engine_start_failed" if receipt_status == "error" else "engine_start_not_confirmed")
+            ),
             next_step=(
                 "Tunggu status avatar berubah menjadi berjalan."
                 if receipt_status == "success"
-                else "Periksa tab Teknis atau muat ulang status avatar."
+                else (
+                    "Periksa tab Teknis dan log engine sebelum mencoba lagi."
+                    if receipt_status == "error"
+                    else "Periksa tab Teknis atau muat ulang status avatar."
+                )
             ),
             payload=payload,
             details=[
                 f"state {state}",
                 f"transport {payload.get('transport', 'unknown')}",
                 f"port {payload.get('port', 'unknown')}",
+                *([str(payload.get("last_error"))] if payload.get("last_error") else []),
             ],
         )
     except Exception as e:
@@ -2101,7 +2358,7 @@ async def get_runtime_truth() -> dict[str, Any]:
         truth = get_runtime_truth_snapshot(force_refresh=True)
         ops_state = get_ops_state()
         incident_summary = get_incident_registry().summary()
-        truth["director"] = get_show_director().get_runtime_snapshot()
+        truth["director"] = _sync_show_director_with_live_session()
         truth["deployment_mode"] = ops_state.deployment_mode
         truth["session_id"] = ops_state.session_id
         truth["host"]["role"] = ops_state.host_role
@@ -2397,6 +2654,311 @@ async def voice_restart() -> dict[str, Any]:
             "provenance": "mock" if is_mock_mode() else "real_local",
             "action": "voice.restart",
         }
+
+
+@router.get("/voice/profiles")
+async def list_voice_profiles() -> list[dict[str, Any]]:
+    _ensure_default_voice_profile()
+    return get_control_plane_store().list_voice_profiles()
+
+
+@router.post("/voice/profiles")
+async def create_voice_profile(payload: VoiceProfileMutationRequest) -> dict[str, Any]:
+    try:
+        return get_control_plane_store().create_voice_profile(
+            name=payload.name,
+            reference_wav_path=payload.reference_wav_path,
+            reference_text=payload.reference_text,
+            language=payload.language,
+            supported_languages=payload.supported_languages,
+            profile_type=payload.profile_type,
+            quality_tier=payload.quality_tier,
+            guidance=payload.guidance,
+            notes=payload.notes,
+            engine=payload.engine,
+        )
+    except Exception as exc:
+        logger.error("voice_profile_create_error", error=str(exc), exc_info=True)
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.put("/voice/profiles/{profile_id}")
+async def update_voice_profile(profile_id: int, payload: VoiceProfileMutationRequest) -> dict[str, Any]:
+    try:
+        return get_control_plane_store().update_voice_profile(
+            profile_id,
+            name=payload.name,
+            reference_wav_path=payload.reference_wav_path,
+            reference_text=payload.reference_text,
+            language=payload.language,
+            supported_languages=payload.supported_languages,
+            profile_type=payload.profile_type,
+            quality_tier=payload.quality_tier,
+            guidance=payload.guidance,
+            notes=payload.notes,
+            engine=payload.engine,
+        )
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/voice/profiles/{profile_id}")
+async def delete_voice_profile(profile_id: int) -> dict[str, Any]:
+    try:
+        return get_control_plane_store().delete_voice_profile(profile_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.post("/voice/profiles/{profile_id}/activate")
+async def activate_voice_profile(profile_id: int) -> dict[str, Any]:
+    try:
+        return get_control_plane_store().activate_voice_profile(profile_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/voice/lab")
+async def get_voice_lab_state() -> dict[str, Any]:
+    _ensure_default_voice_profile()
+    return get_control_plane_store().get_voice_lab_state()
+
+
+@router.put("/voice/lab")
+async def update_voice_lab_state(payload: VoiceLabStateRequest) -> dict[str, Any]:
+    return get_control_plane_store().update_voice_lab_state(
+        mode=payload.mode,
+        active_profile_id=payload.active_profile_id,
+        preview_session_id=payload.preview_session_id,
+        selected_avatar_id=payload.selected_avatar_id,
+        selected_language=payload.selected_language,
+        selected_profile_type=payload.selected_profile_type,
+        selected_revision_id=payload.selected_revision_id,
+        selected_style_preset=payload.selected_style_preset,
+        selected_stability=payload.selected_stability,
+        selected_similarity=payload.selected_similarity,
+        draft_text=payload.draft_text,
+        last_generation_id=payload.last_generation_id,
+    )
+
+
+@router.post("/voice/lab/preview-session")
+async def update_voice_lab_preview_session(payload: VoiceLabStateRequest) -> dict[str, Any]:
+    current = get_control_plane_store().get_voice_lab_state()
+    return get_control_plane_store().update_voice_lab_state(
+        mode=current["mode"],
+        active_profile_id=current["active_profile_id"],
+        preview_session_id=payload.preview_session_id,
+        selected_avatar_id=payload.selected_avatar_id or current["selected_avatar_id"],
+        selected_language=current.get("selected_language", "id"),
+        selected_profile_type=current.get("selected_profile_type", "quick_clone"),
+        selected_revision_id=current.get("selected_revision_id"),
+        selected_style_preset=current.get("selected_style_preset", "natural"),
+        selected_stability=current.get("selected_stability", 0.75),
+        selected_similarity=current.get("selected_similarity", 0.8),
+        draft_text=current["draft_text"],
+        last_generation_id=current.get("last_generation_id"),
+    )
+
+
+@router.get("/voice/generations")
+async def list_voice_generations(limit: int = 20) -> list[dict[str, Any]]:
+    return get_control_plane_store().list_voice_generations(limit=limit)
+
+
+@router.get("/voice/generations/{generation_id}")
+async def get_voice_generation(generation_id: int) -> dict[str, Any]:
+    generation = get_control_plane_store().get_voice_generation(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail=f"Voice generation {generation_id} not found")
+    return generation
+
+
+@router.get("/voice/audio/{generation_id}")
+async def get_voice_generation_audio(generation_id: int):
+    generation = get_control_plane_store().get_voice_generation(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail=f"Voice generation {generation_id} not found")
+    audio_path = Path(generation["audio_path"])
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail=f"Audio file missing for generation {generation_id}")
+    return FileResponse(audio_path, media_type="audio/wav", filename=audio_path.name)
+
+
+@router.get("/voice/audio/{generation_id}/download")
+async def get_voice_generation_audio_download(generation_id: int):
+    generation = get_control_plane_store().get_voice_generation(generation_id)
+    if generation is None:
+        raise HTTPException(status_code=404, detail=f"Voice generation {generation_id} not found")
+    audio_path = Path(generation["audio_path"])
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail=f"Audio file missing for generation {generation_id}")
+    return FileResponse(
+        audio_path,
+        media_type="audio/wav",
+        filename=generation.get("download_name") or audio_path.name,
+    )
+
+
+@router.post("/voice/generate")
+async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
+    _ensure_default_voice_profile()
+    store = get_control_plane_store()
+    lab_state = store.get_voice_lab_state()
+    profile_id = payload.profile_id or lab_state.get("active_profile_id")
+    if profile_id is None:
+        raise HTTPException(status_code=404, detail="No active voice profile selected")
+
+    profile = store.get_voice_profile(int(profile_id))
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Voice profile {profile_id} not found")
+
+    attach_to_avatar = bool(payload.attach_to_avatar or payload.mode == "attach_avatar")
+    preview_session_id = payload.preview_session_id or lab_state.get("preview_session_id", "")
+    if attach_to_avatar and not preview_session_id:
+        raise HTTPException(status_code=409, detail="No preview session available for avatar attach")
+
+    engine = get_voice_lab_engine()
+    if not await engine.health_check():
+        raise HTTPException(status_code=409, detail="Fish-Speech sidecar is not reachable")
+
+    synth_kwargs = {
+        "text": payload.text,
+        "reference_wav_path": profile["reference_wav_path"],
+        "reference_text": profile["reference_text"],
+        "emotion": payload.emotion,
+        "speed": payload.speed,
+        "language": payload.language,
+        "style_preset": payload.style_preset,
+        "stability": payload.stability,
+        "similarity": payload.similarity,
+    }
+    try:
+        result = await engine.synthesize_with_profile(**synth_kwargs)
+    except TypeError as exc:
+        if "unexpected keyword argument" not in str(exc):
+            raise
+        logger.warning(
+            "voice_lab_engine_legacy_signature",
+            error=str(exc),
+            engine=type(engine).__name__,
+        )
+        result = await engine.synthesize_with_profile(
+            text=payload.text,
+            reference_wav_path=profile["reference_wav_path"],
+            reference_text=profile["reference_text"],
+            emotion=payload.emotion,
+            speed=payload.speed,
+        )
+    audio_path = _get_voice_audio_path()
+    audio_path.write_bytes(result.audio_data)
+
+    if attach_to_avatar:
+        await _attach_audio_to_livetalking(audio_path=audio_path, session_id=preview_session_id)
+
+    generation = store.create_voice_generation(
+        mode=payload.mode,
+        profile_id=profile["id"],
+        source_type=payload.source_type,
+        input_text=payload.text,
+        emotion=payload.emotion,
+        speed=payload.speed,
+        status="success",
+        audio_path=str(audio_path),
+        audio_size_bytes=len(result.audio_data),
+        latency_ms=result.latency_ms,
+        duration_ms=result.duration_ms,
+        attached_to_avatar=attach_to_avatar,
+        avatar_session_id=preview_session_id if attach_to_avatar else "",
+        language=payload.language,
+        style_preset=payload.style_preset,
+        stability=payload.stability,
+        similarity=payload.similarity,
+        audio_filename=audio_path.name,
+        download_name=f"{profile['name'].lower().replace(' ', '-')}-{payload.language}.wav",
+    )
+    updated_state = store.update_voice_lab_state(
+        mode=payload.mode,
+        active_profile_id=profile["id"],
+        preview_session_id=preview_session_id if attach_to_avatar else lab_state.get("preview_session_id", ""),
+        selected_avatar_id=payload.avatar_id or lab_state.get("selected_avatar_id", ""),
+        selected_language=payload.language,
+        selected_profile_type=profile.get("profile_type", "quick_clone"),
+        selected_revision_id=lab_state.get("selected_revision_id"),
+        selected_style_preset=payload.style_preset,
+        selected_stability=payload.stability,
+        selected_similarity=payload.similarity,
+        draft_text=payload.text,
+        last_generation_id=generation["id"],
+    )
+    return {
+        "status": "success",
+        "message": f"Synthesized {len(payload.text)} characters successfully",
+        "provenance": "mock" if is_mock_mode() else "real_local",
+        "action": "voice.generate",
+        "generation_id": generation["id"],
+        "audio_url": f"/api/voice/audio/{generation['id']}",
+        "download_url": f"/api/voice/audio/{generation['id']}/download",
+        "latency_ms": result.latency_ms,
+        "duration_ms": result.duration_ms,
+        "audio_length_bytes": len(result.audio_data),
+        "attached_to_avatar": attach_to_avatar,
+        "avatar_session_id": preview_session_id if attach_to_avatar else "",
+        "language": payload.language,
+        "style_preset": payload.style_preset,
+        "stability": payload.stability,
+        "similarity": payload.similarity,
+        "profile": profile,
+        "lab_state": updated_state,
+    }
+
+
+@router.get("/voice/training-jobs")
+async def list_voice_training_jobs(limit: int = 20) -> list[dict[str, Any]]:
+    return get_control_plane_store().list_voice_training_jobs(limit=limit)
+
+
+@router.post("/voice/training-jobs")
+async def create_voice_training_job(payload: VoiceTrainingJobRequest) -> dict[str, Any]:
+    store = get_control_plane_store()
+    active_session = store.get_active_live_session()
+    if active_session.get("session") is not None:
+        raise HTTPException(status_code=409, detail="Cannot start voice training while an active live session is running")
+
+    profile = store.get_voice_profile(payload.profile_id)
+    if profile is None:
+        raise HTTPException(status_code=404, detail=f"Voice profile {payload.profile_id} not found")
+    if profile.get("profile_type") != "studio_voice":
+        raise HTTPException(status_code=409, detail="Training jobs require a studio_voice profile")
+
+    log_dir = _get_voice_runtime_dir() / "training"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_path = log_dir / f"voice-training-{payload.profile_id}-{int(time.time())}.log"
+    log_path.write_text(
+        "Voice training job created from dashboard control plane.\n"
+        "This host currently records the orchestration state only.\n",
+        encoding="utf-8",
+    )
+
+    job = store.create_voice_training_job(
+        profile_id=payload.profile_id,
+        job_type=payload.job_type,
+        status="queued",
+        current_stage="queued",
+        progress_pct=0.0,
+        dataset_path=payload.dataset_path,
+        log_path=str(log_path),
+        meta={
+            "profile_name": profile["name"],
+            "supported_languages": profile.get("supported_languages", [profile.get("language", "id")]),
+            "quality_tier": profile.get("quality_tier", "studio"),
+        },
+    )
+    return {
+        "status": "success",
+        "message": "Voice training job queued",
+        "job": job,
+    }
 
 
 @router.post("/voice/test/speak")

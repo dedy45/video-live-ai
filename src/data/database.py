@@ -25,6 +25,31 @@ _PRODUCT_COLUMN_COMPATIBILITY: dict[str, str] = {
     "compliance_notes": "TEXT DEFAULT ''",
 }
 
+_VOICE_PROFILE_COLUMN_COMPATIBILITY: dict[str, str] = {
+    "profile_type": "TEXT NOT NULL DEFAULT 'quick_clone'",
+    "supported_languages_json": "TEXT DEFAULT '[\"id\"]'",
+    "quality_tier": "TEXT DEFAULT 'quick'",
+    "guidance_json": "TEXT DEFAULT '{}'",
+}
+
+_VOICE_GENERATION_COLUMN_COMPATIBILITY: dict[str, str] = {
+    "language": "TEXT DEFAULT 'id'",
+    "style_preset": "TEXT DEFAULT 'natural'",
+    "stability": "REAL DEFAULT 0.75",
+    "similarity": "REAL DEFAULT 0.8",
+    "audio_filename": "TEXT DEFAULT ''",
+    "download_name": "TEXT DEFAULT ''",
+}
+
+_VOICE_LAB_STATE_COLUMN_COMPATIBILITY: dict[str, str] = {
+    "selected_language": "TEXT DEFAULT 'id'",
+    "selected_profile_type": "TEXT DEFAULT 'quick_clone'",
+    "selected_revision_id": "INTEGER",
+    "selected_style_preset": "TEXT DEFAULT 'natural'",
+    "selected_stability": "REAL DEFAULT 0.75",
+    "selected_similarity": "REAL DEFAULT 0.8",
+}
+
 
 def _ensure_products_table_compatibility(conn: sqlite3.Connection) -> None:
     """Add missing product columns for older databases created before SQLite CRUD migration."""
@@ -39,6 +64,18 @@ def _ensure_products_table_compatibility(conn: sqlite3.Connection) -> None:
         logger.info("database_column_added", table="products", column=column)
 
 
+def _ensure_table_columns(conn: sqlite3.Connection, table_name: str, compatibility_map: dict[str, str]) -> None:
+    existing = {
+        row[1]
+        for row in conn.execute(f"PRAGMA table_info({table_name})")
+    }
+    for column, ddl in compatibility_map.items():
+        if column in existing:
+            continue
+        conn.execute(f"ALTER TABLE {table_name} ADD COLUMN {column} {ddl}")
+        logger.info("database_column_added", table=table_name, column=column)
+
+
 def _ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
     """Run forward-only compatibility steps for legacy databases."""
     tables = {
@@ -47,6 +84,12 @@ def _ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
     }
     if "products" in tables:
         _ensure_products_table_compatibility(conn)
+    if "voice_profiles" in tables:
+        _ensure_table_columns(conn, "voice_profiles", _VOICE_PROFILE_COLUMN_COMPATIBILITY)
+    if "voice_generations" in tables:
+        _ensure_table_columns(conn, "voice_generations", _VOICE_GENERATION_COLUMN_COMPATIBILITY)
+    if "voice_lab_state" in tables:
+        _ensure_table_columns(conn, "voice_lab_state", _VOICE_LAB_STATE_COLUMN_COMPATIBILITY)
 
 
 def init_database(db_path: Path | None = None) -> None:

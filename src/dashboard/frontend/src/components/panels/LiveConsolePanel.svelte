@@ -5,6 +5,7 @@
     getDirectorRuntime,
     getLiveSession,
     getLiveTalkingConfig,
+    ingestChatEvent,
     getOpsSummary,
     getProducts,
     getRuntimeTruth,
@@ -35,6 +36,8 @@
   let receipt = $state<ReceiptType | null>(null);
   let sessionLogs = $state<string[]>([]);
   let pollHandle: number | null = null;
+  let simulatedViewerName = $state('Ayu');
+  let simulatedViewerMessage = $state('Kak ini ori ga?');
 
   function addLog(message: string) {
     const timestamp = new Date().toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
@@ -243,6 +246,33 @@
     );
   }
 
+  async function handleInjectChat() {
+    const username = simulatedViewerName.trim() || 'viewer';
+    const message = simulatedViewerMessage.trim();
+    if (!message) {
+      receipt = { action: 'chat.inject', status: 'error', message: 'Pesan viewer tidak boleh kosong', timestamp: Date.now() };
+      return;
+    }
+
+    await runAction(
+      'chat.inject',
+      async () => {
+        const result = await ingestChatEvent({
+          platform: 'tiktok',
+          username,
+          message,
+        });
+        simulatedViewerMessage = '';
+        return {
+          message: result.auto_paused
+            ? `Chat ${username} direkam dan sesi otomatis pause untuk Q&A.`
+            : `Chat ${username} direkam ke dashboard.`,
+        };
+      },
+      `Chat ${username} direkam ke dashboard.`,
+    );
+  }
+
   function openPreview() {
     const url = config?.debug_urls?.webrtcapi;
     if (!url) {
@@ -365,6 +395,21 @@
           {#if liveSession?.state?.pending_question?.answer_draft}
             <div class="script-hint">Draft jawaban: {liveSession.state.pending_question.answer_draft}</div>
           {/if}
+        </Card>
+
+        <Card title="Simulasi Chat" size="lg">
+          <div class="chat-form">
+            <label class="chat-field">
+              <span>Nama Viewer</span>
+              <input bind:value={simulatedViewerName} placeholder="Ayu" />
+            </label>
+            <label class="chat-field">
+              <span>Pesan Viewer</span>
+              <textarea bind:value={simulatedViewerMessage} rows="3" placeholder="Kak ini ori ga?"></textarea>
+            </label>
+          </div>
+          <div class="script-hint">Dipakai untuk debug jalur ingest chat, auto-pause, dan draft jawaban langsung dari dashboard.</div>
+          <button class="secondary-btn" onclick={handleInjectChat}>Kirim Chat Simulasi</button>
         </Card>
 
         <Card title="Ringkasan Sesi" size="lg">
@@ -524,6 +569,28 @@
   .action-grid {
     display: grid;
     gap: 10px;
+  }
+  .chat-form {
+    display: grid;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .chat-field {
+    display: grid;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .chat-field input,
+  .chat-field textarea {
+    width: 100%;
+    padding: 12px 14px;
+    border-radius: var(--rsm);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text);
+    font: inherit;
+    resize: vertical;
   }
   .primary-btn,
   .secondary-btn,

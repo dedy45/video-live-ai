@@ -12,7 +12,7 @@ AI-powered live commerce platform for automated livestreaming on TikTok and Shop
 - **Voice Layer**: Fish-Speech local sidecar direct-test path verified locally, Edge-TTS emergency fallback available, with GPT-SoVITS/CosyVoice adapter paths for external TTS servers
 - **Avatar Runtime**: LiveTalking sidecar with MuseTalk as the only acceptance path, Wav2Lip as secondary fallback only, and ER-NeRF/GFPGAN kept as target-only tracks
 - **Real-time Streaming**: RTMP to TikTok/Shopee, WebRTC for browser
-- **Live Chat Integration**: Real-time comment monitoring and response
+- **Live Session Q&A**: dashboard chat ingest, auto-pause, answer draft, and resume flow for operator-assisted live sessions
 - **Commerce Management**: Product catalog, order tracking, analytics
 - **State Machine Orchestrator**: SELLING → REACTING → ENGAGING → IDLE
 
@@ -136,6 +136,11 @@ Canonical sidecar paths:
 
 ### Current Milestone Status
 
+- Latest targeted dashboard verification (`2026-03-13`):
+  - `uv run pytest tests/test_brain.py tests/test_dashboard.py tests/test_control_plane.py -q -p no:cacheprovider` -> `101 passed`
+  - `cd src/dashboard/frontend && npm test -- --run src/tests/AIBrainPage.test.ts src/tests/live-console-panel.test.ts` -> `8 passed`
+  - `cd src/dashboard/frontend && npm run build` -> PASS
+  - Browser smoke on `http://127.0.0.1:8001/dashboard/?v=20260313b#/` in `MOCK_MODE=true` -> `Director Runtime` shows `SELLING` before simulated chat, `PAUSED` after `Kirim Chat Simulasi`, and `POST /api/live-session/stop` returns `/api/pipeline/state` to `IDLE`
 - Face milestone: `LOCAL_VERTICAL_SLICE_REAL_MUSETALK` -> `LOCAL VERIFIED`
 - Audio milestone: `LOCAL_AUDIO_VERTICAL_SLICE_FISH_SPEECH` -> `LOCAL VERIFIED` for direct local test
 - Frontend verification: `cd src/dashboard/frontend && npm run test` -> `67 passed` across `19` test files
@@ -277,6 +282,33 @@ Current vendor copy is best treated as:
 `ER-NeRF` and `GFPGAN` still appear in project target docs, but should not be assumed active in the current vendor runtime.
 
 See [docs/guides/LIVETALKING_QUICKSTART.md](docs/guides/LIVETALKING_QUICKSTART.md) for the current integration boundary.
+
+### Dedicated LiveTalking Runtime
+
+For local browser preview, do **not** rely on the main app `.venv` for the vendor sidecar.
+
+Use a dedicated sidecar interpreter and point the manager at it:
+
+```bash
+LIVETALKING_PYTHON_EXE=.venv-livetalking/Scripts/python.exe
+LIVETALKING_MODEL=wav2lip
+LIVETALKING_AVATAR_ID=wav2lip256_avatar1
+LIVETALKING_STARTUP_TIMEOUT_SEC=60
+```
+
+Verified local preview pages:
+
+- `http://127.0.0.1:8010/webrtcapi.html`
+- `http://127.0.0.1:8010/rtcpushapi.html`
+
+`rtcpushapi.html` now falls back to direct WebRTC preview when no local relay exists on `:1985`, which makes it usable for Windows + TikTok LIVE Studio capture without SRS.
+
+For the operator-facing browser path, `http://127.0.0.1:8001/dashboard/performer.html` now verifies two Voice Lab modes:
+
+- `Standalone Fish TTS`: synthesize audio directly from the `Suara` tab without the avatar sidecar.
+- `Attach ke Avatar`: start `webrtcapi.html` from the `Preview` tab, let the dashboard sync the vendor `sessionid`, then generate and attach audio from the `Suara` tab.
+
+Current local attach verification is on the `wav2lip` preview path. Treat `MuseTalk` as a separate heavier validation track, not as implied proof that the day-1 attach lab is already covered.
 
 ## 🔥 Performance
 

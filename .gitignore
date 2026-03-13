@@ -5,6 +5,11 @@
 ## ========================================
 # UV virtual environment (JANGAN di-commit!)
 .venv/
+**/.venv/
+.venv-*/
+**/.venv-*/
+venv/
+**/venv/
 uv.lock
 
 # UV cache
@@ -40,8 +45,8 @@ src/dashboard/frontend/dist/
 ## ========================================
 ## Models & Weights (BESAR, download terpisah)
 ## ========================================
+# Model weights (bisa 10-20GB per model)
 models/
-tools/ffmpeg/
 *.pt
 *.pth
 *.ckpt
@@ -49,23 +54,74 @@ tools/ffmpeg/
 *.bin
 *.onnx
 *.tflite
+*.h5
+*.pb
+*.pkl
+*.pickle
 
-# Keep folder structure
+# Fish-Speech checkpoints (5-10GB)
+external/fish-speech/checkpoints/
+external/fish-speech/runtime/.venv/
+
+# LiveTalking models (15-20GB total)
+external/livetalking/models/
+external/livetalking/models_download/
+external/livetalking/data/avatars/
+external/livetalking/data/videos/
+external/livetalking/data/audios/
+
+# FFmpeg binaries (100-200MB)
+tools/ffmpeg/
+
+# Keep folder structure & documentation
 !models/.gitkeep
+!models/README.md
+!external/fish-speech/checkpoints/.gitkeep
+!external/fish-speech/checkpoints/README.md
+!external/livetalking/models/.gitkeep
+!external/livetalking/models/README.md
+!external/livetalking/data/avatars/.gitkeep
+!external/livetalking/data/avatars/README.md
 
 ## ========================================
 ## Data & Cache (Runtime generated)
 ## ========================================
+# Database files (bisa besar jika banyak data)
 data/*.db
 data/*.sqlite
 data/*.sqlite3
+data/*.db-shm
+data/*.db-wal
 data/cache/
 data/logs/
-*.log
+
+# Output files (video/audio hasil render)
+output/
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+*.wav
+*.mp3
+*.flac
+*.aac
+
+# Temporary processing files
+temp/
+tmp/
+*.tmp
+*.temp
 
 # Keep folder structure
 !data/.gitkeep
 !data/logs/.gitkeep
+!output/.gitkeep
+!output/README.md
+
+# Keep sample files (kecil, untuk testing)
+!data/sample*.db
+!output/sample*.mp4
 
 ## ========================================
 ## Assets (User-provided, bisa besar)
@@ -74,35 +130,66 @@ data/logs/
 assets/avatar/*.mp4
 assets/avatar/*.avi
 assets/avatar/*.mov
+assets/avatar/*.mkv
+assets/avatar/*.webm
+
+# Avatar images (high-res bisa 10-50MB per file)
 assets/avatar/*.jpg
 assets/avatar/*.png
 assets/avatar/*.jpeg
+assets/avatar/*.bmp
+assets/avatar/*.tiff
 
-# Voice samples
+# Voice samples (audio panjang bisa 50-100MB)
 assets/voice/*.wav
 assets/voice/*.mp3
 assets/voice/*.flac
+assets/voice/*.aac
+assets/voice/*.ogg
 
-# Product images (banyak, bisa ratusan MB)
+# Product images (ratusan produk = ratusan MB)
 assets/products/*.jpg
 assets/products/*.png
 assets/products/*.jpeg
+assets/products/*.webp
 
-# Background videos
+# Background videos (bisa 1-2GB)
 assets/backgrounds/*.mp4
 assets/backgrounds/*.avi
+assets/backgrounds/*.mov
+assets/backgrounds/*.webm
 
-# Keep folder structure
+# Keep folder structure & sample files
 !assets/avatar/.gitkeep
+!assets/avatar/README.md
+!assets/avatar/sample-*.jpg
 !assets/voice/.gitkeep
+!assets/voice/README.md
+!assets/voice/sample-*.wav
 !assets/backgrounds/.gitkeep
+!assets/backgrounds/README.md
 !assets/products/.gitkeep
+!assets/products/README.md
+!assets/products/sample-*.jpg
 
 ## ========================================
 ## External Dependencies (Git Submodules)
 ## ========================================
-# LiveTalking akan di-add sebagai submodule
-# Jadi tidak perlu ignore, tapi jangan commit isinya
+# LiveTalking submodule - ignore runtime files
+external/livetalking/__pycache__/
+external/livetalking/*.log
+external/livetalking/*.pyc
+external/livetalking/.pytest_cache/
+
+# Fish-Speech upstream - ignore cache
+external/fish-speech/upstream/__pycache__/
+external/fish-speech/upstream/.pytest_cache/
+
+# Keep submodule structure
+!external/livetalking/.git
+!external/livetalking/.gitignore
+!external/fish-speech/.git
+!external/fish-speech/.gitignore
 
 ## ========================================
 ## Testing & Coverage
@@ -163,7 +250,7 @@ desktop.ini
 prometheus_data/
 
 ## ========================================
-## Temporary Files
+## Temporary Files & Logs
 ## ========================================
 *.tmp
 *.temp
@@ -173,6 +260,22 @@ prometheus_data/
 local_settings.py
 db.sqlite3
 db.sqlite3-journal
+
+# Application logs (all locations)
+*.log
+*.err.log
+*.out.log
+app-start.log
+app-start.err.log
+livetalking.log
+tmp-*.log
+
+# Playwright CLI logs
+.playwright-cli/
+**/.playwright-cli/
+
+# Script logs
+scripts/data/logs/
 
 ## ========================================
 ## Jupyter Notebooks (jika ada)

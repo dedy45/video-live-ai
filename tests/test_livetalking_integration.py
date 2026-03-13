@@ -5,7 +5,8 @@ Run with:
     pytest tests/test_livetalking_integration.py -v -m "not integration"  # Skip GPU tests
 """
 
-from unittest.mock import patch
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -223,6 +224,18 @@ def test_livetalking_manager_build_command():
     assert "--listenport" in cmd
 
 
+def test_livetalking_manager_build_command_prefers_configured_python_executable(monkeypatch):
+    """Sidecar should support a dedicated interpreter separate from the main app venv."""
+    monkeypatch.setenv("LIVETALKING_PYTHON_EXE", r"C:\LiveTalking\python.exe")
+
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    mgr = LiveTalkingManager()
+    cmd = mgr.build_launch_command()
+
+    assert cmd[0] == r"C:\LiveTalking\python.exe"
+
+
 def test_livetalking_manager_status():
     """Test engine status reporting."""
     from src.face.livetalking_manager import LiveTalkingManager
@@ -261,6 +274,159 @@ def test_livetalking_manager_mock_start_stop(monkeypatch):
 
     status = mgr.stop()
     assert status.state.value == "stopped"
+
+
+def test_livetalking_manager_fast_exit_marks_error(monkeypatch):
+    """Real start must report error if the vendor process exits before preview is reachable."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+
+    from src.face.livetalking_manager import EngineState, LiveTalkingManager
+
+    class FakeProcess:
+        def __init__(self):
+            self.pid = 4321
+            self.stderr = MagicMock()
+            self.stderr.readline.side_effect = [b"boom\n", b""]
+
+        def poll(self):
+            return 1
+
+    mgr = LiveTalkingManager()
+
+    with patch("src.face.livetalking_manager.subprocess.Popen", return_value=FakeProcess()), patch.object(
+        mgr,
+        "_check_port_free",
+        return_value=True,
+    ), patch.object(
+        mgr,
+        "_check_port_reachable",
+        return_value=False,
+    ):
+        status = mgr.start()
+
+    assert status.state == EngineState.ERROR
+    assert "Process exited with code 1" in status.last_error
+    assert mgr.is_running() is False
+
+
+def test_livetalking_manager_unreachable_port_times_out(monkeypatch):
+    """Manager must not claim running when the preview port never becomes reachable."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+    monkeypatch.setenv("LIVETALKING_STARTUP_TIMEOUT_SEC", "0")
+
+    from src.face.livetalking_manager import EngineState, LiveTalkingManager
+
+    class FakeProcess:
+        def __init__(self):
+            self.pid = 9876
+            self.stderr = MagicMock()
+            self.stderr.readline.side_effect = [b""]
+
+        def poll(self):
+            return None
+
+        def terminate(self):
+            return None
+
+        def wait(self, timeout=None):
+            return 0
+
+    mgr = LiveTalkingManager()
+
+    with patch("src.face.livetalking_manager.subprocess.Popen", return_value=FakeProcess()), patch.object(
+        mgr,
+        "_check_port_free",
+        return_value=True,
+    ), patch.object(
+        mgr,
+        "_check_port_reachable",
+        return_value=False,
+    ):
+        status = mgr.start()
+
+    assert status.state == EngineState.ERROR
+    assert "did not become reachable" in status.last_error
+
+
+def test_livetalking_manager_start_strips_parent_python_env(monkeypatch):
+    """Child sidecar env must not inherit PYTHONHOME from the main app venv."""
+    monkeypatch.setenv("MOCK_MODE", "false")
+    monkeypatch.setenv("PYTHONHOME", r"C:\Users\dedy\AppData\Roaming\uv\python\cpython-3.12-windows-x86_64-none")
+
+    from src.face.livetalking_manager import LiveTalkingManager
+
+    captured_env = {}
+
+    class FakeProcess:
+        def __init__(self):
+            self.pid = 4242
+            self.stdout = MagicMock()
+            self.stdout.readline.side_effect = [b"startup\n", b""]
+
+        def poll(self):
+            return 1
+
+    def fake_popen(*args, **kwargs):
+        captured_env.update(kwargs["env"])
+        return FakeProcess()
+
+    mgr = LiveTalkingManager()
+
+    with patch("src.face.livetalking_manager.subprocess.Popen", side_effect=fake_popen), patch.object(
+        mgr,
+        "_check_port_free",
+        return_value=True,
+    ), patch.object(
+        mgr,
+        "_check_port_reachable",
+        return_value=False,
+    ):
+        mgr.start()
+
+    assert "PYTHONHOME" not in captured_env
+
+
+def test_rtcpushapi_page_has_local_fallback_hint():
+    """Local Windows testing needs rtcpush preview to degrade to direct WebRTC when relay 1985 is absent."""
+    html = Path("external/livetalking/web/rtcpushapi.html").read_text(encoding="utf-8")
+
+    assert "fallback" in html.lower()
+    assert "/offer" in html
+
+
+def test_rtcpushapi_page_probes_relay_before_sdk_play():
+    """Local fallback must preflight relay reachability instead of waiting on a hung SDK promise."""
+    html = Path("external/livetalking/web/rtcpushapi.html").read_text(encoding="utf-8")
+
+    assert "probeRelayAvailability" in html
+    assert "AbortController" in html
+
+
+def test_vendor_preview_pages_do_not_pull_dead_sockjs_cdn():
+    """Local preview pages should not depend on a dead external SockJS CDN for basic playback."""
+    webrtc_html = Path("external/livetalking/web/webrtcapi.html").read_text(encoding="utf-8")
+    rtcpush_html = Path("external/livetalking/web/rtcpushapi.html").read_text(encoding="utf-8")
+
+    assert "sockjs-0.3.4.js" not in webrtc_html
+    assert "sockjs-0.3.4.js" not in rtcpush_html
+
+
+def test_webrtcapi_page_has_preview_session_bridge():
+    """webrtc preview must announce session ids even if client.js is stale in browser cache."""
+    html = Path("external/livetalking/web/webrtcapi.html").read_text(encoding="utf-8")
+
+    assert "syncPreviewSessionBridge" in html
+    assert "window.parent.postMessage" in html
+    assert "setInterval(syncPreviewSessionBridge" in html
+
+
+def test_preview_pages_cache_bust_client_js():
+    """Preview pages should version client.js so local browser refreshes pull the latest session-sync logic."""
+    webrtc_html = Path("external/livetalking/web/webrtcapi.html").read_text(encoding="utf-8")
+    dashboard_html = Path("external/livetalking/web/dashboard.html").read_text(encoding="utf-8")
+
+    assert "client.js?v=" in webrtc_html
+    assert "client.js?v=" in dashboard_html
 
 
 def test_livetalking_manager_singleton():

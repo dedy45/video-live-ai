@@ -46,9 +46,12 @@ class BrainRuntimeConfig:
     def sync_from_router(self, router: Any | None) -> None:
         """Seed the overlay from the current singleton router when needed."""
         router_token = id(router) if router is not None else None
+        adapters = getattr(router, "adapters", {}) if router is not None else {}
+        if not isinstance(adapters, dict):
+            adapters = {}
         if router_token == self._router_token:
             if router is not None:
-                self._available_providers = sorted(router.adapters.keys())
+                self._available_providers = sorted(adapters.keys())
             return
 
         self._seed_defaults()
@@ -57,7 +60,7 @@ class BrainRuntimeConfig:
         if router is None:
             return
 
-        self._available_providers = sorted(router.adapters.keys())
+        self._available_providers = sorted(adapters.keys())
         self._daily_budget_usd = float(getattr(router, "daily_budget_usd", self._daily_budget_usd))
         self._routing_table = _normalize_routing_table(getattr(router, "routing_table", {}))
 
@@ -81,7 +84,10 @@ class BrainRuntimeConfig:
                 TaskType(task_name): list(providers)
                 for task_name, providers in self._routing_table.items()
             }
-            self._available_providers = sorted(router.adapters.keys())
+            adapters = getattr(router, "adapters", {})
+            if not isinstance(adapters, dict):
+                adapters = {}
+            self._available_providers = sorted(adapters.keys())
 
     def snapshot(self, router: Any | None = None) -> dict[str, Any]:
         """Return the current runtime overlay as a plain serializable dict."""

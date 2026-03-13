@@ -7,14 +7,24 @@
   import PerformerValidationPanel from './PerformerValidationPanel.svelte';
   import PerformerTechnicalPanel from './PerformerTechnicalPanel.svelte';
   import {
+    activateVoiceProfile,
+    createVoiceProfile,
+    createVoiceTrainingJob,
+    generateVoice,
     getLiveTalkingConfig,
     getLiveTalkingDebugTargets,
     getLiveTalkingLogs,
     getLiveTalkingStatus,
     getReadiness,
     getRuntimeTruth,
+    getVoiceGenerations,
+    getVoiceLabState,
+    getVoiceProfiles,
+    getVoiceTrainingJobs,
     startLiveTalking,
     stopLiveTalking,
+    updateVoiceLabPreviewSession,
+    updateVoiceLabState,
     validateAudioChunkingSmoke,
     validateLiveTalkingEngine,
     validateRealModeReadiness,
@@ -37,6 +47,10 @@
     ReadinessResult,
     RuntimeTruth,
     ValidationResult,
+    VoiceGeneration,
+    VoiceLabState,
+    VoiceProfile,
+    VoiceTrainingJob,
     VoiceTestSpeakResult,
   } from '../../lib/types';
 
@@ -59,6 +73,10 @@
   let engineLogs = $state<string[]>([]);
   let debugTargets = $state<LiveTalkingDebugTargets | null>(null);
   let voiceTestResult = $state<VoiceTestSpeakResult | null>(null);
+  let voiceProfiles = $state<VoiceProfile[]>([]);
+  let voiceLabState = $state<VoiceLabState | null>(null);
+  let voiceGenerations = $state<VoiceGeneration[]>([]);
+  let voiceTrainingJobs = $state<VoiceTrainingJob[]>([]);
   let validationResults = $state<Partial<Record<PerformerValidationCheckId, PerformerValidationEntry>>>({});
   let receipt = $state<ReceiptType | null>(null);
   let loading = $state(true);
@@ -71,6 +89,8 @@
   let previewLoaded = $state(false);
   let technicalLoaded = $state(false);
   let engineLoaded = $state(false);
+  let voiceLoaded = $state(false);
+  let voiceLoading = $state(false);
 
   const blockers = $derived(readiness?.blocking_issues || []);
   const faceState = $derived(truth?.face_engine?.engine_state || engineStatus?.state || 'unknown');
@@ -125,6 +145,25 @@
   async function refreshEngineStatus() {
     engineStatus = await getLiveTalkingStatus();
     engineLoaded = true;
+  }
+
+  async function refreshVoiceLabData() {
+    voiceLoading = true;
+    try {
+      const [nextProfiles, nextState, nextGenerations, nextTrainingJobs] = await Promise.all([
+        getVoiceProfiles(),
+        getVoiceLabState(),
+        getVoiceGenerations(20),
+        getVoiceTrainingJobs(20),
+      ]);
+      voiceProfiles = nextProfiles;
+      voiceLabState = nextState;
+      voiceGenerations = nextGenerations;
+      voiceTrainingJobs = nextTrainingJobs;
+      voiceLoaded = true;
+    } finally {
+      voiceLoading = false;
+    }
   }
 
   async function refreshPreviewData() {
@@ -194,6 +233,10 @@
 
       if (previewLoaded || activeTab === 'preview') {
         tasks.push(refreshPreviewData());
+      }
+
+      if (voiceLoaded || activeTab === 'suara') {
+        tasks.push(refreshVoiceLabData());
       }
 
       await Promise.all(tasks);
@@ -285,6 +328,178 @@
     });
   }
 
+  async function handleCreateProfile(payload: {
+    name: string;
+    reference_wav_path: string;
+    reference_text: string;
+    language: string;
+    supported_languages?: string[];
+    profile_type?: string;
+    quality_tier?: string;
+    guidance?: Record<string, any>;
+    notes: string;
+    engine?: string;
+  }) {
+    await runBusy('voice.profile.create', async () => {
+      try {
+        await runOperatorAction({
+          action: 'voice.profile.create',
+          title: 'Clone suara berhasil disimpan',
+          pendingTitle: 'Menyimpan clone suara',
+          pendingMessage: 'Dashboard sedang menyimpan profil clone baru.',
+          fallbackMessage: 'Clone suara berhasil disimpan.',
+          execute: () => createVoiceProfile(payload),
+          onReceipt: setReceipt,
+        });
+      } finally {
+        await Promise.all([refreshVoiceLabData(), refreshTruth()]);
+      }
+    });
+  }
+
+  async function handleActivateProfile(profileId: number) {
+    await runBusy('voice.profile.activate', async () => {
+      try {
+        await runOperatorAction({
+          action: 'voice.profile.activate',
+          title: 'Clone suara aktif diperbarui',
+          fallbackMessage: 'Clone suara aktif diperbarui.',
+          execute: () => activateVoiceProfile(profileId),
+          onReceipt: setReceipt,
+        });
+      } finally {
+        await Promise.all([refreshVoiceLabData(), refreshTruth()]);
+      }
+    });
+  }
+
+  async function handleChangeVoiceMode(payload: Partial<VoiceLabState>) {
+    await runBusy('voice.lab.update', async () => {
+      const nextPayload = {
+        mode: payload.mode ?? voiceLabState?.mode ?? 'standalone',
+        active_profile_id: payload.active_profile_id ?? voiceLabState?.active_profile_id ?? null,
+        preview_session_id: payload.preview_session_id ?? voiceLabState?.preview_session_id ?? '',
+        selected_avatar_id: payload.selected_avatar_id ?? voiceLabState?.selected_avatar_id ?? '',
+        selected_language: payload.selected_language ?? voiceLabState?.selected_language ?? 'id',
+        selected_profile_type: payload.selected_profile_type ?? voiceLabState?.selected_profile_type ?? 'quick_clone',
+        selected_revision_id: payload.selected_revision_id ?? voiceLabState?.selected_revision_id ?? null,
+        selected_style_preset: payload.selected_style_preset ?? voiceLabState?.selected_style_preset ?? 'natural',
+        selected_stability: payload.selected_stability ?? voiceLabState?.selected_stability ?? 0.75,
+        selected_similarity: payload.selected_similarity ?? voiceLabState?.selected_similarity ?? 0.8,
+        draft_text: payload.draft_text ?? voiceLabState?.draft_text ?? 'Halo operator',
+        last_generation_id: payload.last_generation_id ?? voiceLabState?.last_generation_id ?? null,
+      };
+
+      try {
+        const nextState = await runOperatorAction({
+          action: 'voice.lab.update',
+          title: 'Mode Voice Lab diperbarui',
+          fallbackMessage: 'Konfigurasi Voice Lab berhasil diperbarui.',
+          execute: () => updateVoiceLabState(nextPayload),
+          onReceipt: setReceipt,
+        });
+        voiceLabState = nextState;
+      } finally {
+        await refreshTruth();
+      }
+    });
+  }
+
+  async function handleGenerateVoice(payload: {
+    mode: string;
+    profile_id: number | null;
+    text: string;
+    language: string;
+    emotion: string;
+    style_preset: string;
+    stability: number;
+    similarity: number;
+    speed: number;
+    attach_to_avatar: boolean;
+  }) {
+    await runBusy('voice.generate', async () => {
+      try {
+        const nextPayload = {
+          ...payload,
+          ...(payload.attach_to_avatar
+            ? {
+                preview_session_id: voiceLabState?.preview_session_id || undefined,
+                avatar_id: voiceLabState?.selected_avatar_id || undefined,
+              }
+            : {}),
+        };
+        const result = await runOperatorAction({
+          action: 'voice.generate',
+          title: payload.attach_to_avatar ? 'Audio berhasil dibuat dan dikirim ke avatar' : 'Audio berhasil dibuat',
+          pendingTitle: 'Fish TTS sedang membuat audio',
+          pendingMessage: 'Dashboard sedang menunggu hasil sintesis suara.',
+          fallbackMessage: 'Audio berhasil dibuat.',
+          execute: () => generateVoice(nextPayload),
+          onReceipt: setReceipt,
+        });
+        if (result.lab_state) {
+          voiceLabState = result.lab_state;
+        }
+      } finally {
+        await Promise.all([refreshVoiceLabData(), refreshTruth()]);
+      }
+    });
+  }
+
+  async function handleCreateTrainingJob(payload: {
+    profile_id: number;
+    job_type: string;
+    dataset_path: string;
+  }) {
+    await runBusy('voice.training-job.create', async () => {
+      try {
+        await runOperatorAction({
+          action: 'voice.training-job.create',
+          title: 'Training job suara masuk antrian',
+          pendingTitle: 'Mengantrikan training job',
+          pendingMessage: 'Dashboard sedang mencatat training job studio voice.',
+          fallbackMessage: 'Training job suara berhasil diantrikan.',
+          execute: () => createVoiceTrainingJob(payload),
+          onReceipt: setReceipt,
+        });
+      } finally {
+        await refreshVoiceLabData();
+      }
+    });
+  }
+
+  async function handlePreviewSessionSync(sessionId: string, avatarId: string) {
+    const normalizedSessionId = sessionId.trim();
+    if (!normalizedSessionId) return;
+    if (
+      voiceLabState?.preview_session_id === normalizedSessionId &&
+      (avatarId || voiceLabState?.selected_avatar_id || '') === (voiceLabState?.selected_avatar_id || '')
+    ) {
+      return;
+    }
+
+    try {
+      const nextState = await updateVoiceLabPreviewSession({
+        preview_session_id: normalizedSessionId,
+        selected_avatar_id: avatarId || voiceLabState?.selected_avatar_id || '',
+      });
+      voiceLabState = nextState;
+      receipt = buildReceipt({
+        action: 'voice.preview-session.sync',
+        title: 'Session preview tersinkron ke Voice Lab',
+        status: 'success',
+        message: `Session ${normalizedSessionId} siap dipakai untuk attach avatar.`,
+      });
+    } catch (nextError: any) {
+      receipt = buildReceipt({
+        action: 'voice.preview-session.sync',
+        title: 'Session preview gagal disinkronkan',
+        status: 'warning',
+        message: nextError?.message ?? 'Preview session belum bisa disimpan ke Voice Lab.',
+      });
+    }
+  }
+
   async function handleStartAvatar() {
     await runBusy('engine.start', async () => {
       await runReconciledEngineAction({
@@ -340,6 +555,11 @@
 
     if (nextTab === 'avatar' && !engineLoaded && !technicalLoading) {
       await refreshEngineStatus();
+      return;
+    }
+
+    if (nextTab === 'suara' && !voiceLoaded && !voiceLoading) {
+      await refreshVoiceLabData();
       return;
     }
 
@@ -459,7 +679,31 @@
   }
 
   onMount(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      const payload = event.data;
+      if (!payload || typeof payload !== 'object') return;
+      const type = String((payload as Record<string, unknown>).type ?? '');
+      if (type !== 'livetalking.preview.session' && type !== 'livetalking.session') return;
+      const sessionId = String(
+        (payload as Record<string, unknown>).session_id ??
+          (payload as Record<string, unknown>).sessionid ??
+          (payload as Record<string, unknown>).sessionId ??
+          '',
+      );
+      const avatarId = String(
+        (payload as Record<string, unknown>).avatar_id ??
+          (payload as Record<string, unknown>).avatarId ??
+          voiceLabState?.selected_avatar_id ??
+          '',
+      );
+      void handlePreviewSessionSync(sessionId, avatarId);
+    };
+
+    window.addEventListener('message', handleWindowMessage);
     void refreshAll();
+    return () => {
+      window.removeEventListener('message', handleWindowMessage);
+    };
   });
 </script>
 
@@ -563,10 +807,19 @@
         {truth}
         {busyAction}
         {voiceTestResult}
+        {voiceProfiles}
+        {voiceLabState}
+        {voiceGenerations}
+        {voiceTrainingJobs}
         onWarmup={handleWarmup}
         onRestart={handleRestart}
         onClearQueue={handleClearQueue}
         onTestSpeak={handleTestSpeak}
+        onCreateProfile={handleCreateProfile}
+        onActivateProfile={handleActivateProfile}
+        onChangeMode={handleChangeVoiceMode}
+        onGenerateVoice={handleGenerateVoice}
+        onCreateTrainingJob={handleCreateTrainingJob}
       />
     {:else if activeTab === 'avatar'}
       <EnginePanel

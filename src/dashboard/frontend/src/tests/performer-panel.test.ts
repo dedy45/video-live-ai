@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, waitFor } from '@testing-library/svelte';
 import PerformerPanel from '../components/panels/PerformerPanel.svelte';
 
 const api = vi.hoisted(() => ({
@@ -157,6 +157,205 @@ const api = vi.hoisted(() => ({
   validateRealModeReadiness: vi.fn().mockResolvedValue({ status: 'blocked', checks: [], blockers: ['voice_sidecar'] }),
   validateVoiceLocalClone: vi.fn().mockResolvedValue({ status: 'blocked', checks: [], blockers: ['voice_sidecar'] }),
   validateAudioChunkingSmoke: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  getVoiceProfiles: vi.fn().mockResolvedValue([
+    {
+      id: 1,
+      name: 'Sari Fish',
+      engine: 'fish_speech',
+      profile_type: 'quick_clone',
+      supported_languages: ['id', 'en'],
+      quality_tier: 'quick',
+      reference_wav_path: 'assets/voice/sari.wav',
+      reference_text: 'Halo semuanya, aku Sari.',
+      language: 'id',
+      notes: 'utama',
+      is_active: true,
+      guidance: { min_seconds: 30, ideal_seconds: 60 },
+    },
+    {
+      id: 2,
+      name: 'Sari Studio Voice',
+      engine: 'fish_speech',
+      profile_type: 'studio_voice',
+      supported_languages: ['id', 'en'],
+      quality_tier: 'studio',
+      reference_wav_path: 'data/runtime/voice/studio-sari/reference.wav',
+      reference_text: 'Halo semuanya, aku Sari studio voice.',
+      language: 'id',
+      notes: 'production stable',
+      is_active: false,
+      guidance: { training_target_minutes: { id: [30, 60], en: [30, 60] } },
+    },
+  ]),
+  createVoiceProfile: vi.fn().mockResolvedValue({
+    id: 2,
+    name: 'Clone Baru',
+    engine: 'fish_speech',
+    profile_type: 'quick_clone',
+    supported_languages: ['id', 'en'],
+    quality_tier: 'quick',
+    reference_wav_path: 'assets/voice/baru.wav',
+    reference_text: 'Halo, ini clone baru.',
+    language: 'id',
+    notes: '',
+    is_active: false,
+    guidance: { min_seconds: 30, ideal_seconds: 60 },
+  }),
+  activateVoiceProfile: vi.fn().mockResolvedValue({
+    id: 1,
+    name: 'Sari Fish',
+    engine: 'fish_speech',
+    profile_type: 'quick_clone',
+    supported_languages: ['id', 'en'],
+    quality_tier: 'quick',
+    reference_wav_path: 'assets/voice/sari.wav',
+    reference_text: 'Halo semuanya, aku Sari.',
+    language: 'id',
+    notes: 'utama',
+    is_active: true,
+    guidance: { min_seconds: 30, ideal_seconds: 60 },
+  }),
+  getVoiceLabState: vi.fn().mockResolvedValue({
+    mode: 'standalone',
+    active_profile_id: 1,
+    preview_session_id: '',
+    selected_avatar_id: 'musetalk_avatar1',
+    selected_language: 'id',
+    selected_profile_type: 'quick_clone',
+    selected_revision_id: null,
+    selected_style_preset: 'natural',
+    selected_stability: 0.75,
+    selected_similarity: 0.8,
+    draft_text: 'Halo operator',
+    last_generation_id: null,
+  }),
+  updateVoiceLabState: vi.fn().mockImplementation(async (payload) => ({
+    mode: payload.mode ?? 'standalone',
+    active_profile_id: payload.active_profile_id ?? 1,
+    preview_session_id: payload.preview_session_id ?? '',
+    selected_avatar_id: payload.selected_avatar_id ?? 'musetalk_avatar1',
+    selected_language: payload.selected_language ?? 'id',
+    selected_profile_type: payload.selected_profile_type ?? 'quick_clone',
+    selected_revision_id: payload.selected_revision_id ?? null,
+    selected_style_preset: payload.selected_style_preset ?? 'natural',
+    selected_stability: payload.selected_stability ?? 0.75,
+    selected_similarity: payload.selected_similarity ?? 0.8,
+    draft_text: payload.draft_text ?? 'Halo operator',
+    last_generation_id: payload.last_generation_id ?? null,
+  })),
+  updateVoiceLabPreviewSession: vi.fn().mockImplementation(async (payload) => ({
+    mode: 'attach_avatar',
+    active_profile_id: 1,
+    preview_session_id: payload.preview_session_id,
+    selected_avatar_id: payload.selected_avatar_id ?? 'musetalk_avatar1',
+    selected_language: 'id',
+    selected_profile_type: 'quick_clone',
+    selected_revision_id: null,
+    selected_style_preset: 'natural',
+    selected_stability: 0.75,
+    selected_similarity: 0.8,
+    draft_text: 'Halo operator',
+    last_generation_id: null,
+  })),
+  generateVoice: vi.fn().mockResolvedValue({
+    status: 'success',
+    message: 'Audio berhasil dibuat.',
+    generation_id: 44,
+    audio_url: '/api/voice/audio/44',
+    download_url: '/api/voice/audio/44/download',
+    latency_ms: 510,
+    duration_ms: 1020,
+    audio_length_bytes: 8192,
+    attached_to_avatar: false,
+    avatar_session_id: '',
+    language: 'en',
+    style_preset: 'conversational',
+    stability: 0.62,
+    similarity: 0.88,
+    profile: {
+      id: 1,
+      name: 'Sari Fish',
+      engine: 'fish_speech',
+      profile_type: 'quick_clone',
+      supported_languages: ['id', 'en'],
+      quality_tier: 'quick',
+      reference_wav_path: 'assets/voice/sari.wav',
+      reference_text: 'Halo semuanya, aku Sari.',
+      language: 'id',
+      notes: 'utama',
+      is_active: true,
+      guidance: { min_seconds: 30, ideal_seconds: 60 },
+    },
+    lab_state: {
+      mode: 'standalone',
+      active_profile_id: 1,
+      preview_session_id: '',
+      selected_avatar_id: 'musetalk_avatar1',
+      selected_language: 'en',
+      selected_profile_type: 'quick_clone',
+      selected_revision_id: null,
+      selected_style_preset: 'conversational',
+      selected_stability: 0.62,
+      selected_similarity: 0.88,
+      draft_text: 'Hello operator',
+      last_generation_id: 44,
+    },
+  }),
+  getVoiceGenerations: vi.fn().mockResolvedValue([
+    {
+      id: 44,
+      mode: 'standalone',
+      profile_id: 1,
+      profile_name: 'Sari Fish',
+      source_type: 'manual_text',
+      input_text: 'Halo operator',
+      language: 'en',
+      emotion: 'neutral',
+      style_preset: 'conversational',
+      stability: 0.62,
+      similarity: 0.88,
+      speed: 1,
+      status: 'success',
+      audio_path: 'data/runtime/voice/voice-44.wav',
+      audio_filename: 'voice-44.wav',
+      download_name: 'sari-fish-en.wav',
+      audio_url: '/api/voice/audio/44',
+      download_url: '/api/voice/audio/44/download',
+      audio_size_bytes: 8192,
+      latency_ms: 510,
+      duration_ms: 1020,
+      attached_to_avatar: false,
+      avatar_session_id: '',
+    },
+  ]),
+  getVoiceTrainingJobs: vi.fn().mockResolvedValue([
+    {
+      id: 7,
+      profile_id: 2,
+      profile_name: 'Sari Studio Voice',
+      job_type: 'studio_voice_training',
+      status: 'queued',
+      current_stage: 'queued',
+      progress_pct: 0,
+      dataset_path: 'data/runtime/voice/datasets/studio-sari',
+      log_path: 'data/runtime/voice/training/studio-sari.log',
+    },
+  ]),
+  createVoiceTrainingJob: vi.fn().mockResolvedValue({
+    status: 'success',
+    message: 'Voice training job queued',
+    job: {
+      id: 8,
+      profile_id: 2,
+      profile_name: 'Sari Studio Voice',
+      job_type: 'studio_voice_training',
+      status: 'queued',
+      current_stage: 'queued',
+      progress_pct: 0,
+      dataset_path: 'data/runtime/voice/datasets/studio-sari',
+      log_path: 'data/runtime/voice/training/studio-sari.log',
+    },
+  }),
 }));
 
 vi.mock('../lib/api', () => ({
@@ -179,6 +378,16 @@ vi.mock('../lib/api', () => ({
   validateRealModeReadiness: api.validateRealModeReadiness,
   validateVoiceLocalClone: api.validateVoiceLocalClone,
   validateAudioChunkingSmoke: api.validateAudioChunkingSmoke,
+  getVoiceProfiles: api.getVoiceProfiles,
+  createVoiceProfile: api.createVoiceProfile,
+  activateVoiceProfile: api.activateVoiceProfile,
+  getVoiceLabState: api.getVoiceLabState,
+  updateVoiceLabState: api.updateVoiceLabState,
+  updateVoiceLabPreviewSession: api.updateVoiceLabPreviewSession,
+  generateVoice: api.generateVoice,
+  getVoiceGenerations: api.getVoiceGenerations,
+  getVoiceTrainingJobs: api.getVoiceTrainingJobs,
+  createVoiceTrainingJob: api.createVoiceTrainingJob,
 }));
 
 describe('PerformerPanel', () => {
@@ -237,5 +446,95 @@ describe('PerformerPanel', () => {
     expect(await screen.findByText(/dashboard_vendor/i)).toBeInTheDocument();
     expect((await screen.findAllByText(/connection refused/i)).length).toBeGreaterThanOrEqual(1);
     expect(api.getLiveTalkingLogs).toHaveBeenCalled();
+  });
+
+  it('loads voice lab data lazily and submits standalone generation from the suara tab', async () => {
+    render(PerformerPanel);
+
+    await screen.findByRole('button', { name: /ringkasan/i });
+    expect(api.getVoiceProfiles).not.toHaveBeenCalled();
+    expect(api.getVoiceLabState).not.toHaveBeenCalled();
+    expect(api.getVoiceGenerations).not.toHaveBeenCalled();
+
+    await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
+
+    await waitFor(() => {
+      expect(api.getVoiceProfiles).toHaveBeenCalledTimes(1);
+      expect(api.getVoiceLabState).toHaveBeenCalledTimes(1);
+      expect(api.getVoiceGenerations).toHaveBeenCalledTimes(1);
+    });
+
+    expect(await screen.findByRole('tab', { name: /generate/i })).toBeInTheDocument();
+    expect((await screen.findAllByText(/assets\/voice\/sari\.wav/i)).length).toBeGreaterThanOrEqual(1);
+
+    const promptInput = screen.getByLabelText(/prompt suara/i);
+    await fireEvent.change(screen.getByLabelText(/bahasa output/i), { target: { value: 'en' } });
+    await fireEvent.change(screen.getByLabelText(/gaya suara/i), { target: { value: 'conversational' } });
+    await fireEvent.input(screen.getByLabelText(/stability/i), { target: { value: '0.62' } });
+    await fireEvent.input(screen.getByLabelText(/similarity/i), { target: { value: '0.88' } });
+    await fireEvent.input(promptInput, { target: { value: 'Hello operator' } });
+    await fireEvent.click(screen.getByRole('button', { name: /generate audio/i }));
+
+    await waitFor(() => {
+      expect(api.generateVoice).toHaveBeenCalledWith({
+        mode: 'standalone',
+        profile_id: 1,
+        text: 'Hello operator',
+        language: 'en',
+        emotion: 'neutral',
+        style_preset: 'conversational',
+        stability: 0.62,
+        similarity: 0.88,
+        speed: 1,
+        attach_to_avatar: false,
+      });
+    });
+
+    expect(await screen.findByTestId('action-receipt')).toHaveTextContent(/audio berhasil dibuat/i);
+  });
+
+  it('queues a studio voice training job from the training workspace', async () => {
+    render(PerformerPanel);
+
+    await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
+    await screen.findByRole('tab', { name: /training jobs/i });
+    await fireEvent.click(screen.getByRole('tab', { name: /training jobs/i }));
+    await fireEvent.change(screen.getByLabelText(/studio voice target/i), { target: { value: '2' } });
+    await fireEvent.input(screen.getByLabelText(/lokasi dataset/i), {
+      target: { value: 'data/runtime/voice/datasets/studio-sari' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /queue training job/i }));
+
+    await waitFor(() => {
+      expect(api.createVoiceTrainingJob).toHaveBeenCalledWith({
+        profile_id: 2,
+        job_type: 'studio_voice_training',
+        dataset_path: 'data/runtime/voice/datasets/studio-sari',
+      });
+    });
+  });
+
+  it('captures preview session messages so attach mode can sync avatar session id', async () => {
+    render(PerformerPanel);
+
+    await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
+    await screen.findByRole('tab', { name: /generate/i });
+
+    window.dispatchEvent(
+      new MessageEvent('message', {
+        data: {
+          type: 'livetalking.preview.session',
+          session_id: '77',
+          avatar_id: 'musetalk_avatar1',
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(api.updateVoiceLabPreviewSession).toHaveBeenCalledWith({
+        preview_session_id: '77',
+        selected_avatar_id: 'musetalk_avatar1',
+      });
+    });
   });
 });

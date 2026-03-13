@@ -1,13 +1,22 @@
 # Task Status
 
 > Honest status snapshot for the internal-live architecture.
-> Last verified: 2026-03-11
+> Last broad verification: 2026-03-11
+> Last targeted dashboard verification: 2026-03-14
+> Last targeted vendor preview verification: 2026-03-14
 > Package manager policy: `uv` only
 
 ## Verification Snapshot
 
 | Check | Command | Result |
 |-------|---------|--------|
+| Voice Lab day-1 slice | `uv run pytest tests/test_livetalking_integration.py tests/test_dashboard.py tests/test_control_plane.py -q -p no:cacheprovider` + `cd src/dashboard/frontend && npm test -- --run src/tests/performer-panel.test.ts src/tests/performer-preview-panel.test.ts src/tests/voice-panel.test.ts` | PASS — browser-backed `Standalone Fish TTS` and `Attach ke Avatar` flows are verified from `performer.html`; preview `sessionid` now syncs back into Voice Lab and attach generations persist `attached_to_avatar=true` |
+| Dashboard control-plane backend slice | `uv run pytest tests/test_brain.py tests/test_dashboard.py tests/test_control_plane.py -q -p no:cacheprovider` | PASS — `101 passed` |
+| LiveTalking browser preview slice | `uv run pytest tests/test_livetalking_integration.py tests/test_dashboard.py -q -p no:cacheprovider` | PASS — manager uses dedicated sidecar interpreter, startup readiness waits for port `8010`, `rtcpushapi.html` has direct WebRTC fallback, and `webrtcapi.html` now ships a built-in preview-session bridge plus cache-busted `client.js` |
+| Browser smoke (vendor preview) | `http://127.0.0.1:8010/webrtcapi.html` + `http://127.0.0.1:8010/rtcpushapi.html` + `/dashboard/performer.html` | PASS — `webrtcapi` delivers live `audio+video`; `rtcpushapi` auto-falls back to direct WebRTC when `:1985` relay is absent; dashboard Preview tab embeds the vendor page cleanly and preview `sessionid` syncs into `Suara` |
+| Live console frontend slice | `cd src/dashboard/frontend && npm test -- --run src/tests/AIBrainPage.test.ts src/tests/live-console-panel.test.ts` | PASS — `8 passed` |
+| Dashboard build recheck | `cd src/dashboard/frontend && npm run build` | PASS |
+| Browser smoke (dashboard Q&A interrupt) | `http://127.0.0.1:8001/dashboard/?v=20260313b#/` | PASS — `Director Runtime` shows `SELLING` before chat, `PAUSED` after `Kirim Chat Simulasi`, then `POST /api/live-session/stop` returns `/api/pipeline/state` to `IDLE` |
 | Test suite | `uv run pytest tests -q -p no:cacheprovider` | `255 passed, 1 skipped` |
 | Pipeline verification | `uv run python scripts/verify_pipeline.py` | `11/11 layers passed` |
 | Frontend build | `cd src/dashboard/frontend && npm run build` | PASS |
@@ -62,6 +71,7 @@ Fish-Speech local install is now replicated in-repo with a dedicated sidecar UV 
 The global real-mode readiness script is now **READY FOR REAL MODE** with voice prerequisites satisfied.
 Runtime truth now resolves honestly to `voice_runtime_mode=fish_speech_local` after real synthesis, with `resolved_engine=fish_speech` and `fallback_active=false`.
 Observed local smoke latency is improved but still above the live target on current hardware, so the next bottleneck is performance rather than basic correctness.
+The TikTok-first dashboard control-plane slice is now **locally validated in mock mode** for durable stream targets, single live session state, simulated chat ingest, Q&A auto-pause, and director/session sync.
 
 ## Status Legend
 
@@ -79,11 +89,12 @@ Observed local smoke latency is improved but still above the live target on curr
 | Dashboard baseline | `LOCAL VERIFIED` | Current dashboard path works as operator entrypoint in local lab and is being evolved into a server-hosted ops controller |
 | Svelte dashboard migration | `LOCAL VERIFIED` | Svelte build mounted at `/dashboard`, frontend unit tests pass, the operator workflow is consolidated into 6 surfaces, `Avatar & Suara` is restored as a 6-tab workspace, preview fallback is reachability-aware, standalone `performer.html` stays functional, requested/resolved LiveTalking state remains visible, Truth Bar provenance stays active, and operator actions now emit operator-first receipts across setup/live/stream/monitor surfaces |
 | Brain layer | `LOCAL VERIFIED` | Covered by current test suite and verify pipeline |
-| Voice orchestration | `LOCAL VERIFIED` | Fish-Speech health probe, binary request payload, runtime truth, readiness, and local clone smoke validation now pass; current remaining issue is latency on the local GTX 1650 setup |
+| Voice orchestration | `LOCAL VERIFIED` | Fish-Speech health probe, binary request payload, runtime truth, readiness, local clone smoke validation, and day-1 Voice Lab browser flows now pass; `Standalone Fish TTS` and `Attach ke Avatar` are verified through `performer.html`, with the current attach proof grounded on the `wav2lip` preview path |
 | Composition / stream / chat / commerce | `LOCAL VERIFIED` | Covered by tests and verify pipeline |
 | FFmpeg runtime | `LOCAL VERIFIED` | Project-local FFmpeg installed at `tools/ffmpeg/bin/ffmpeg.exe` |
 | LiveTalking vendor repo present | `LOCAL VERIFIED` | Sidecar code exists in `external/livetalking` |
 | LiveTalking runtime contract | `LOCAL VERIFIED` | UV dependency blocker is fixed, sidecar starts through the operator path, and the vendor process runs with `--model musetalk --avatar_id musetalk_avatar1` |
+| LiveTalking browser preview pages | `LOCAL VERIFIED` | Dedicated sidecar env works through dashboard start, `webrtcapi.html` is live, `rtcpushapi.html` now degrades gracefully to direct WebRTC when no local relay is running on `:1985`, and `webrtcapi` now self-bridges `sessionid` back to the dashboard even if an older `client.js` was cached in the browser |
 | MuseTalk models inside vendor LiveTalking | `LOCAL VERIFIED` | Weights normalized into `external/livetalking/models/musetalk` |
 | MuseTalk avatar runtime asset | `LOCAL VERIFIED` | Canonical `musetalk_avatar1` exists in `external/livetalking/data/avatars/musetalk_avatar1` and resolves without fallback |
 | Wav2Lip inside vendor LiveTalking | `LOCAL VERIFIED` | Legacy fallback still active |
@@ -94,6 +105,7 @@ Observed local smoke latency is improved but still above the live target on curr
 | `src/face/pipeline.py` GFPGAN path | `PARTIAL` | Still raises `NotImplementedError` |
 | Unified dashboard for full system validation | `LOCAL VERIFIED` | Operator shell is live, requested/resolved LiveTalking state visible in Engine panel, Truth Bar with runtime truth active, and the ops-controller surfaces now include ops summary, voice operations, validation expansion, incidents, and resource-focused monitoring |
 | Dashboard Single Truth Real Validation | `LOCAL VERIFIED` | Realtime dashboard store, Validation Console, performer reconciliation, evidence history, preview target probing, and operator controls are locally verified for both the MuseTalk face slice and the local Fish-Speech direct-test voice slice |
+| TikTok-first dashboard control-plane slice | `LOCAL VERIFIED` | Single active live session, persisted stream targets, SQLite product/session pool, simulated chat ingest -> `SOFT_PAUSED_FOR_QNA`, and `Director Runtime` sync verified in browser against the server-hosted dashboard |
 | RTMP live slice to TikTok/Shopee | `PENDING GPU` | Needs end-to-end run with real target |
 | 18-24 hour stability layer | `PENDING GPU` | Not validated yet |
 

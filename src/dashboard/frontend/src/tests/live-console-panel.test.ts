@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
 import LiveConsolePanel from '../components/panels/LiveConsolePanel.svelte';
+import { ingestChatEvent } from '../lib/api';
 
 // Mock the API module
 vi.mock('../lib/api', () => ({
@@ -179,6 +180,7 @@ vi.mock('../lib/api', () => ({
   startLiveTalking: vi.fn().mockResolvedValue({ status: 'success', message: 'Avatar started' }),
   stopLiveTalking: vi.fn().mockResolvedValue({ status: 'success', message: 'Avatar stopped' }),
   emergencyStop: vi.fn().mockResolvedValue({ status: 'success', message: 'Emergency stop activated' }),
+  ingestChatEvent: vi.fn().mockResolvedValue({ status: 'recorded', auto_paused: true }),
 }));
 
 describe('LiveConsolePanel', () => {
@@ -202,5 +204,25 @@ describe('LiveConsolePanel', () => {
 
     expect(await screen.findByText(/Pertanyaan tertunda: Apakah ada COD\?/i)).toBeInTheDocument();
     expect(await screen.findByText(/Draft jawaban: Halo kak, untuk COD cek opsi pembayaran di checkout ya\./i)).toBeInTheDocument();
+  });
+
+  it('lets operator inject a simulated viewer question into dashboard chat flow', async () => {
+    render(LiveConsolePanel);
+
+    await fireEvent.input(await screen.findByLabelText(/nama viewer/i), {
+      target: { value: 'Ayu' },
+    });
+    await fireEvent.input(screen.getByLabelText(/pesan viewer/i), {
+      target: { value: 'Kak ini ori ga?' },
+    });
+    await fireEvent.click(screen.getByRole('button', { name: /kirim chat simulasi/i }));
+
+    await waitFor(() => {
+      expect(ingestChatEvent).toHaveBeenCalledWith({
+        platform: 'tiktok',
+        username: 'Ayu',
+        message: 'Kak ini ori ga?',
+      });
+    });
   });
 });
