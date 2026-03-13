@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/svelte';
+import { render, screen, fireEvent, within } from '@testing-library/svelte';
 import ActionReceiptComponent from '../components/common/ActionReceipt.svelte';
 import StreamPanel from '../components/panels/StreamPanel.svelte';
 import CommercePanel from '../components/panels/CommercePanel.svelte';
@@ -37,43 +37,104 @@ const mockStatus = {
   safety_incidents: 0,
 };
 
-const mockEmergencyReset = vi.fn();
-const mockSwitchProduct = vi.fn();
-const mockBrainTest = vi.fn();
-const mockPipelineTransition = vi.fn();
-const mockEmergencyStop = vi.fn();
+const mockedApi = vi.hoisted(() => ({
+  emergencyReset: vi.fn(),
+  switchProduct: vi.fn(),
+  brainTest: vi.fn(),
+  pipelineTransition: vi.fn(),
+  emergencyStop: vi.fn(),
+  getStatus: vi.fn(),
+  getRuntimeTruth: vi.fn(),
+  getPipelineState: vi.fn(),
+  getStreamTargets: vi.fn(),
+  getLiveSession: vi.fn(),
+  createStreamTarget: vi.fn(),
+  updateStreamTarget: vi.fn(),
+  validateStreamTarget: vi.fn(),
+  activateStreamTarget: vi.fn(),
+  startLiveSession: vi.fn(),
+  stopLiveSession: vi.fn(),
+  pauseLiveSession: vi.fn(),
+  resumeLiveSession: vi.fn(),
+  validateStreamDryRun: vi.fn(),
+}));
+
+const mockEmergencyReset = mockedApi.emergencyReset;
+const mockSwitchProduct = mockedApi.switchProduct;
+const mockBrainTest = mockedApi.brainTest;
+const mockPipelineTransition = mockedApi.pipelineTransition;
+const mockEmergencyStop = mockedApi.emergencyStop;
+const mockGetStatus = mockedApi.getStatus;
+const mockGetRuntimeTruth = mockedApi.getRuntimeTruth;
+const mockGetPipelineState = mockedApi.getPipelineState;
+const mockGetStreamTargets = mockedApi.getStreamTargets;
+const mockGetLiveSession = mockedApi.getLiveSession;
+const mockCreateStreamTarget = mockedApi.createStreamTarget;
+const mockUpdateStreamTarget = mockedApi.updateStreamTarget;
+const mockValidateStreamTarget = mockedApi.validateStreamTarget;
+const mockActivateStreamTarget = mockedApi.activateStreamTarget;
+const mockStartLiveSession = mockedApi.startLiveSession;
+const mockStopLiveSession = mockedApi.stopLiveSession;
+const mockPauseLiveSession = mockedApi.pauseLiveSession;
+const mockResumeLiveSession = mockedApi.resumeLiveSession;
+const mockValidateStreamDryRun = mockedApi.validateStreamDryRun;
+
+mockGetStatus.mockResolvedValue(mockStatus);
+mockGetRuntimeTruth.mockResolvedValue(mockTruth);
+mockGetPipelineState.mockResolvedValue({
+  current_state: 'IDLE',
+  valid_transitions: ['SELLING', 'PAUSED'],
+});
+mockGetStreamTargets.mockResolvedValue([
+  {
+    id: 1,
+    platform: 'tiktok',
+    label: 'Primary TikTok',
+    rtmp_url: 'rtmp://push.tiktok.test/live/',
+    stream_key_masked: '***123',
+    is_active: true,
+    validation_status: 'pass',
+    validation_checks: [],
+  },
+]);
+mockGetLiveSession.mockResolvedValue({
+  session: null,
+  state: { current_mode: 'IDLE', rotation_paused: false, pause_reason: '' },
+  stream_target: null,
+  products: [],
+});
+mockCreateStreamTarget.mockResolvedValue({ id: 1 });
+mockUpdateStreamTarget.mockResolvedValue({ id: 1 });
+mockValidateStreamTarget.mockResolvedValue({ status: 'pass', checks: [] });
+mockActivateStreamTarget.mockResolvedValue({ status: 'activated' });
+mockStartLiveSession.mockResolvedValue({ status: 'started' });
+mockStopLiveSession.mockResolvedValue({ status: 'stopped' });
+mockPauseLiveSession.mockResolvedValue({ status: 'paused' });
+mockResumeLiveSession.mockResolvedValue({ status: 'resumed' });
+mockValidateStreamDryRun.mockResolvedValue({ status: 'pass', checks: [] });
 
 vi.mock('../lib/api', () => ({
-  getStatus: vi.fn().mockResolvedValue({
-    state: 'IDLE',
-    mock_mode: true,
-    uptime_sec: 0,
-    viewer_count: 0,
-    current_product: null,
-    stream_status: 'idle',
-    stream_running: false,
-    emergency_stopped: false,
-    llm_budget_remaining: 5.0,
-    safety_incidents: 0,
-  }),
-  getRuntimeTruth: vi.fn().mockResolvedValue({
-    mock_mode: true,
-    face_runtime_mode: 'mock',
-    voice_runtime_mode: 'mock',
-    stream_runtime_mode: 'mock',
-    validation_state: 'unvalidated',
-    last_validated_at: null,
-    provenance: { system_status: 'mock', engine_status: 'mock', stream_status: 'mock' },
-    timestamp: '2026-03-08T10:00:00Z',
-  }),
-  getPipelineState: vi.fn().mockResolvedValue({ current_state: 'IDLE' }),
+  getStatus: mockedApi.getStatus,
+  getRuntimeTruth: mockedApi.getRuntimeTruth,
+  getPipelineState: mockedApi.getPipelineState,
+  getStreamTargets: mockedApi.getStreamTargets,
+  getLiveSession: mockedApi.getLiveSession,
+  createStreamTarget: mockedApi.createStreamTarget,
+  updateStreamTarget: mockedApi.updateStreamTarget,
+  validateStreamTarget: mockedApi.validateStreamTarget,
+  activateStreamTarget: mockedApi.activateStreamTarget,
+  startLiveSession: mockedApi.startLiveSession,
+  stopLiveSession: mockedApi.stopLiveSession,
+  pauseLiveSession: mockedApi.pauseLiveSession,
+  resumeLiveSession: mockedApi.resumeLiveSession,
   validateRtmpTarget: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
+  validateStreamDryRun: mockedApi.validateStreamDryRun,
   startStream: vi.fn().mockResolvedValue({}),
   stopStream: vi.fn().mockResolvedValue({}),
-  emergencyStop: vi.fn().mockImplementation(() => mockEmergencyStop()),
-  emergencyReset: vi.fn().mockImplementation(() => mockEmergencyReset()),
-  pipelineTransition: vi.fn().mockImplementation((t: string) => mockPipelineTransition(t)),
-  switchProduct: vi.fn().mockImplementation((id: number) => mockSwitchProduct(id)),
+  emergencyStop: vi.fn().mockImplementation(() => mockedApi.emergencyStop()),
+  emergencyReset: vi.fn().mockImplementation(() => mockedApi.emergencyReset()),
+  pipelineTransition: vi.fn().mockImplementation((t: string) => mockedApi.pipelineTransition(t)),
+  switchProduct: vi.fn().mockImplementation((id: number) => mockedApi.switchProduct(id)),
   getProducts: vi.fn().mockResolvedValue([
     { id: 1, name: 'Test Product', price_formatted: 'Rp 100.000' },
   ]),
@@ -81,12 +142,16 @@ vi.mock('../lib/api', () => ({
   getHealthSummary: vi.fn().mockResolvedValue({ status: 'healthy', components: {}, mock_mode: true }),
   getBrainStats: vi.fn().mockResolvedValue({ adapters: {} }),
   getBrainHealth: vi.fn().mockResolvedValue({ healthy_count: 0, total_count: 0, providers: {} }),
-  brainTest: vi.fn().mockImplementation((payload: any) => mockBrainTest(payload)),
+  brainTest: vi.fn().mockImplementation((payload: any) => mockedApi.brainTest(payload)),
   validateMockStack: vi.fn().mockResolvedValue({ status: 'pass', checks: [] }),
   validateRuntimeTruth: vi.fn().mockResolvedValue({ status: 'pass', checks: [], evidence_id: 1 }),
   validateRealModeReadiness: vi.fn().mockResolvedValue({ status: 'blocked', checks: [], blockers: [] }),
   getValidationHistory: vi.fn().mockResolvedValue([]),
 }));
+
+function getPipelineButton(section: HTMLElement, label: string) {
+  return within(section).getByText(new RegExp(`^${label}$`, 'i')).closest('button') as HTMLButtonElement;
+}
 
 describe('ActionReceipt component', () => {
   it('renders success receipt with correct styling and content', () => {
@@ -150,7 +215,7 @@ describe('ActionReceipt component', () => {
 describe('StreamPanel — pipeline transition', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockPipelineTransition.mockResolvedValue({ current_state: 'WARMING' });
+    mockPipelineTransition.mockResolvedValue({ current_state: 'SELLING' });
     mockEmergencyReset.mockResolvedValue({ message: 'System reset' });
     mockEmergencyStop.mockResolvedValue({ message: 'Emergency stop activated' });
   });
@@ -169,41 +234,37 @@ describe('StreamPanel — pipeline transition', () => {
   it('shows pipeline transition buttons for all targets', async () => {
     render(StreamPanel);
 
-    // Wait for load
-    await screen.findByText(/Pipeline state machine/i);
+    const pipelineSection = (await screen.findByText(/Pipeline state machine/i)).closest('section') as HTMLElement;
 
-    for (const target of ['WARMING', 'LIVE', 'COOLDOWN']) {
-      const btn = screen.getByRole('button', { name: new RegExp(target, 'i') });
+    for (const target of ['SELLING', 'PAUSED']) {
+      const btn = getPipelineButton(pipelineSection, target);
       expect(btn).toBeInTheDocument();
     }
-    // IDLE button also exists (disabled since it's current state)
-    const idleBtn = screen.getByRole('button', { name: /IDLE/i });
+    const idleBtn = getPipelineButton(pipelineSection, 'IDLE');
     expect(idleBtn).toBeInTheDocument();
   });
 
   it('disables the button for the current pipeline state', async () => {
     render(StreamPanel);
 
-    await screen.findByText(/Pipeline state machine/i);
+    const pipelineSection = (await screen.findByText(/Pipeline state machine/i)).closest('section') as HTMLElement;
 
-    // IDLE is current state, so its button should be disabled
-    const idleBtn = screen.getByRole('button', { name: /IDLE/i });
+    const idleBtn = getPipelineButton(pipelineSection, 'IDLE');
     expect(idleBtn).toBeDisabled();
 
-    // WARMING should be enabled
-    const warmingBtn = screen.getByRole('button', { name: /WARMING/i });
-    expect(warmingBtn).not.toBeDisabled();
+    const sellingBtn = getPipelineButton(pipelineSection, 'SELLING');
+    expect(sellingBtn).not.toBeDisabled();
   });
 
   it('calls pipelineTransition API and shows receipt on click', async () => {
     render(StreamPanel);
 
-    await screen.findByText(/Pipeline state machine/i);
+    const pipelineSection = (await screen.findByText(/Pipeline state machine/i)).closest('section') as HTMLElement;
 
-    const warmingBtn = screen.getByRole('button', { name: /WARMING/i });
-    await fireEvent.click(warmingBtn);
+    const sellingBtn = getPipelineButton(pipelineSection, 'SELLING');
+    await fireEvent.click(sellingBtn);
 
-    expect(mockPipelineTransition).toHaveBeenCalledWith('WARMING');
+    expect(mockPipelineTransition).toHaveBeenCalledWith('SELLING');
 
     const receipt = await screen.findByTestId('action-receipt');
     expect(receipt.textContent).toContain('Perubahan status pipeline diproses');
@@ -213,10 +274,10 @@ describe('StreamPanel — pipeline transition', () => {
     mockPipelineTransition.mockRejectedValue(new Error('API 400: Invalid transition'));
 
     render(StreamPanel);
-    await screen.findByText(/Pipeline state machine/i);
+    const pipelineSection = (await screen.findByText(/Pipeline state machine/i)).closest('section') as HTMLElement;
 
-    const liveBtn = screen.getByRole('button', { name: /LIVE/i });
-    await fireEvent.click(liveBtn);
+    const pausedBtn = getPipelineButton(pipelineSection, 'PAUSED');
+    await fireEvent.click(pausedBtn);
 
     const receipt = await screen.findByTestId('action-receipt');
     expect(receipt.textContent).toContain('Perubahan status pipeline diproses');

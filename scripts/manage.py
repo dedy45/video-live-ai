@@ -67,7 +67,7 @@ def build_runtime_env(mock_mode: bool, base_env: dict[str, str] | None = None) -
     return env
 
 
-def get_dashboard_port(default: int = 8000) -> int:
+def get_dashboard_port(default: int = 8001) -> int:
     """Resolve configured dashboard port without hard failing on config issues."""
     try:
         from src.config import load_config

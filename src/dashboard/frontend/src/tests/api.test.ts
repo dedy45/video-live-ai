@@ -1,6 +1,17 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { EngineStatus, EngineConfig, ReadinessResult, SystemStatus, RuntimeTruth } from '../lib/types';
-import { getStatus, getRuntimeTruth, getLiveTalkingDebugTargets, voiceTestSpeak } from '../lib/api';
+import {
+  activateStreamTarget,
+  createProduct,
+  createStreamTarget,
+  getLiveSession,
+  getLiveTalkingDebugTargets,
+  getRuntimeTruth,
+  getStatus,
+  pauseLiveSession,
+  resumeLiveSession,
+  voiceTestSpeak,
+} from '../lib/api';
 
 describe('API request policy', () => {
   const fetchMock = vi.fn();
@@ -53,6 +64,46 @@ describe('API request policy', () => {
     const [url, options] = fetchMock.mock.calls[0];
     expect(url).toContain('/engine/livetalking/debug-targets');
     expect(options.method ?? 'GET').toBe('GET');
+  });
+
+  it('posts product mutations to the SQLite-backed control-plane endpoint', async () => {
+    await createProduct({ name: 'Lip Cream', price: 89000 });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain('/products');
+    expect(options.method).toBe('POST');
+    expect(options.body).toContain('"name":"Lip Cream"');
+  });
+
+  it('posts stream target mutations to the persisted target endpoint', async () => {
+    await createStreamTarget({
+      platform: 'tiktok',
+      label: 'Primary TikTok',
+      rtmp_url: 'rtmp://push.tiktok.test/live/',
+      stream_key: 'abc123',
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchMock.mock.calls[0];
+    expect(url).toContain('/stream-targets');
+    expect(options.method).toBe('POST');
+    expect(options.body).toContain('"platform":"tiktok"');
+  });
+
+  it('uses the session control-plane endpoints for activate, pause, resume, and summary', async () => {
+    await activateStreamTarget(3);
+    await pauseLiveSession({ reason: 'viewer_question', question: 'Harga berapa?' });
+    await resumeLiveSession();
+    await getLiveSession();
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[0][0]).toContain('/stream-targets/3/activate');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(fetchMock.mock.calls[1][0]).toContain('/live-session/pause');
+    expect(fetchMock.mock.calls[1][1].method).toBe('POST');
+    expect(fetchMock.mock.calls[2][0]).toContain('/live-session/resume');
+    expect(fetchMock.mock.calls[3][0]).toContain('/live-session');
   });
 });
 

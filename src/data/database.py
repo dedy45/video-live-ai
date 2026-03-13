@@ -17,6 +17,37 @@ logger = get_logger("database")
 DB_PATH = Path("data/commerce.db")
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
+_PRODUCT_COLUMN_COMPATIBILITY: dict[str, str] = {
+    "affiliate_links_json": "TEXT DEFAULT '{}'",
+    "selling_points_json": "TEXT DEFAULT '[]'",
+    "commission_rate": "REAL DEFAULT 0.0",
+    "objection_handling_json": "TEXT DEFAULT '{}'",
+    "compliance_notes": "TEXT DEFAULT ''",
+}
+
+
+def _ensure_products_table_compatibility(conn: sqlite3.Connection) -> None:
+    """Add missing product columns for older databases created before SQLite CRUD migration."""
+    existing = {
+        row[1]
+        for row in conn.execute("PRAGMA table_info(products)")
+    }
+    for column, ddl in _PRODUCT_COLUMN_COMPATIBILITY.items():
+        if column in existing:
+            continue
+        conn.execute(f"ALTER TABLE products ADD COLUMN {column} {ddl}")
+        logger.info("database_column_added", table="products", column=column)
+
+
+def _ensure_schema_compatibility(conn: sqlite3.Connection) -> None:
+    """Run forward-only compatibility steps for legacy databases."""
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if "products" in tables:
+        _ensure_products_table_compatibility(conn)
+
 
 def init_database(db_path: Path | None = None) -> None:
     """Initialize database with schema.
@@ -43,6 +74,7 @@ def init_database(db_path: Path | None = None) -> None:
             if SCHEMA_PATH.exists():
                 schema = SCHEMA_PATH.read_text(encoding="utf-8")
                 conn.executescript(schema)
+                _ensure_schema_compatibility(conn)
                 logger.info("database_initialized", path=str(path))
             else:
                 logger.warning("schema_not_found", path=str(SCHEMA_PATH))

@@ -29,9 +29,9 @@ RUN mkdir -p data/logs data/cache data/audio_cache
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD curl -f http://localhost:8000/diagnostic/health || exit 1
+    CMD curl -f http://localhost:8001/diagnostic/health || exit 1
 
-EXPOSE 8000
+EXPOSE 8001
 
 # Default: production mode
 ENV MOCK_MODE=false

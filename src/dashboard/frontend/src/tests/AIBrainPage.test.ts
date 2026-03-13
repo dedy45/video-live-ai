@@ -57,12 +57,53 @@ describe('AIBrainPage', () => {
         'SELLING_SCRIPT': ['claude', 'gpt4o']
       },
       daily_budget_usd: 5.0,
-      fallback_order: ['groq', 'gemini', 'claude', 'gpt4o']
+      fallback_order: ['groq', 'gemini', 'claude', 'gpt4o'],
+      available_providers: ['claude', 'gemini', 'gpt4o', 'groq'],
+      edit_mode: 'runtime_only',
+      persists_across_restart: false,
+      prompt: {
+        active_revision: 'default-live-commerce:v1',
+        slug: 'default-live-commerce',
+        version: 1,
+        status: 'active'
+      }
     };
 
     const mockRuntime = {
-      current_state: 'IDLE',
-      uptime: '0s'
+      director: {
+        state: 'IDLE',
+        stream_running: false,
+        emergency_stopped: false,
+        manual_override: false,
+        current_phase: 'hook',
+        phase_sequence: ['hook', 'cta'],
+        active_provider: 'groq',
+        active_model: 'groq/llama',
+        active_prompt_revision: 'default-live-commerce:v1',
+        uptime_sec: 0,
+        history: [],
+        valid_transitions: ['SELLING']
+      },
+      brain: {
+        active_provider: 'groq',
+        active_model: 'groq/llama',
+        routing_table: {},
+        adapter_count: 4,
+        daily_budget_usd: 5.0
+      },
+      prompt: {
+        active_revision: 'default-live-commerce:v1',
+        slug: 'default-live-commerce',
+        version: 1,
+        status: 'active'
+      },
+      persona: {
+        name: 'Sari'
+      },
+      script: {
+        current_phase: 'hook',
+        phase_sequence: ['hook', 'cta']
+      }
     };
 
     (global.fetch as any).mockImplementation((url: string) => {
@@ -86,6 +127,8 @@ describe('AIBrainPage', () => {
     await waitFor(() => {
       expect(screen.getByText(/Brain Configuration/i)).toBeTruthy();
     });
+
+    expect(screen.getByText(/reset saat restart/i)).toBeTruthy();
   });
 
   it('switches between tabs', async () => {

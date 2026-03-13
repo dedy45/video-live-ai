@@ -25,9 +25,9 @@
 - Diagnostik
 
 ### 3. **Port Configuration - FIXED** ✅
-**Port**: 8181 (bukan 8000)  
-**Config**: `config/config.yaml` → `dashboard.port: 8181`  
-**Status**: ✅ Server running di http://localhost:8181
+**Port**: 8001  
+**Config**: `config/config.yaml` → `dashboard.port: 8001`  
+**Status**: ✅ Server running di http://localhost:8001
 
 ### 4. **Product Data Model - COMPLETE** ✅
 **Status**: 10 produk dengan field affiliate lengkap
@@ -51,7 +51,7 @@
 ### A. Frontend Testing (Lokal)
 
 #### 1. Dashboard Access ✅
-- [ ] Buka http://localhost:8181/dashboard
+- [ ] Buka http://localhost:8001/dashboard
 - [ ] Pastikan HANYA 1 sidebar yang muncul (bukan 2)
 - [ ] Pastikan semua menu dalam Bahasa Indonesia
 - [ ] Test navigasi antar tab (7 tab)
@@ -103,7 +103,7 @@
 #### 1. Server Status ✅
 ```bash
 # Check server running
-curl http://localhost:8181/
+curl http://localhost:8001/
 
 # Expected response:
 {
@@ -120,20 +120,20 @@ curl http://localhost:8181/
 #### 2. API Endpoints ✅
 ```bash
 # Test critical endpoints
-curl http://localhost:8181/api/status
-curl http://localhost:8181/api/products
-curl http://localhost:8181/api/readiness
-curl http://localhost:8181/diagnostic/
+curl http://localhost:8001/api/status
+curl http://localhost:8001/api/products
+curl http://localhost:8001/api/readiness
+curl http://localhost:8001/diagnostic/
 ```
 
 #### 3. Product Data ✅
 ```bash
 # Verify products loaded
-curl http://localhost:8181/api/products | jq length
+curl http://localhost:8001/api/products | jq length
 # Expected: 10
 
 # Check affiliate fields
-curl http://localhost:8181/api/products | jq '.[0] | keys'
+curl http://localhost:8001/api/products | jq '.[0] | keys'
 # Expected: affiliate_links, commission_rate, selling_points, etc.
 ```
 
@@ -200,7 +200,7 @@ nano .env
 # Update config.yaml
 nano config/config.yaml
 # Set dashboard.host: "0.0.0.0"
-# Set dashboard.port: 8181
+# Set dashboard.port: 8001
 ```
 
 #### 3. Dependencies
@@ -261,7 +261,7 @@ server {
     server_name your-domain.com;
 
     location / {
-        proxy_pass http://localhost:8181;
+        proxy_pass http://localhost:8001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -273,7 +273,7 @@ server {
     }
 
     location /api/ws/ {
-        proxy_pass http://localhost:8181;
+        proxy_pass http://localhost:8001;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -319,7 +319,7 @@ sudo systemctl status nginx
 #### 2. API Testing
 ```bash
 # Test from VPS
-curl http://localhost:8181/
+curl http://localhost:8001/
 
 # Test from outside
 curl http://your-domain.com/
@@ -461,7 +461,7 @@ sudo systemctl start videoliveai
 
 - [ ] Lokal testing complete (semua tab berfungsi)
 - [ ] Build frontend berhasil tanpa error
-- [ ] Server running di port 8181
+- [ ] Server running di port 8001
 - [ ] Hanya 1 sidebar yang muncul (duplikasi fixed)
 - [ ] Semua teks dalam Bahasa Indonesia
 - [ ] Product data lengkap dengan affiliate fields

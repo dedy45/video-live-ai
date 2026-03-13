@@ -57,7 +57,7 @@ def test_runtime_snapshot_reports_stopped_when_no_pid_and_no_port(tmp_path: Path
 
     snapshot = manage.get_runtime_snapshot(
         project_root=tmp_path,
-        port=8000,
+        port=8001,
         is_port_open=lambda _port: False,
         pid_is_running=lambda _pid: False,
     )
@@ -434,9 +434,9 @@ def test_print_all_status_reports_fish_speech_target_path(capsys) -> None:
         pid=None,
         pid_file_exists=False,
         pid_running=False,
-        port=8000,
+        port=8001,
         port_open=False,
-        base_url="http://127.0.0.1:8000",
+        base_url="http://127.0.0.1:8001",
     )
     manage.is_port_open = lambda port, host="127.0.0.1": False
 
@@ -458,16 +458,16 @@ def test_open_target_supports_operator_surfaces() -> None:
         pid=123,
         pid_file_exists=True,
         pid_running=True,
-        port=8000,
+        port=8001,
         port_open=True,
-        base_url="http://127.0.0.1:8000",
+        base_url="http://127.0.0.1:8001",
     )
 
     assert manage.main(["open", "performer"]) == 0
     assert manage.main(["open", "monitor"]) == 0
     assert opened == [
-        "http://127.0.0.1:8000/dashboard/performer.html",
-        "http://127.0.0.1:8000/dashboard/monitor.html",
+        "http://127.0.0.1:8001/dashboard/performer.html",
+        "http://127.0.0.1:8001/dashboard/monitor.html",
     ]
 
 

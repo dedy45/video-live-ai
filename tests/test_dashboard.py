@@ -132,6 +132,16 @@ def test_dashboard_state_init() -> None:
     init_dashboard_state(pm, at)
 
 
+def test_app_serves_favicon() -> None:
+    """Root favicon should be available so browser console stays clean."""
+    from src.main import create_app
+
+    client = TestClient(create_app())
+    response = client.get("/favicon.ico")
+
+    assert response.status_code == 200
+
+
 def test_dashboard_record_chat() -> None:
     """Dashboard should record chat events."""
     from src.dashboard.api import record_chat_event, _recent_chats
@@ -328,6 +338,348 @@ async def test_director_runtime_endpoint_exposes_brain_and_prompt_metadata() -> 
     assert result["director"]["state"] == "IDLE"
     assert "active_provider" in result["brain"]
     assert "active_revision" in result["prompt"]
+
+
+@pytest.mark.asyncio
+async def test_brain_config_endpoint_exposes_runtime_edit_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain config should expose live-edit metadata and only active providers."""
+    from src.brain.adapters.base import TaskType
+    from src.dashboard.api import brain_config
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"groq": object(), "gemini": object()}
+            self.routing_table = {
+                TaskType.CHAT_REPLY: ["groq", "gemini"],
+                TaskType.SELLING_SCRIPT: ["gemini", "groq"],
+            }
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await brain_config()
+
+    assert result["edit_mode"] == "runtime_only"
+    assert result["persists_across_restart"] is False
+    assert result["available_providers"] == ["gemini", "groq"]
+    assert set(result["providers"]) == {"gemini", "groq"}
+
+
+@pytest.mark.asyncio
+async def test_update_brain_config_updates_runtime_overlay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain config mutation should update runtime-only overlay without touching files."""
+    from src.brain.adapters.base import TaskType
+    from src.dashboard.api import UpdateBrainConfigRequest, update_brain_config
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"groq": object(), "gemini": object()}
+            self.routing_table = {
+                TaskType.CHAT_REPLY: ["groq", "gemini"],
+                TaskType.SELLING_SCRIPT: ["gemini", "groq"],
+            }
+            self.daily_budget_usd = 5.0
+
+    router = DummyRouter()
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: router)
+
+    result = await update_brain_config(
+        UpdateBrainConfigRequest(
+            daily_budget_usd=7.5,
+            fallback_order=["groq", "gemini"],
+            routing_table={
+                "chat_reply": ["gemini", "groq"],
+                "selling_script": ["groq", "gemini"],
+            },
+        )
+    )
+
+    assert result["status"] == "updated"
+    assert result["config"]["daily_budget_usd"] == 7.5
+    assert result["config"]["persists_across_restart"] is False
+    assert result["config"]["routing_table"]["chat_reply"] == ["gemini", "groq"]
+
+
+@pytest.mark.asyncio
+async def test_update_brain_config_rejects_unknown_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain config mutation should reject unknown providers before mutating runtime state."""
+    from fastapi import HTTPException
+
+    from src.brain.adapters.base import TaskType
+    from src.dashboard.api import UpdateBrainConfigRequest, update_brain_config
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"groq": object()}
+            self.routing_table = {
+                TaskType.CHAT_REPLY: ["groq"],
+                TaskType.SELLING_SCRIPT: ["groq"],
+            }
+            self.daily_budget_usd = 5.0
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    with pytest.raises(HTTPException, match="unknown providers"):
+        await update_brain_config(
+            UpdateBrainConfigRequest(
+                daily_budget_usd=6.0,
+                fallback_order=["groq", "gemini"],
+                routing_table={
+                    "chat_reply": ["groq"],
+                    "selling_script": ["groq"],
+                },
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_generate_brain_script_endpoint_returns_llm_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Script generator endpoint should return script text plus provider metadata."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+    from src.dashboard.api import GenerateScriptRequest, generate_brain_script
+
+    class DummyRouter:
+        async def route(self, **_: object) -> LLMResponse:
+            return LLMResponse(
+                text="1. HOOK: Halo kak!\n7. CTA: checkout sekarang.",
+                provider="groq",
+                model="groq/llama-3.3-70b-versatile",
+                task_type=TaskType.SELLING_SCRIPT,
+                latency_ms=12.5,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await generate_brain_script(
+        GenerateScriptRequest(
+            product_name="Lip Cream",
+            price=89000,
+            features=["matte", "ringan"],
+            target_duration_sec=30,
+            provider="groq",
+        )
+    )
+
+    assert result["success"] is True
+    assert result["provider"] == "groq"
+    assert result["model"] == "groq/llama-3.3-70b-versatile"
+    assert "HOOK" in result["script"]
+
+
+@pytest.mark.asyncio
+async def test_brain_test_builds_chat_reply_prompt_from_structured_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain test should build task-aware chat_reply prompts from structured request fields."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+    from src.dashboard.api import BrainTestRequest, brain_test
+
+    captured: dict[str, object] = {}
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"groq": object()}
+            self.routing_table = {TaskType.CHAT_REPLY: ["groq"]}
+            self.daily_budget_usd = 5.0
+
+        async def route(self, **kwargs: object) -> LLMResponse:
+            captured.update(kwargs)
+            return LLMResponse(
+                text="Halo kak, cek linknya ya.",
+                provider="groq",
+                model="groq/test",
+                task_type=TaskType.CHAT_REPLY,
+                latency_ms=18.0,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await brain_test(
+        BrainTestRequest(
+            task_type="chat_reply",
+            user_prompt="",
+            viewer_name="Ayu",
+            viewer_message="Kak ini ori ga?",
+            product_context="Wireless Earbuds Pro ANC",
+            additional_context="Jawab sebagai affiliate, bukan brand owner.",
+            provider="groq",
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["task_type"] == TaskType.CHAT_REPLY
+    assert "Kak ini ori ga?" in str(captured["user_prompt"])
+    assert "Wireless Earbuds Pro ANC" in str(captured["user_prompt"])
+    assert "affiliate_host" in str(captured["system_prompt"])
+
+
+@pytest.mark.asyncio
+async def test_brain_test_builds_safety_check_prompt_and_parses_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain test should use the safety_check builder and return parsed JSON payload when possible."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+    from src.dashboard.api import BrainTestRequest, brain_test
+
+    captured: dict[str, object] = {}
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"gemini": object()}
+            self.routing_table = {TaskType.SAFETY_CHECK: ["gemini"]}
+            self.daily_budget_usd = 5.0
+
+        async def route(self, **kwargs: object) -> LLMResponse:
+            captured.update(kwargs)
+            return LLMResponse(
+                text='{"safe": false, "reason_code": "unsupported_claim", "rewrite": "Cek detail resmi ya kak."}',
+                provider="gemini",
+                model="gemini/test",
+                task_type=TaskType.SAFETY_CHECK,
+                latency_ms=21.0,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await brain_test(
+        BrainTestRequest(
+            task_type="safety_check",
+            user_prompt="",
+            candidate_text="Ini pasti bikin putih dalam 3 hari",
+            product_context="Jangan klaim hasil absolut",
+            provider="gemini",
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["task_type"] == TaskType.SAFETY_CHECK
+    assert "Ini pasti bikin putih dalam 3 hari" in str(captured["user_prompt"])
+    assert result["parsed_json"]["safe"] is False
+    assert result["parsed_json"]["reason_code"] == "unsupported_claim"
+
+
+@pytest.mark.asyncio
+async def test_brain_test_builds_product_qa_prompt_from_structured_fields(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Brain test should build fact-bound product_qa prompts from structured request fields."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+    from src.dashboard.api import BrainTestRequest, brain_test
+
+    captured: dict[str, object] = {}
+
+    class DummyRouter:
+        def __init__(self) -> None:
+            self.adapters = {"groq": object()}
+            self.routing_table = {TaskType.PRODUCT_QA: ["groq"]}
+            self.daily_budget_usd = 5.0
+
+        async def route(self, **kwargs: object) -> LLMResponse:
+            captured.update(kwargs)
+            return LLMResponse(
+                text="Bisa untuk olahraga ringan ya kak, tapi bukan buat menyelam.",
+                provider="groq",
+                model="groq/test",
+                task_type=TaskType.PRODUCT_QA,
+                latency_ms=17.0,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    result = await brain_test(
+        BrainTestRequest(
+            task_type="product_qa",
+            user_prompt="",
+            question="Ini aman kena hujan ga?",
+            product_context="Wireless Earbuds Pro ANC, selling points: waterproof untuk olahraga",
+            additional_context="Jangan klaim tahan air untuk menyelam.",
+            provider="groq",
+        )
+    )
+
+    assert result["success"] is True
+    assert captured["task_type"] == TaskType.PRODUCT_QA
+    assert "Ini aman kena hujan ga?" in str(captured["user_prompt"])
+    assert "Wireless Earbuds Pro ANC" in str(captured["user_prompt"])
+
+
+@pytest.mark.asyncio
+async def test_pause_live_session_generates_affiliate_safe_answer_draft(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pause session for viewer question should attach a generated affiliate-safe answer draft."""
+    from src.brain.adapters.base import LLMResponse, TaskType
+
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+
+    await dashboard_api.create_stream_target(
+        dashboard_api.StreamTargetMutationRequest(
+            platform="tiktok",
+            label="Primary TikTok",
+            rtmp_url="rtmp://push.tiktok.test/live/",
+            stream_key="abc123",
+        )
+    )
+    active_target = (await dashboard_api.list_stream_targets())[0]
+    await dashboard_api.activate_stream_target(active_target["id"])
+
+    session_started = await dashboard_api.start_live_session(
+        dashboard_api.LiveSessionStartRequest(platform="tiktok")
+    )
+    created_product = await dashboard_api.create_product(
+        dashboard_api.ProductMutationRequest(
+            name="Wireless Earbuds Pro ANC",
+            price=249000,
+            category="electronics",
+            affiliate_links={"tiktok": "https://vt.tiktok.test/earbuds"},
+            selling_points=["ANC aktif", "Battery 40 jam", "Waterproof untuk olahraga"],
+            commission_rate=12.0,
+            compliance_notes="Produk elektronik bergaransi resmi. Jangan klaim tahan air untuk menyelam.",
+        )
+    )
+    await dashboard_api.add_live_session_products(
+        dashboard_api.SessionProductsRequest(product_ids=[created_product["id"]])
+    )
+    session_summary = dashboard_api.get_control_plane_store().get_active_live_session()
+    only_item = session_summary["products"][0]
+    await dashboard_api.set_live_session_focus(
+        dashboard_api.FocusProductRequest(session_product_id=int(only_item["id"]))
+    )
+
+    class DummyRouter:
+        async def route(self, **kwargs: object) -> LLMResponse:
+            task = kwargs["task_type"]
+            if task == TaskType.SAFETY_CHECK:
+                return LLMResponse(
+                    text='{"safe": true, "reason_code": "ok", "rewrite": "Halo kak, ini dari toko di TikTok Shop ya, cek rating dan detail di link juga."}',
+                    provider="gemini",
+                    model="gemini/safety",
+                    task_type=TaskType.SAFETY_CHECK,
+                    latency_ms=11.0,
+                    success=True,
+                )
+            return LLMResponse(
+                text="Halo kak, ini dari toko di TikTok Shop ya, cek rating dan detail di link juga.",
+                provider="groq",
+                model="groq/chat",
+                task_type=TaskType.CHAT_REPLY,
+                latency_ms=9.0,
+                success=True,
+            )
+
+    monkeypatch.setattr("src.dashboard.api.get_llm_router", lambda: DummyRouter())
+
+    paused = await dashboard_api.pause_live_session(
+        dashboard_api.LiveSessionPauseRequest(
+            reason="viewer_question",
+            question="Kak ini ori ga?",
+        )
+    )
+
+    assert paused["status"] == "paused"
+    assert paused["state"]["rotation_paused"] is True
+    assert paused["state"]["pending_question"]["text"] == "Kak ini ori ga?"
+    assert paused["state"]["pending_question"]["answer_draft"] == "Halo kak, ini dari toko di TikTok Shop ya, cek rating dan detail di link juga."
+    assert paused["state"]["pending_question"]["task_type"] == "chat_reply"
+    assert paused["state"]["pending_question"]["answer_provider"] == "groq"
+    assert paused["state"]["pending_question"]["safety"]["safe"] is True
 
 
 # === Runtime Truth API Tests ===

@@ -50,7 +50,13 @@ class RTMPStreamer:
     Supports TikTok and Shopee simultaneously.
     """
 
-    def __init__(self, platform: str = "tiktok") -> None:
+    def __init__(
+        self,
+        platform: str = "tiktok",
+        *,
+        rtmp_url: str | None = None,
+        stream_key: str | None = None,
+    ) -> None:
         self.platform = platform
         self.config = get_config().streaming
         self._process: subprocess.Popen[bytes] | None = None
@@ -58,11 +64,17 @@ class RTMPStreamer:
         self._start_time = 0.0
         self._frames_sent = 0
         self._reconnect_count = 0
+        self._last_error = ""
+        self._rtmp_url_override = rtmp_url
+        self._stream_key_override = stream_key or ""
 
         logger.info("streamer_init", platform=platform)
 
     def _get_rtmp_url(self) -> str:
         """Get RTMP URL for configured platform."""
+        if self._rtmp_url_override is not None:
+            return f"{self._rtmp_url_override}{self._stream_key_override}"
+
         env = get_env()
         if self.platform == "tiktok":
             return f"{env.tiktok_rtmp_url}{env.tiktok_stream_key}"
@@ -76,6 +88,7 @@ class RTMPStreamer:
         if is_mock_mode():
             self._status = StreamStatus.LIVE
             self._start_time = time.time()
+            self._last_error = ""
             logger.info("mock_stream_start", platform=self.platform)
             return True
 
@@ -91,11 +104,13 @@ class RTMPStreamer:
             )
             self._status = StreamStatus.LIVE
             self._start_time = time.time()
+            self._last_error = ""
             logger.info("stream_started", platform=self.platform)
             return True
 
         except Exception as e:
             self._status = StreamStatus.ERROR
+            self._last_error = str(e)
             logger.error("stream_start_failed", error=str(e))
             return False
 
@@ -156,4 +171,5 @@ class RTMPStreamer:
             uptime_sec=uptime,
             frames_sent=self._frames_sent,
             reconnect_count=self._reconnect_count,
+            last_error=self._last_error,
         )

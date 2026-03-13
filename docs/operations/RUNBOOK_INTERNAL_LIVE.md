@@ -5,7 +5,7 @@
 
 ## Before Stream
 
-1. Open dashboard: `http://localhost:8000/dashboard`
+1. Open dashboard: `http://localhost:8001/dashboard`
 2. Check readiness: `GET /api/readiness`
 3. Verify all checks pass (especially: config, database, LiveTalking, models)
 4. Confirm RTMP target is configured (if streaming to TikTok/Shopee)

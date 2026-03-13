@@ -23,11 +23,11 @@ export default defineConfig({
      input: htmlInputs,
    },
  },
- server: {
+  server: {
    proxy: {
-     '/api': 'http://localhost:8000',
+     '/api': 'http://localhost:8001',
    },
- },
+  },
  test: {
    environment: 'jsdom',
    globals: true,

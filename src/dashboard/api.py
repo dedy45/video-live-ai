@@ -26,9 +26,11 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from src.brain.prompt_registry import get_prompt_registry
+from src.brain.runtime_config import get_brain_runtime_config
 from src.commerce.analytics import get_analytics
 from src.commerce.manager import AffiliateTracker, Product, ProductManager
 from src.config import get_config, get_env, is_mock_mode
+from src.control_plane import ControlPlaneStore
 from src.utils.health import get_health_manager
 from src.dashboard.incidents import get_incident_registry
 from src.dashboard.ops_state import get_ops_state
@@ -36,6 +38,7 @@ from src.dashboard.resources import get_resource_metrics, get_restart_counters
 from src.dashboard.truth import get_runtime_truth_snapshot
 from src.dashboard.validation_history import record_validation, get_history as get_validation_history
 from src.orchestrator.show_director import get_show_director
+from src.stream import SingleHostStreamRuntime
 from src.utils.ffmpeg import check_ffmpeg_ready
 from src.utils.logging import get_logger
 
@@ -82,12 +85,58 @@ class ChatEventResponse(BaseModel):
     timestamp: float
 
 
+class ProductMutationRequest(BaseModel):
+    name: str
+    price: float
+    category: str = "general"
+    stock: int = 0
+    margin_percent: float = 0.0
+    description: str = ""
+    image_path: str = ""
+    affiliate_links: dict[str, str] = {}
+    selling_points: list[str] = []
+    commission_rate: float = 0.0
+    objection_handling: dict[str, str] = {}
+    compliance_notes: str = ""
+
+
+class StreamTargetMutationRequest(BaseModel):
+    platform: str
+    label: str
+    rtmp_url: str
+    stream_key: str
+    enabled: bool = True
+
+
+class LiveSessionStartRequest(BaseModel):
+    platform: str = "tiktok"
+
+
+class SessionProductsRequest(BaseModel):
+    product_ids: list[int]
+
+
+class FocusProductRequest(BaseModel):
+    session_product_id: int
+
+
+class LiveSessionPauseRequest(BaseModel):
+    reason: str
+    question: str | None = None
+
+
 class BrainTestRequest(BaseModel):
     """Request to test LLM Brain with a prompt."""
     system_prompt: str = ""
     user_prompt: str = "Halo, perkenalkan produk ini!"
     task_type: str = "chat_reply"
     provider: str | None = None
+    viewer_name: str = ""
+    viewer_message: str = ""
+    question: str = ""
+    product_context: str = ""
+    candidate_text: str = ""
+    additional_context: str = ""
 
 
 class BrainTestResponse(BaseModel):
@@ -108,6 +157,8 @@ class BrainTestResponse(BaseModel):
 
 _product_manager: ProductManager | None = None
 _affiliate_tracker: AffiliateTracker | None = None
+_control_plane_store: ControlPlaneStore | None = None
+_stream_runtime_service: SingleHostStreamRuntime | None = None
 _system_start_time = time.time()
 
 # Shared LLM Router instance
@@ -131,6 +182,47 @@ def init_dashboard_state(
     global _product_manager, _affiliate_tracker
     _product_manager = product_manager or ProductManager()
     _affiliate_tracker = affiliate_tracker or AffiliateTracker()
+    try:
+        store = get_control_plane_store()
+        seeded = store.seed_products_from_json_if_empty(ProductManager.CANONICAL_PRODUCTS_PATH)
+        if seeded == 0 and _product_manager is not None:
+            store.seed_products_if_empty(
+                [
+                    {
+                        "name": product.name,
+                        "price": product.price,
+                        "category": product.category,
+                        "stock": product.stock,
+                        "margin_percent": product.margin_percent,
+                        "description": product.description,
+                        "image_path": product.image_path,
+                        "affiliate_links": product.affiliate_links,
+                        "selling_points": product.selling_points or product.features,
+                        "commission_rate": product.commission_rate,
+                        "objection_handling": product.objection_handling,
+                        "compliance_notes": product.compliance_notes,
+                    }
+                    for product in _product_manager.get_all_active()
+                ]
+            )
+    except Exception as e:
+        logger.warning("control_plane_seed_failed", error=str(e), exc_info=True)
+
+
+def get_control_plane_store() -> ControlPlaneStore:
+    """Get or create the dashboard control-plane store."""
+    global _control_plane_store
+    if _control_plane_store is None:
+        _control_plane_store = ControlPlaneStore()
+    return _control_plane_store
+
+
+def get_stream_runtime_service() -> SingleHostStreamRuntime:
+    """Get or create the single-host stream runtime controller."""
+    global _stream_runtime_service
+    if _stream_runtime_service is None:
+        _stream_runtime_service = SingleHostStreamRuntime()
+    return _stream_runtime_service
 
 
 def get_llm_router():
@@ -155,27 +247,71 @@ def record_chat_event(event: dict[str, Any]) -> None:
         _recent_chats.pop(0)
 
 
+def _task_type_names() -> list[str]:
+    from src.brain.adapters.base import TaskType
+
+    return [task.value for task in TaskType]
+
+
+def _build_brain_provider_payload(router_instance: Any | None) -> dict[str, dict[str, Any]]:
+    providers: dict[str, dict[str, Any]] = {}
+    if router_instance is None:
+        return providers
+
+    for provider_name in sorted(router_instance.adapters.keys()):
+        adapter = router_instance.adapters[provider_name]
+        payload = {
+            "model": getattr(adapter, "_litellm_model", getattr(adapter, "model", "unknown")),
+            "timeout_ms": int(getattr(adapter, "timeout_ms", 0)),
+            "backend": "litellm",
+        }
+        api_base = getattr(adapter, "_api_base", "")
+        if api_base:
+            payload["api_base"] = api_base
+        providers[provider_name] = payload
+    return providers
+
+
+def _build_brain_config_payload(router_instance: Any | None = None) -> dict[str, Any]:
+    runtime = get_brain_runtime_config().snapshot(router_instance)
+    prompt = get_prompt_registry().get_active_revision()
+    providers = _build_brain_provider_payload(router_instance)
+
+    return {
+        "daily_budget_usd": runtime["daily_budget_usd"],
+        "fallback_order": runtime["fallback_order"],
+        "routing_table": runtime["routing_table"],
+        "available_providers": runtime["available_providers"],
+        "edit_mode": runtime["edit_mode"],
+        "persists_across_restart": runtime["persists_across_restart"],
+        "prompt": {
+            "active_revision": f'{prompt["slug"]}:v{prompt["version"]}',
+            "slug": prompt["slug"],
+            "version": prompt["version"],
+            "status": prompt["status"],
+            "updated_at": prompt["updated_at"],
+        },
+        "providers": providers,
+        "task_types": _task_type_names(),
+    }
+
+
 def _get_director_runtime_contract() -> dict[str, Any]:
     """Build the aggregated director + brain + prompt runtime contract."""
     director = get_show_director().get_runtime_snapshot()
     prompt = get_prompt_registry().get_active_revision()
     router_instance = get_llm_router()
-    routing_table: dict[str, list[str]] = {}
-    adapter_count = 0
-
-    if router_instance is not None:
-        adapter_count = len(router_instance.adapters)
-        for task_type, providers in router_instance.routing_table.items():
-            routing_table[task_type.value] = providers
+    runtime = get_brain_runtime_config().snapshot(router_instance)
+    adapter_count = len(router_instance.adapters) if router_instance is not None else 0
 
     return {
         "director": director,
         "brain": {
             "active_provider": director["active_provider"],
             "active_model": director["active_model"],
-            "routing_table": routing_table,
+            "routing_table": runtime["routing_table"],
             "adapter_count": adapter_count,
-            "daily_budget_usd": get_config().llm_providers.daily_budget_usd,
+            "daily_budget_usd": runtime["daily_budget_usd"],
         },
         "prompt": {
             "active_revision": f'{prompt["slug"]}:v{prompt["version"]}',
@@ -199,23 +335,53 @@ async def get_status() -> dict[str, Any]:
     """Get full system status (no auth required)."""
     try:
         analytics = get_analytics()
-        pm = _product_manager or ProductManager()
-        current = pm.get_current_product()
+        control = get_control_plane_store()
         gauges = analytics.get_gauges()
         counters = analytics.get_counters()
         director = get_show_director().get_runtime_snapshot()
+        stream_runtime = get_stream_runtime_service().get_snapshot()
+        active_live = control.get_active_live_session()
+        current = None
+        stream_running = bool(stream_runtime.get("stream_running") or director["stream_running"])
+        stream_status = (
+            "stopped"
+            if director["emergency_stopped"]
+            else (stream_runtime.get("stream_status") or ("live" if director["stream_running"] else "idle"))
+        )
+
+        if active_live["session"] is not None:
+            state = active_live["state"] or {}
+            stream_running = bool(stream_runtime.get("stream_running") or director["stream_running"])
+            stream_status = state.get("stream_status") or stream_status or "ready"
+            focus_product_id = state.get("current_focus_product_id")
+            if focus_product_id:
+                current = control.get_product(int(focus_product_id))
+            elif active_live["products"]:
+                current = active_live["products"][0]["product"]
+
+        if current is None:
+            pm = _product_manager or ProductManager()
+            current_product = pm.get_current_product()
+            if current_product is not None:
+                current = {
+                    "id": current_product.id,
+                    "name": current_product.name,
+                    "price": current_product.price,
+                    "price_formatted": current_product.price_formatted,
+                }
+
         return {
             "state": director["state"],
             "mock_mode": is_mock_mode(),
             "uptime_sec": round(time.time() - _system_start_time, 0),
             "viewer_count": int(gauges.get("viewers", 0)),
             "current_product": {
-                "id": current.id,
-                "name": current.name,
-                "price": current.price_formatted,
+                "id": current["id"],
+                "name": current["name"],
+                "price": current.get("price_formatted", current.get("price")),
             } if current else None,
-            "stream_status": "stopped" if director["emergency_stopped"] else ("live" if director["stream_running"] else "idle"),
-            "stream_running": director["stream_running"],
+            "stream_status": stream_status,
+            "stream_running": stream_running,
             "emergency_stopped": director["emergency_stopped"],
             "llm_budget_remaining": gauges.get("llm_budget_remaining", 5.0),
             "safety_incidents": counters.get("safety_incident", 0),
@@ -254,29 +420,73 @@ async def get_metrics(window: int = 60) -> dict[str, Any]:
 async def list_products() -> list[dict[str, Any]]:
     """List all active products."""
     try:
-        pm = _product_manager or ProductManager()
-        return [
-            {
-                "id": p.id, "name": p.name, "price": p.price,
-                "price_formatted": p.price_formatted,
-                "category": p.category, "is_active": p.is_active,
-                "affiliate_links": p.affiliate_links,
-                "selling_points": p.selling_points,
-                "commission_rate": p.commission_rate,
-                "objection_handling": p.objection_handling,
-                "compliance_notes": p.compliance_notes,
-            }
-            for p in pm.get_all_active()
-        ]
+        return get_control_plane_store().list_products()
     except Exception as e:
         logger.error("list_products_error", error=str(e), exc_info=True)
         return []
+
+
+@router.post("/products")
+async def create_product(payload: ProductMutationRequest) -> dict[str, Any]:
+    """Create a product in the SQLite-backed control plane."""
+    try:
+        return get_control_plane_store().create_product(**payload.model_dump())
+    except Exception as e:
+        logger.error("create_product_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to create product: {e}") from e
+
+
+@router.put("/products/{product_id}")
+async def update_product(product_id: int, payload: ProductMutationRequest) -> dict[str, Any]:
+    """Update a product in the SQLite-backed control plane."""
+    try:
+        return get_control_plane_store().update_product(product_id, **payload.model_dump())
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("update_product_error", product_id=product_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to update product: {e}") from e
+
+
+@router.delete("/products/{product_id}")
+async def delete_product(product_id: int) -> dict[str, Any]:
+    """Soft-delete a product from the control plane."""
+    try:
+        return get_control_plane_store().delete_product(product_id)
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("delete_product_error", product_id=product_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to delete product: {e}") from e
 
 
 @router.post("/products/{product_id}/switch")
 async def switch_product(product_id: int) -> dict[str, Any]:
     """Manually switch to a specific product."""
     try:
+        control = get_control_plane_store()
+        active_live = control.get_active_live_session()
+        if active_live["session"] is not None:
+            session_product = next(
+                (
+                    item for item in active_live["products"]
+                    if int(item["product_id"]) == product_id
+                ),
+                None,
+            )
+            if session_product is None:
+                raise HTTPException(404, f"Product {product_id} not assigned to active session")
+            state = control.set_focus_product(
+                session_id=int(active_live["session"]["id"]),
+                session_product_id=int(session_product["id"]),
+                reason="operator_switch",
+            )
+            return {
+                "status": "switched",
+                "product": session_product["product"]["name"],
+                "state": state,
+            }
+
         pm = _product_manager or ProductManager()
         products = pm.get_all_active()
         target = next((p for p in products if p.id == product_id), None)
@@ -312,6 +522,291 @@ async def get_recent_chats(limit: int = 20) -> list[ChatEventResponse]:
         )
         for c in reversed(chats)
     ]
+
+
+def _build_target_validation_checks(target: dict[str, Any]) -> list[dict[str, Any]]:
+    ffmpeg_status = check_ffmpeg_ready()
+    checks = [
+        {
+            "check": "ffmpeg_available",
+            "passed": bool(ffmpeg_status["available"]),
+            "message": ffmpeg_status["path"] or "not found",
+        },
+        {
+            "check": "platform_supported",
+            "passed": target["platform"] in {"tiktok", "shopee"},
+            "message": target["platform"],
+        },
+        {
+            "check": "rtmp_url_present",
+            "passed": bool(target["rtmp_url"]),
+            "message": target["rtmp_url"] or "missing",
+        },
+        {
+            "check": "rtmp_url_scheme",
+            "passed": str(target["rtmp_url"]).startswith("rtmp://"),
+            "message": target["rtmp_url"],
+        },
+        {
+            "check": "stream_key_present",
+            "passed": bool(target.get("stream_key")),
+            "message": "configured" if target.get("stream_key") else "missing",
+        },
+    ]
+    return checks
+
+
+# ── Stream Target + Live Session Endpoints ──────────────────────
+
+@router.get("/stream-targets")
+async def list_stream_targets() -> list[dict[str, Any]]:
+    """List dashboard-managed stream targets."""
+    try:
+        return get_control_plane_store().list_stream_targets()
+    except Exception as e:
+        logger.error("list_stream_targets_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to list stream targets: {e}") from e
+
+
+@router.post("/stream-targets")
+async def create_stream_target(payload: StreamTargetMutationRequest) -> dict[str, Any]:
+    """Create a new RTMP target."""
+    try:
+        return get_control_plane_store().create_stream_target(**payload.model_dump())
+    except Exception as e:
+        logger.error("create_stream_target_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to create stream target: {e}") from e
+
+
+@router.put("/stream-targets/{target_id}")
+async def update_stream_target(target_id: int, payload: StreamTargetMutationRequest) -> dict[str, Any]:
+    """Update an RTMP target."""
+    try:
+        return get_control_plane_store().update_stream_target(target_id, **payload.model_dump())
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("update_stream_target_error", target_id=target_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to update stream target: {e}") from e
+
+
+@router.post("/stream-targets/{target_id}/validate")
+async def validate_stream_target(target_id: int) -> dict[str, Any]:
+    """Validate a persisted stream target."""
+    try:
+        store = get_control_plane_store()
+        target = store.get_stream_target_secret(target_id)
+        if target is None:
+            raise HTTPException(404, f"Stream target {target_id} not found")
+        checks = _build_target_validation_checks(target)
+        status = "pass" if all(check["passed"] for check in checks) else "fail"
+        persisted = store.save_stream_target_validation(target_id, status=status, checks=checks)
+        return {"status": status, "checks": checks, "target": persisted}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("validate_stream_target_error", target_id=target_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to validate stream target: {e}") from e
+
+
+@router.post("/stream-targets/{target_id}/activate")
+async def activate_stream_target(target_id: int) -> dict[str, Any]:
+    """Activate one stream target as the current dashboard RTMP destination."""
+    try:
+        target = get_control_plane_store().activate_stream_target(target_id)
+        return {"status": "activated", "target": target}
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("activate_stream_target_error", target_id=target_id, error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to activate stream target: {e}") from e
+
+
+@router.get("/live-session")
+async def get_live_session() -> dict[str, Any]:
+    """Get the single active live session summary."""
+    try:
+        return get_control_plane_store().get_active_live_session()
+    except Exception as e:
+        logger.error("get_live_session_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to read live session: {e}") from e
+
+
+@router.post("/live-session/start")
+async def start_live_session(payload: LiveSessionStartRequest) -> dict[str, Any]:
+    """Start the single active live session using the active RTMP target for the platform."""
+    try:
+        store = get_control_plane_store()
+        if store.get_active_live_session()["session"] is not None:
+            raise HTTPException(409, "There is already an active live session")
+        target = store.get_active_stream_target(payload.platform)
+        if target is None:
+            raise HTTPException(400, f"No active {payload.platform} stream target configured")
+        secret_target = store.get_stream_target_secret(int(target["id"]))
+        if secret_target is None:
+            raise HTTPException(404, f"Active stream target {target['id']} could not be loaded")
+
+        runtime = get_stream_runtime_service()
+        try:
+            runtime_state = await runtime.start_target(secret_target)
+        except RuntimeError as e:
+            raise HTTPException(502, str(e)) from e
+
+        director = get_show_director()
+        try:
+            director.start_stream()
+            session = store.start_live_session(platform=payload.platform, stream_target_id=int(target["id"]))
+            stream_status = str(runtime_state.get("stream_status") or runtime_state.get("status") or "live")
+            state = store.set_session_stream_status(session_id=int(session["id"]), stream_status=stream_status)
+            return {"status": "started", "session": session, "stream_target": target, "state": state}
+        except RuntimeError as e:
+            await runtime.stop_active()
+            if director.get_runtime_snapshot()["stream_running"]:
+                director.stop_stream()
+            raise HTTPException(409, str(e)) from e
+        except Exception:
+            await runtime.stop_active()
+            if director.get_runtime_snapshot()["stream_running"]:
+                director.stop_stream()
+            raise
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("start_live_session_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to start live session: {e}") from e
+
+
+@router.post("/live-session/stop")
+async def stop_live_session() -> dict[str, Any]:
+    """Stop the current live session."""
+    try:
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is None:
+            raise HTTPException(409, "No active live session")
+
+        runtime_errors: list[str] = []
+        runtime = get_stream_runtime_service()
+        try:
+            await runtime.stop_active()
+        except Exception as e:
+            runtime_errors.append(f"stream_runtime: {e}")
+
+        director = get_show_director()
+        try:
+            if director.get_runtime_snapshot()["stream_running"]:
+                director.stop_stream()
+        except Exception as e:
+            runtime_errors.append(f"show_director: {e}")
+
+        result = store.stop_live_session()
+        if runtime_errors:
+            return {"status": "degraded", **result, "errors": runtime_errors}
+        return {"status": "stopped", **result}
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(409, str(e)) from e
+    except Exception as e:
+        logger.error("stop_live_session_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to stop live session: {e}") from e
+
+
+@router.post("/live-session/products")
+async def add_live_session_products(payload: SessionProductsRequest) -> dict[str, Any]:
+    """Assign products into the active live session pool."""
+    try:
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is None:
+            raise HTTPException(409, "No active live session")
+        items = store.add_session_products(
+            session_id=int(active["session"]["id"]),
+            product_ids=payload.product_ids,
+        )
+        return {"status": "updated", "count": len(items), "items": items}
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("add_live_session_products_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to add session products: {e}") from e
+
+
+@router.post("/live-session/focus")
+async def set_live_session_focus(payload: FocusProductRequest) -> dict[str, Any]:
+    """Set the current focus product for the active session."""
+    try:
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is None:
+            raise HTTPException(409, "No active live session")
+        state = store.set_focus_product(
+            session_id=int(active["session"]["id"]),
+            session_product_id=payload.session_product_id,
+            reason="operator_focus",
+        )
+        return {"status": "updated", "state": state}
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("set_live_session_focus_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to set focus product: {e}") from e
+
+
+@router.post("/live-session/pause")
+async def pause_live_session(payload: LiveSessionPauseRequest) -> dict[str, Any]:
+    """Pause operator-assisted rotation for Q&A or manual intervention."""
+    try:
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is None:
+            raise HTTPException(409, "No active live session")
+        state = store.pause_rotation(
+            session_id=int(active["session"]["id"]),
+            reason=payload.reason,
+            question=payload.question,
+        )
+        if payload.question:
+            updated_pending_question = await _generate_affiliate_answer_draft(
+                question=payload.question,
+                reason=payload.reason,
+                active_session=store.get_active_live_session(),
+            )
+            state = store.update_pending_question(
+                session_id=int(active["session"]["id"]),
+                pending_question=updated_pending_question,
+            )
+        return {"status": "paused", "state": state}
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("pause_live_session_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to pause live session: {e}") from e
+
+
+@router.post("/live-session/resume")
+async def resume_live_session() -> dict[str, Any]:
+    """Resume operator-assisted rotation after pause."""
+    try:
+        store = get_control_plane_store()
+        active = store.get_active_live_session()
+        if active["session"] is None:
+            raise HTTPException(409, "No active live session")
+        state = store.resume_rotation(session_id=int(active["session"]["id"]))
+        return {"status": "resumed", "state": state}
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(404, str(e)) from e
+    except Exception as e:
+        logger.error("resume_live_session_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to resume live session: {e}") from e
 
 
 # ── Stream Control Endpoints ────────────────────────────────────
@@ -391,6 +886,207 @@ def _get_valid_transitions() -> list[str]:
 
 
 # ── LLM Brain Endpoints ─────────────────────────────────────────
+
+
+def _parse_json_payload(raw_text: str) -> dict[str, Any] | list[Any] | None:
+    try:
+        parsed = json.loads(raw_text.strip())
+    except (AttributeError, json.JSONDecodeError):
+        return None
+    if isinstance(parsed, (dict, list)):
+        return parsed
+    return None
+
+
+def _find_focus_session_product(active_session: dict[str, Any]) -> dict[str, Any] | None:
+    state = active_session.get("state") or {}
+    focus_session_product_id = state.get("current_focus_session_product_id")
+    focus_product_id = state.get("current_focus_product_id")
+    products = active_session.get("products") or []
+
+    if focus_session_product_id:
+        for item in products:
+            if int(item.get("id", 0)) == int(focus_session_product_id):
+                return item
+    if focus_product_id:
+        for item in products:
+            if int(item.get("product_id", 0)) == int(focus_product_id):
+                return item
+    return products[0] if products else None
+
+
+def _build_live_product_context(active_session: dict[str, Any]) -> str:
+    focus_item = _find_focus_session_product(active_session)
+    if focus_item is None:
+        return "Tidak ada produk fokus aktif."
+
+    product = focus_item.get("product", {})
+    name = str(product.get("name", "Produk live")).strip() or "Produk live"
+    price = str(product.get("price_formatted", product.get("price", "-"))).strip() or "-"
+    selling_points = ", ".join(str(point).strip() for point in product.get("selling_points", []) if str(point).strip())
+    affiliate_link = str(product.get("affiliate_links", {}).get("tiktok", "")).strip()
+    compliance_notes = str(product.get("compliance_notes", "")).strip()
+
+    return ". ".join(
+        [
+            f"Produk fokus: {name}",
+            f"Harga: {price}",
+            f"Selling points: {selling_points or '-'}",
+            f"Link TikTok: {affiliate_link or '-'}",
+            f"Compliance notes: {compliance_notes or '-'}",
+        ]
+    )
+
+
+def _build_brain_test_prompts(request: BrainTestRequest, task: Any) -> tuple[str, str]:
+    from src.brain.adapters.base import TaskType
+    from src.brain.persona import PersonaEngine
+
+    persona = PersonaEngine()
+    state = "SELLING" if task == TaskType.SELLING_SCRIPT else "REACTING"
+    system_prompt = request.system_prompt.strip() or persona.build_system_prompt(
+        state=state,
+        product_context=request.product_context.strip(),
+        additional_context=request.additional_context.strip(),
+    )
+    if not request.system_prompt.strip():
+        system_prompt += (
+            f"\nROLE_META: {persona.persona.role}"
+            f"\nPRODUCT_RELATIONSHIP: {persona.persona.product_relationship}"
+        )
+
+    user_prompt = request.user_prompt.strip()
+    if user_prompt:
+        return system_prompt, user_prompt
+
+    if task == TaskType.CHAT_REPLY:
+        user_prompt = persona.build_chat_reply_prompt(
+            viewer_name=request.viewer_name,
+            viewer_message=request.viewer_message or request.question,
+            product_context=request.product_context,
+            additional_context=request.additional_context,
+        )
+    elif task == TaskType.PRODUCT_QA:
+        user_prompt = persona.build_product_qa_prompt(
+            question=request.question or request.viewer_message or "Jelaskan produk ini secara faktual.",
+            product_context=request.product_context or "Tidak ada konteks produk.",
+            additional_context=request.additional_context,
+        )
+    elif task == TaskType.SAFETY_CHECK:
+        user_prompt = persona.build_safety_check_prompt(
+            candidate_text=request.candidate_text or request.user_prompt or "",
+            product_context=request.product_context or "Tidak ada konteks produk.",
+            additional_context=request.additional_context,
+        )
+    elif task == TaskType.EMOTION_DETECT:
+        user_prompt = persona.build_emotion_prompt(request.viewer_message or request.question or "")
+    else:
+        user_prompt = "Halo, perkenalkan produk ini!"
+
+    return system_prompt, user_prompt
+
+
+async def _generate_affiliate_answer_draft(
+    *,
+    question: str,
+    reason: str,
+    active_session: dict[str, Any],
+) -> dict[str, Any]:
+    from src.brain.adapters.base import TaskType
+    from src.brain.persona import PersonaEngine
+
+    pending_question: dict[str, Any] = {"text": question, "reason": reason}
+    router_instance = get_llm_router()
+    if router_instance is None:
+        pending_question.update(
+            {
+                "answer_draft": "Sebentar kak, cek detail resmi produk di link yang tersedia ya.",
+                "task_type": TaskType.CHAT_REPLY.value,
+                "answer_provider": "fallback",
+                "answer_model": "template",
+                "safety": {"safe": True, "reason_code": "router_unavailable"},
+            }
+        )
+        return pending_question
+
+    persona = PersonaEngine()
+    product_context = _build_live_product_context(active_session)
+    additional_context = (
+        "Jawab sebagai affiliate host TikTok Live, bukan brand owner. "
+        "Jawab natural, singkat, ramah, dan tetap faktual. "
+        "Kalau tidak yakin, arahkan cek detail produk atau rating di link."
+    )
+    system_prompt = persona.build_system_prompt(
+        state="REACTING",
+        product_context=product_context,
+        additional_context=additional_context,
+    )
+    answer_prompt = persona.build_chat_reply_prompt(
+        viewer_name="viewer",
+        viewer_message=question,
+        product_context=product_context,
+        additional_context=additional_context,
+    )
+
+    try:
+        answer = await asyncio.wait_for(
+            router_instance.route(
+                system_prompt=system_prompt,
+                user_prompt=answer_prompt,
+                task_type=TaskType.CHAT_REPLY,
+                preferred_provider=None,
+            ),
+            timeout=45.0,
+        )
+        answer_draft = answer.text.strip()
+
+        safety_prompt = persona.build_safety_check_prompt(
+            candidate_text=answer_draft,
+            product_context=product_context,
+            additional_context="Evaluasi jawaban affiliate live commerce. Tahan klaim berlebihan dan pastikan tetap realistis.",
+        )
+        safety_response = await asyncio.wait_for(
+            router_instance.route(
+                system_prompt=system_prompt,
+                user_prompt=safety_prompt,
+                task_type=TaskType.SAFETY_CHECK,
+                preferred_provider=None,
+            ),
+            timeout=45.0,
+        )
+        parsed_safety = _parse_json_payload(safety_response.text)
+        if isinstance(parsed_safety, dict):
+            rewrite = str(parsed_safety.get("rewrite", "")).strip()
+            if rewrite:
+                answer_draft = rewrite
+            pending_question["safety"] = parsed_safety
+            pending_question["safety_provider"] = safety_response.provider
+            pending_question["safety_model"] = safety_response.model
+        else:
+            pending_question["safety"] = {"safe": True, "reason_code": "unparsed_safety_response"}
+
+        pending_question.update(
+            {
+                "answer_draft": answer_draft,
+                "task_type": TaskType.CHAT_REPLY.value,
+                "answer_provider": answer.provider,
+                "answer_model": answer.model,
+            }
+        )
+        return pending_question
+    except Exception as e:
+        logger.warning("pause_live_session_answer_draft_failed", error=str(e), exc_info=True)
+        pending_question.update(
+            {
+                "answer_draft": "Sebentar kak, cek detail resmi produk dan ratingnya dulu ya di link yang tersedia.",
+                "task_type": TaskType.CHAT_REPLY.value,
+                "answer_provider": "fallback",
+                "answer_model": "template",
+                "safety": {"safe": True, "reason_code": "draft_generation_failed"},
+                "draft_error": str(e)[:200],
+            }
+        )
+        return pending_question
 
 @router.get("/brain/stats")
 async def brain_stats() -> dict[str, Any]:
@@ -524,7 +1220,6 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
 
     try:
         from src.brain.adapters.base import TaskType
-        from src.brain.persona import PersonaEngine
         try:
             task = TaskType(request.task_type)
         except ValueError:
@@ -537,12 +1232,12 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
             preferred_provider=request.provider or "auto",
         )
 
-        system_prompt = request.system_prompt or PersonaEngine().build_system_prompt(state="SELLING")
+        system_prompt, user_prompt = _build_brain_test_prompts(request, task)
 
         response = await asyncio.wait_for(
             router_instance.route(
                 system_prompt=system_prompt,
-                user_prompt=request.user_prompt,
+                user_prompt=user_prompt,
                 task_type=task,
                 preferred_provider=request.provider or None,
             ),
@@ -565,7 +1260,7 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
             error=response.error[:100] if response.error else "",
         )
 
-        return {
+        result = {
             "text": response.text,
             "provider": response.provider,
             "model": response.model,
@@ -577,6 +1272,10 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
             "input_tokens": response.input_tokens,
             "output_tokens": response.output_tokens,
         }
+        parsed_json = _parse_json_payload(response.text)
+        if parsed_json is not None:
+            result["parsed_json"] = parsed_json
+        return result
 
     except asyncio.TimeoutError:
         logger.error("brain_test_timeout", timeout_sec=90)
@@ -598,88 +1297,161 @@ async def brain_test(request: BrainTestRequest) -> dict[str, Any]:
         }
 
 
+class UpdateBrainConfigRequest(BaseModel):
+    daily_budget_usd: float
+    fallback_order: list[str]
+    routing_table: dict[str, list[str]]
+
+
+class GenerateScriptRequest(BaseModel):
+    product_name: str
+    price: float
+    features: list[str]
+    target_duration_sec: int = 30
+    provider: str | None = None
+
+
+def _coerce_prompt_registry_error(exc: ValueError) -> HTTPException:
+    message = str(exc)
+    status_code = 404 if "not found" in message else 400
+    return HTTPException(status_code, message)
+
+
 @router.get("/brain/config")
 async def brain_config() -> dict[str, Any]:
-    """Get LLM Brain configuration and routing table."""
-    import os
-    from src.brain.adapters.base import TaskType as TT
+    """Get live AI Brain configuration and routing table."""
     try:
-        config = get_config()
-        llm_cfg = config.llm_providers
-
-        # Get routing table from router instance if available
-        router_instance = get_llm_router()
-        routing_table: dict[str, list[str]] = {}
-        if router_instance:
-            for task_type, providers in router_instance.routing_table.items():
-                routing_table[task_type.value] = providers
-
-        prompt = get_prompt_registry().get_active_revision()
-
-        return {
-            "daily_budget_usd": llm_cfg.daily_budget_usd,
-            "fallback_order": llm_cfg.fallback_order,
-            "routing_table": routing_table,
-            "prompt": {
-                "active_revision": f'{prompt["slug"]}:v{prompt["version"]}',
-                "slug": prompt["slug"],
-                "version": prompt["version"],
-                "status": prompt["status"],
-            },
-            "providers": {
-                "gemini": {
-                    "model": f"gemini/{llm_cfg.gemini.model}",
-                    "timeout_ms": llm_cfg.gemini.timeout_ms,
-                    "backend": "litellm",
-                },
-                "claude": {
-                    "model": f"anthropic/{llm_cfg.claude.model}",
-                    "timeout_ms": llm_cfg.claude.timeout_ms,
-                    "backend": "litellm",
-                },
-                "gpt4o": {
-                    "model": f"openai/{llm_cfg.gpt4o.model}",
-                    "timeout_ms": llm_cfg.gpt4o.timeout_ms,
-                    "backend": "litellm",
-                },
-                "groq": {
-                    "model": "groq/llama-3.3-70b-versatile",
-                    "timeout_ms": 8000,
-                    "backend": "litellm",
-                },
-                "chutes": {
-                    "model": "openai/MiniMaxAI/MiniMax-M2.5",
-                    "api_base": "https://llm.chutes.ai/v1",
-                    "timeout_ms": 30000,
-                    "backend": "litellm",
-                },
-                "gemini_local_pro": {
-                    "model": "openai/gemini-3.1-pro-high",
-                    "api_base": os.getenv("LOCAL_GEMINI_URL", "http://127.0.0.1:8091/v1"),
-                    "timeout_ms": 15000,
-                    "backend": "litellm",
-                    "cost": "free",
-                },
-                "gemini_local_flash": {
-                    "model": "openai/gemini-3-flash",
-                    "api_base": os.getenv("LOCAL_GEMINI_URL", "http://127.0.0.1:8091/v1"),
-                    "timeout_ms": 8000,
-                    "backend": "litellm",
-                    "cost": "free",
-                },
-                "local": {
-                    "model": f"openai/{llm_cfg.qwen.model}",
-                    "api_base": os.getenv("LOCAL_LLM_URL", "http://localhost:11434/v1"),
-                    "timeout_ms": llm_cfg.qwen.timeout_ms,
-                    "backend": "litellm",
-                    "cost": "free",
-                },
-            },
-            "task_types": [t.value for t in TT],
-        }
+        return _build_brain_config_payload(get_llm_router())
     except Exception as e:
-        logger.error("brain_config_error", error=str(e))
+        logger.error("brain_config_error", error=str(e), exc_info=True)
         return {"error": str(e)}
+
+
+@router.put("/brain/config")
+async def update_brain_config(request: UpdateBrainConfigRequest) -> dict[str, Any]:
+    """Update runtime-only AI Brain config without persisting to disk."""
+    try:
+        from src.brain.adapters.base import TaskType
+
+        router_instance = get_llm_router()
+        if router_instance is None:
+            raise HTTPException(500, "LLM Router not initialized")
+
+        if request.daily_budget_usd <= 0:
+            raise HTTPException(400, "daily_budget_usd must be greater than zero")
+
+        task_map = {task.value: task for task in TaskType}
+        invalid_task_types = sorted(set(request.routing_table.keys()).difference(task_map.keys()))
+        if invalid_task_types:
+            raise HTTPException(400, f"unknown task types: {', '.join(invalid_task_types)}")
+
+        if any(not providers for providers in request.routing_table.values()):
+            raise HTTPException(400, "each routing table entry must include at least one provider")
+
+        available_providers = sorted(router_instance.adapters.keys())
+        requested_providers = set(request.fallback_order)
+        for providers in request.routing_table.values():
+            requested_providers.update(providers)
+        unknown_providers = sorted(requested_providers.difference(available_providers))
+        if unknown_providers:
+            raise HTTPException(400, f"unknown providers: {', '.join(unknown_providers)}")
+
+        runtime_config = get_brain_runtime_config()
+        current_snapshot = runtime_config.snapshot(router_instance)
+        merged_routing_table = dict(current_snapshot["routing_table"])
+        for task_name, providers in request.routing_table.items():
+            merged_routing_table[task_name.strip().lower()] = list(providers)
+
+        runtime_config.update(
+            router=router_instance,
+            daily_budget_usd=request.daily_budget_usd,
+            fallback_order=request.fallback_order,
+            routing_table=merged_routing_table,
+        )
+
+        config_payload = _build_brain_config_payload(router_instance)
+        logger.info(
+            "brain_config_updated",
+            providers=config_payload["available_providers"],
+            daily_budget_usd=config_payload["daily_budget_usd"],
+        )
+        return {
+            "status": "updated",
+            "message": "Runtime AI Brain configuration updated. Changes reset on restart.",
+            "edit_mode": "runtime_only",
+            "persists_across_restart": False,
+            "config": config_payload,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("update_brain_config_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to update brain config: {e}") from e
+
+
+@router.post("/brain/generate-script")
+async def generate_brain_script(request: GenerateScriptRequest) -> dict[str, Any]:
+    """Generate a selling script using the active persona and LLM router."""
+    try:
+        from src.brain.adapters.base import TaskType
+        from src.brain.persona import PersonaEngine
+
+        router_instance = get_llm_router()
+        if router_instance is None:
+            raise HTTPException(500, "LLM Router not initialized")
+
+        product_name = request.product_name.strip()
+        if not product_name:
+            raise HTTPException(400, "product_name is required")
+        if request.price <= 0:
+            raise HTTPException(400, "price must be greater than zero")
+
+        features = [feature.strip() for feature in request.features if feature.strip()]
+        persona = PersonaEngine()
+        product_context = f"{product_name} - Rp {request.price:,.0f}"
+        if features:
+            product_context += f" | Fitur: {', '.join(features)}"
+
+        response = await asyncio.wait_for(
+            router_instance.route(
+                system_prompt=persona.build_system_prompt(
+                    state="SELLING",
+                    product_context=product_context,
+                ),
+                user_prompt=persona.build_selling_script_prompt(
+                    product_name=product_name,
+                    price=request.price,
+                    features=features,
+                    target_duration_sec=request.target_duration_sec,
+                ),
+                task_type=TaskType.SELLING_SCRIPT,
+                preferred_provider=request.provider,
+            ),
+            timeout=90.0,
+        )
+
+        if not response.success:
+            raise HTTPException(500, f"LLM script generation failed: {response.error}")
+
+        get_show_director().update_brain_runtime(
+            provider=response.provider,
+            model=response.model,
+        )
+        return {
+            "success": True,
+            "script": response.text,
+            "provider": response.provider,
+            "model": response.model,
+            "latency_ms": round(response.latency_ms, 1),
+        }
+    except asyncio.TimeoutError:
+        logger.error("generate_brain_script_timeout")
+        raise HTTPException(504, "Script generation timed out after 90 seconds")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("generate_brain_script_error", error=str(e), exc_info=True)
+        raise HTTPException(500, f"Failed to generate script: {e}") from e
 
 
 @router.get("/director/runtime")
@@ -706,14 +1478,7 @@ async def list_prompt_revisions() -> list[dict[str, Any]]:
     """List all prompt revisions."""
     try:
         registry = get_prompt_registry()
-        with registry._connect() as conn:
-            rows = conn.execute(
-                """
-                SELECT id, slug, version, status, created_at, updated_at
-                FROM prompt_revisions
-                ORDER BY updated_at DESC
-                """
-            ).fetchall()
+        rows = registry.list_revisions()
         return [
             {
                 "id": row["id"],
@@ -734,32 +1499,11 @@ async def list_prompt_revisions() -> list[dict[str, Any]]:
 async def get_prompt_revision(revision_id: int) -> dict[str, Any]:
     """Get a specific prompt revision by ID."""
     try:
-        registry = get_prompt_registry()
-        with registry._connect() as conn:
-            row = conn.execute(
-                """
-                SELECT id, slug, version, status, templates_json, persona_json, created_at, updated_at
-                FROM prompt_revisions
-                WHERE id = ?
-                """,
-                (revision_id,)
-            ).fetchone()
-        
-        if row is None:
-            raise HTTPException(404, f"Prompt revision {revision_id} not found")
-        
-        return {
-            "id": row["id"],
-            "slug": row["slug"],
-            "version": row["version"],
-            "status": row["status"],
-            "templates": json.loads(row["templates_json"]),
-            "persona": json.loads(row["persona_json"]),
-            "created_at": row["created_at"],
-            "updated_at": row["updated_at"],
-        }
+        return get_prompt_registry().get_revision(revision_id)
     except HTTPException:
         raise
+    except ValueError as e:
+        raise _coerce_prompt_registry_error(e) from e
     except Exception as e:
         logger.error("get_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
         raise HTTPException(500, f"Failed to get prompt: {e}")
@@ -775,32 +1519,15 @@ class CreatePromptRequest(BaseModel):
 async def create_prompt_revision(request: CreatePromptRequest) -> dict[str, Any]:
     """Create a new prompt revision (always starts as draft)."""
     try:
-        registry = get_prompt_registry()
-        with registry._connect() as conn:
-            # Get next version for this slug
-            max_version = conn.execute(
-                "SELECT MAX(version) as max_v FROM prompt_revisions WHERE slug = ?",
-                (request.slug,)
-            ).fetchone()
-            next_version = (max_version["max_v"] or 0) + 1
-            
-            # Insert new revision
-            cursor = conn.execute(
-                """
-                INSERT INTO prompt_revisions (slug, version, status, templates_json, persona_json)
-                VALUES (?, ?, 'draft', ?, ?)
-                """,
-                (
-                    request.slug,
-                    next_version,
-                    json.dumps(request.templates, ensure_ascii=False),
-                    json.dumps(request.persona, ensure_ascii=False),
-                )
-            )
-            new_id = cursor.lastrowid
-        
-        logger.info("prompt_created", id=new_id, slug=request.slug, version=next_version)
-        return {"id": new_id, "slug": request.slug, "version": next_version, "status": "draft"}
+        revision = get_prompt_registry().create_revision(
+            slug=request.slug,
+            templates=request.templates,
+            persona=request.persona,
+        )
+        logger.info("prompt_created", id=revision["id"], slug=revision["slug"], version=revision["version"])
+        return {"id": revision["id"], "slug": revision["slug"], "version": revision["version"], "status": revision["status"]}
+    except ValueError as e:
+        raise _coerce_prompt_registry_error(e) from e
     except Exception as e:
         logger.error("create_prompt_error", error=str(e), exc_info=True)
         raise HTTPException(500, f"Failed to create prompt: {e}")
@@ -815,38 +1542,17 @@ class UpdatePromptRequest(BaseModel):
 async def update_prompt_revision(revision_id: int, request: UpdatePromptRequest) -> dict[str, Any]:
     """Update a draft prompt revision (only drafts can be edited)."""
     try:
-        registry = get_prompt_registry()
-        with registry._connect() as conn:
-            # Check if exists and is draft
-            row = conn.execute(
-                "SELECT status FROM prompt_revisions WHERE id = ?",
-                (revision_id,)
-            ).fetchone()
-            
-            if row is None:
-                raise HTTPException(404, f"Prompt revision {revision_id} not found")
-            
-            if row["status"] != "draft":
-                raise HTTPException(400, f"Cannot edit {row['status']} revision (only drafts can be edited)")
-            
-            # Update
-            conn.execute(
-                """
-                UPDATE prompt_revisions
-                SET templates_json = ?, persona_json = ?, updated_at = CURRENT_TIMESTAMP
-                WHERE id = ?
-                """,
-                (
-                    json.dumps(request.templates, ensure_ascii=False),
-                    json.dumps(request.persona, ensure_ascii=False),
-                    revision_id,
-                )
-            )
-        
+        get_prompt_registry().update_revision(
+            revision_id,
+            templates=request.templates,
+            persona=request.persona,
+        )
         logger.info("prompt_updated", id=revision_id)
         return {"id": revision_id, "status": "updated"}
     except HTTPException:
         raise
+    except ValueError as e:
+        raise _coerce_prompt_registry_error(e) from e
     except Exception as e:
         logger.error("update_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
         raise HTTPException(500, f"Failed to update prompt: {e}")
@@ -856,36 +1562,21 @@ async def update_prompt_revision(revision_id: int, request: UpdatePromptRequest)
 async def publish_prompt_revision(revision_id: int) -> dict[str, Any]:
     """Publish a draft revision (deactivates current active, activates this one)."""
     try:
-        registry = get_prompt_registry()
-        with registry._connect() as conn:
-            # Check if exists and is draft
-            row = conn.execute(
-                "SELECT status, slug FROM prompt_revisions WHERE id = ?",
-                (revision_id,)
-            ).fetchone()
-            
-            if row is None:
-                raise HTTPException(404, f"Prompt revision {revision_id} not found")
-            
-            if row["status"] != "draft":
-                raise HTTPException(400, f"Cannot publish {row['status']} revision (only drafts can be published)")
-            
-            # Deactivate current active for this slug
-            conn.execute(
-                "UPDATE prompt_revisions SET status = 'inactive' WHERE slug = ? AND status = 'active'",
-                (row["slug"],)
-            )
-            
-            # Activate this revision
-            conn.execute(
-                "UPDATE prompt_revisions SET status = 'active', updated_at = CURRENT_TIMESTAMP WHERE id = ?",
-                (revision_id,)
-            )
-        
-        logger.info("prompt_published", id=revision_id, slug=row["slug"])
-        return {"id": revision_id, "status": "active", "slug": row["slug"]}
+        revision = get_prompt_registry().publish_revision(revision_id)
+        get_show_director().update_brain_runtime(
+            prompt_revision=f'{revision["slug"]}:v{revision["version"]}',
+        )
+        logger.info("prompt_published", id=revision_id, slug=revision["slug"])
+        return {
+            "id": revision_id,
+            "status": revision["status"],
+            "slug": revision["slug"],
+            "version": revision["version"],
+        }
     except HTTPException:
         raise
+    except ValueError as e:
+        raise _coerce_prompt_registry_error(e) from e
     except Exception as e:
         logger.error("publish_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
         raise HTTPException(500, f"Failed to publish prompt: {e}")
@@ -895,27 +1586,13 @@ async def publish_prompt_revision(revision_id: int) -> dict[str, Any]:
 async def delete_prompt_revision(revision_id: int) -> dict[str, Any]:
     """Delete a draft prompt revision (only drafts can be deleted)."""
     try:
-        registry = get_prompt_registry()
-        with registry._connect() as conn:
-            # Check if exists and is draft
-            row = conn.execute(
-                "SELECT status FROM prompt_revisions WHERE id = ?",
-                (revision_id,)
-            ).fetchone()
-            
-            if row is None:
-                raise HTTPException(404, f"Prompt revision {revision_id} not found")
-            
-            if row["status"] != "draft":
-                raise HTTPException(400, f"Cannot delete {row['status']} revision (only drafts can be deleted)")
-            
-            # Delete
-            conn.execute("DELETE FROM prompt_revisions WHERE id = ?", (revision_id,))
-        
+        result = get_prompt_registry().delete_revision(revision_id)
         logger.info("prompt_deleted", id=revision_id)
-        return {"id": revision_id, "status": "deleted"}
+        return result
     except HTTPException:
         raise
+    except ValueError as e:
+        raise _coerce_prompt_registry_error(e) from e
     except Exception as e:
         logger.error("delete_prompt_error", revision_id=revision_id, error=str(e), exc_info=True)
         raise HTTPException(500, f"Failed to delete prompt: {e}")
@@ -934,6 +1611,7 @@ class GeneratePromptRequest(BaseModel):
 async def generate_prompt_templates(request: GeneratePromptRequest) -> dict[str, Any]:
     """Generate prompt templates using LLM based on product context and persona."""
     try:
+        registry = get_prompt_registry()
         router_instance = get_llm_router()
         if router_instance is None:
             raise HTTPException(500, "LLM Router not initialized")
@@ -1004,6 +1682,14 @@ Pastikan:
                 text = text.split("```")[1].split("```")[0].strip()
             
             generated = json.loads(text)
+            registry.validate_payload(
+                templates=generated.get("templates", {}),
+                persona=generated.get("persona", {}),
+            )
+            get_show_director().update_brain_runtime(
+                provider=response.provider,
+                model=response.model,
+            )
             
             logger.info(
                 "prompt_templates_generated",
@@ -1519,24 +2205,33 @@ async def validate_livetalking_engine() -> dict[str, Any]:
 
 @router.post("/validate/rtmp-target")
 async def validate_rtmp_target() -> dict[str, Any]:
-    """Validate RTMP target configuration."""
+    """Validate the active RTMP target, falling back to env bootstrap if none exists."""
     try:
-        checks = []
+        store = get_control_plane_store()
+        active_target = store.get_active_stream_target("tiktok")
+        if active_target is not None:
+            active_secret = store.get_stream_target_secret(int(active_target["id"]))
+            if active_secret is not None:
+                checks = _build_target_validation_checks(active_secret)
+                status = "pass" if all(check["passed"] for check in checks) else "fail"
+                persisted = store.save_stream_target_validation(int(active_target["id"]), status=status, checks=checks)
+                return {"status": status, "checks": checks, "target": persisted}
 
-        ffmpeg_status = check_ffmpeg_ready()
-        checks.append({
-            "check": "ffmpeg_available",
-            "passed": bool(ffmpeg_status["available"]),
-            "message": ffmpeg_status["path"] or "not found",
-        })
-
-        rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
-        stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
-        rtmp_ok = bool(rtmp_url and stream_key)
-        checks.append({"check": "rtmp_configured", "passed": rtmp_ok, "message": "configured" if rtmp_ok else "TIKTOK_RTMP_URL or TIKTOK_STREAM_KEY not set"})
-
-        all_pass = all(c["passed"] for c in checks)
-        return {"status": "pass" if all_pass else "fail", "checks": checks}
+        bootstrap_target = {
+            "platform": "tiktok",
+            "rtmp_url": os.getenv("TIKTOK_RTMP_URL", ""),
+            "stream_key": os.getenv("TIKTOK_STREAM_KEY", ""),
+        }
+        checks = _build_target_validation_checks(bootstrap_target)
+        checks.append(
+            {
+                "check": "control_plane_target",
+                "passed": False,
+                "message": "No active persisted TikTok stream target yet; using env bootstrap fallback",
+            }
+        )
+        status = "pass" if all(check["passed"] for check in checks[:-1]) else "fail"
+        return {"status": status, "checks": checks}
     except Exception as e:
         logger.error("validate_rtmp_error", error=str(e), exc_info=True)
         return {"status": "error", "checks": [], "error": str(e)}
@@ -1951,28 +2646,4 @@ async def validate_face_sync_smoke() -> dict[str, Any]:
         logger.error("validate_face_sync_smoke_error", error=str(e), exc_info=True)
         return {"status": "error", "checks": [], "error": str(e)}
 
-
-@router.post("/validate/rtmp-target")
-async def validate_rtmp_target() -> dict[str, Any]:
-    """Validate RTMP target configuration."""
-    try:
-        checks = []
-
-        ffmpeg_status = check_ffmpeg_ready()
-        checks.append({
-            "check": "ffmpeg_available",
-            "passed": bool(ffmpeg_status["available"]),
-            "message": ffmpeg_status["path"] or "not found",
-        })
-
-        rtmp_url = os.getenv("TIKTOK_RTMP_URL", "")
-        stream_key = os.getenv("TIKTOK_STREAM_KEY", "")
-        rtmp_ok = bool(rtmp_url and stream_key)
-        checks.append({"check": "rtmp_configured", "passed": rtmp_ok, "message": "configured" if rtmp_ok else "TIKTOK_RTMP_URL or TIKTOK_STREAM_KEY not set"})
-
-        all_pass = all(c["passed"] for c in checks)
-        return {"status": "pass" if all_pass else "fail", "checks": checks}
-    except Exception as e:
-        logger.error("validate_rtmp_error", error=str(e), exc_info=True)
-        return {"status": "error", "checks": [], "error": str(e)}
 

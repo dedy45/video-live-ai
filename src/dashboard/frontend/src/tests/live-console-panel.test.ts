@@ -77,6 +77,58 @@ vi.mock('../lib/api', () => ({
       affiliate_links: { shopee: 'https://example.com/shopee' },
     },
   ]),
+  getLiveSession: vi.fn().mockResolvedValue({
+    session: {
+      id: 11,
+      status: 'active',
+      platform: 'tiktok',
+      rotation_mode: 'operator_assisted',
+      qna_mode: 'enabled',
+    },
+    stream_target: {
+      id: 1,
+      label: 'Primary TikTok',
+      is_active: true,
+    },
+    state: {
+      current_mode: 'SOFT_PAUSED_FOR_QNA',
+      current_phase: 'answering',
+      rotation_paused: true,
+      pause_reason: 'viewer_question',
+      current_focus_product_id: 1,
+      pending_question: {
+        text: 'Apakah ada COD?',
+        reason: 'viewer_question',
+        answer_draft: 'Halo kak, untuk COD cek opsi pembayaran di checkout ya.',
+      },
+    },
+    products: [
+      {
+        id: 100,
+        product_id: 1,
+        product: {
+          id: 1,
+          name: 'Kaos Premium',
+          price_formatted: 'Rp 89.000',
+          commission_rate: 12,
+          affiliate_links: { tiktok: 'https://example.com/tiktok' },
+          selling_points: ['Cotton premium', 'Adem dipakai'],
+        },
+      },
+      {
+        id: 101,
+        product_id: 2,
+        product: {
+          id: 2,
+          name: 'Earbuds Wireless',
+          price_formatted: 'Rp 249.000',
+          commission_rate: 10,
+          affiliate_links: { shopee: 'https://example.com/shopee' },
+          selling_points: ['Bluetooth 5.3'],
+        },
+      },
+    ],
+  }),
   getLiveTalkingConfig: vi.fn().mockResolvedValue({
     debug_urls: {
       webrtcapi: 'http://127.0.0.1:8010/webrtcapi.html',
@@ -135,11 +187,20 @@ describe('LiveConsolePanel', () => {
 
     expect(await screen.findByText(/konsol live/i)).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /produk aktif/i })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: /kontrol sesi/i })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /skrip panduan/i })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /aksi cepat/i })).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: /director runtime/i })).toBeInTheDocument();
-    expect(await screen.findByText(/default-live-commerce:v1/i)).toBeInTheDocument();
+    expect((await screen.findAllByText(/default-live-commerce:v1/i)).length).toBeGreaterThan(0);
+    expect(await screen.findByText(/SOFT_PAUSED_FOR_QNA/i)).toBeInTheDocument();
     expect((await screen.findAllByText(/Kaos Premium/i)).length).toBeGreaterThan(0);
     expect(await screen.findByRole('button', { name: /Tes Suara/i })).toBeInTheDocument();
+  });
+
+  it('shows pending question answer draft when qna pause is active', async () => {
+    render(LiveConsolePanel);
+
+    expect(await screen.findByText(/Pertanyaan tertunda: Apakah ada COD\?/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Draft jawaban: Halo kak, untuk COD cek opsi pembayaran di checkout ya\./i)).toBeInTheDocument();
   });
 });

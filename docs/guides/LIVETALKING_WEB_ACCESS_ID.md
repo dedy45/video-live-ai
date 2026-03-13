@@ -17,7 +17,7 @@ Halaman-halaman ini **bukan dashboard utama proyek**. Fungsinya adalah:
 Dashboard utama tetap:
 
 ```text
-http://localhost:8000/dashboard
+http://localhost:8001/dashboard
 ```
 
 Debug pages vendor biasanya berada di:
@@ -114,7 +114,7 @@ Fungsi:
 
 Jika engine tidak jelas bermasalah di mana, urutan debug paling aman:
 
-1. Buka `http://localhost:8000/dashboard`
+1. Buka `http://localhost:8001/dashboard`
 2. Cek readiness dan health di dashboard utama
 3. Jika engine dicurigai bermasalah, buka:
 
@@ -156,4 +156,3 @@ Halo, ini test avatar.
 - Simpan halaman vendor apa adanya untuk memudahkan update upstream
 - Letakkan semua logika operator dan validasi sistem di dashboard proyek sendiri
 - Gunakan panduan ini sebagai jembatan Bahasa Indonesia untuk tim internal
-

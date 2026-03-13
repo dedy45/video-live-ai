@@ -20,6 +20,7 @@ def test_config_loads_defaults() -> None:
     assert config.app.version == "0.1.0"
     assert config.gpu.vram_budget_mb == 20000
     assert config.performance.e2e_latency_target_ms == 2000
+    assert config.dashboard.port == 8001
 
 
 def test_config_loads_from_yaml(tmp_path: Path) -> None:
@@ -79,6 +80,14 @@ def test_llm_config_defaults() -> None:
     assert llm.claude.max_tokens == 2000
     assert llm.daily_budget_usd == 5.0
     assert "gemini" in llm.fallback_order
+
+
+def test_env_dashboard_port_default_matches_runtime_port() -> None:
+    """Env defaults should align with the canonical app port."""
+    from src.config.loader import EnvSettings
+
+    env = EnvSettings()
+    assert env.dashboard_port == 8001
 
 
 def test_latency_budget_sums_correctly() -> None:

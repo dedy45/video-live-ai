@@ -3,11 +3,13 @@
   import {
     emergencyStop,
     getDirectorRuntime,
+    getLiveSession,
     getLiveTalkingConfig,
     getOpsSummary,
     getProducts,
     getRuntimeTruth,
     getStatus,
+    setLiveSessionFocus,
     startLiveTalking,
     stopLiveTalking,
     switchProduct,
@@ -18,13 +20,14 @@
   import ActionReceipt from '../common/ActionReceipt.svelte';
   import DirectorRuntimePanel from './DirectorRuntimePanel.svelte';
   import type { ActionReceipt as ReceiptType } from '../../lib/stores/actions';
-  import type { DirectorRuntimeContract, EngineConfig, OpsSummary, RuntimeTruth } from '../../lib/types';
+  import type { DirectorRuntimeContract, EngineConfig, LiveSessionSummary, OpsSummary, RuntimeTruth } from '../../lib/types';
 
   let status = $state<Record<string, any>>({});
   let opsSummary = $state<OpsSummary | null>(null);
   let truth = $state<RuntimeTruth | null>(null);
   let config = $state<EngineConfig | null>(null);
   let directorRuntime = $state<DirectorRuntimeContract | null>(null);
+  let liveSession = $state<LiveSessionSummary | null>(null);
   let products = $state<any[]>([]);
   let loading = $state(true);
   let error = $state('');
@@ -47,13 +50,14 @@
   async function refresh() {
     directorError = '';
     try {
-      const [nextStatus, nextOpsSummary, nextTruth, nextProducts, nextConfig, nextDirectorRuntime] = await Promise.allSettled([
+      const [nextStatus, nextOpsSummary, nextTruth, nextProducts, nextConfig, nextDirectorRuntime, nextLiveSession] = await Promise.allSettled([
         getStatus(),
         getOpsSummary() as Promise<OpsSummary>,
         getRuntimeTruth() as Promise<RuntimeTruth>,
         getProducts(),
         getLiveTalkingConfig() as Promise<EngineConfig>,
         getDirectorRuntime() as Promise<DirectorRuntimeContract>,
+        getLiveSession() as Promise<LiveSessionSummary>,
       ]);
 
       const loadErrors: string[] = [];
@@ -100,6 +104,13 @@
         directorError = getErrorMessage(nextDirectorRuntime.reason, 'Runtime director belum bisa dimuat.');
       }
 
+      if (nextLiveSession.status === 'fulfilled') {
+        liveSession = nextLiveSession.value;
+      } else {
+        liveSession = null;
+        loadErrors.push(getErrorMessage(nextLiveSession.reason, 'Sesi live gagal dimuat.'));
+      }
+
       error = loadErrors.join(' ');
     } catch (nextError: unknown) {
       error = getErrorMessage(nextError, 'Failed to load live console');
@@ -124,12 +135,26 @@
   }
 
   const activeProduct = $derived.by(() => {
-    if (!products.length) return null;
+    const focusId = liveSession?.state?.current_focus_product_id;
+    if (focusId) {
+      const fromSession = liveSession?.products.find((item) => item.product_id === focusId)?.product;
+      if (fromSession) return fromSession;
+      const fromCatalog = products.find((product) => product.id === focusId);
+      if (fromCatalog) return fromCatalog;
+    }
+
+    if (!products.length) return liveSession?.products[0]?.product || null;
     const currentId = status.current_product?.id;
-    return products.find((product) => product.id === currentId) || products[0];
+    return products.find((product) => product.id === currentId) || liveSession?.products[0]?.product || products[0];
   });
 
   const queuedProducts = $derived.by(() => {
+    if (liveSession?.products?.length) {
+      const currentId = activeProduct?.id;
+      return liveSession.products
+        .filter((item) => item.product_id !== currentId)
+        .map((item) => ({ ...item.product, session_product_id: item.id }));
+    }
     const currentId = activeProduct?.id;
     return products.filter((product) => product.id !== currentId);
   });
@@ -167,6 +192,16 @@
       receipt = { action: 'product.rotate', status: 'error', message: 'Tidak ada produk cadangan untuk dirotasi', timestamp: Date.now() };
       return;
     }
+
+    if (liveSession?.session && nextProduct.session_product_id) {
+      await runAction(
+        'session.focus',
+        () => setLiveSessionFocus({ session_product_id: nextProduct.session_product_id }),
+        `Fokus sesi dipindah ke ${nextProduct.name}`,
+      );
+      return;
+    }
+
     await runAction(
       'product.rotate',
       () => switchProduct(nextProduct.id),
@@ -314,6 +349,22 @@
             <button class="secondary-btn" onclick={handleAvatarToggle}>{faceRunning ? 'Hentikan Avatar' : 'Jalankan Avatar'}</button>
             <button class="critical-btn" onclick={handleEmergencyStop}>Stop Darurat</button>
           </div>
+        </Card>
+
+        <Card title="Kontrol Sesi" size="lg">
+          <div class="summary-list">
+            <div class="summary-row"><span>Status sesi</span><strong>{liveSession?.session?.status || 'idle'}</strong></div>
+            <div class="summary-row"><span>Mode</span><strong>{liveSession?.state?.current_mode || 'unknown'}</strong></div>
+            <div class="summary-row"><span>Pause reason</span><strong>{liveSession?.state?.pause_reason || 'tidak ada'}</strong></div>
+            <div class="summary-row"><span>Target RTMP</span><strong>{liveSession?.stream_target?.label || 'belum aktif'}</strong></div>
+            <div class="summary-row"><span>Produk sesi</span><strong>{liveSession?.products?.length || 0}</strong></div>
+          </div>
+          {#if liveSession?.state?.pending_question?.text}
+            <div class="script-hint">Pertanyaan tertunda: {liveSession.state.pending_question.text}</div>
+          {/if}
+          {#if liveSession?.state?.pending_question?.answer_draft}
+            <div class="script-hint">Draft jawaban: {liveSession.state.pending_question.answer_draft}</div>
+          {/if}
         </Card>
 
         <Card title="Ringkasan Sesi" size="lg">

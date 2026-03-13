@@ -22,7 +22,7 @@ All control flow, configuration, health checks, API endpoints, and stream manage
 live in this repository. `videoliveai` is the single orchestrator that:
 
 - Loads config and environment
-- Manages the FastAPI server on port 8000
+- Manages the FastAPI server on port 8001
 - Exposes all operator-facing API endpoints under `/api/*`
 - Serves the operator dashboard at `/dashboard`
 - Controls LiveTalking as a subprocess via the process manager
@@ -40,7 +40,7 @@ LiveTalking is treated as a **vendor sidecar**, not as a co-equal application.
 ### 3. `src/dashboard` = Only Operator Dashboard
 
 - The operator still opens **one UI path**: `/dashboard`
-- In local lab this is typically `http://localhost:8000/dashboard`
+- In local lab this is typically `http://localhost:8001/dashboard`
 - In production this becomes a **server-hosted ops controller** exposed through `http://SERVER_IP_OR_DOMAIN/dashboard` behind reverse proxy auth/TLS
 - This dashboard (Svelte, built to static files) is the single source of truth for:
   - System health and readiness

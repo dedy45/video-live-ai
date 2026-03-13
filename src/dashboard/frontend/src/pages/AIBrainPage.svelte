@@ -65,6 +65,12 @@
    <div class="error-banner" role="alert">{error}</div>
  {/if}
 
+ {#if brainConfig?.edit_mode === 'runtime_only'}
+   <div class="info-banner" role="status">
+     Perubahan config AI Brain hanya berlaku selama proses server hidup dan akan reset saat restart.
+   </div>
+ {/if}
+
  {#if loading}
    <div class="loading-panel">Memuat AI Brain...</div>
  {:else}
@@ -170,6 +176,7 @@
  }
 
  .error-banner,
+ .info-banner,
  .loading-panel {
    padding: 14px 16px;
    border-radius: 8px;
@@ -180,6 +187,12 @@
  .error-banner {
    color: var(--error);
    border-color: rgba(239, 68, 68, 0.3);
+ }
+
+ .info-banner {
+   color: var(--text);
+   border-color: rgba(59, 130, 246, 0.35);
+   background: rgba(59, 130, 246, 0.08);
  }
 
  /* Tab Navigation */

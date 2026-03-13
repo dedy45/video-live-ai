@@ -1,7 +1,7 @@
 import requests
 
 try:
-    url = "http://localhost:8000/api/brain/test"
+    url = "http://localhost:8001/api/brain/test"
     payload = {
         "task_type": "selling_script",
         "system_prompt": "You are a helpful assistant.",

@@ -7,7 +7,7 @@
 
 | Service | Default Port | Env Variable | Protocol |
 |---------|-------------|--------------|----------|
-| FastAPI main app | `8000` | `DASHBOARD_PORT` | HTTP/WS |
+| FastAPI main app | `8001` | `DASHBOARD_PORT` | HTTP/WS |
 | LiveTalking engine | `8010` | `LIVETALKING_PORT` | HTTP/WebRTC |
 | Ollama (local LLM) | `11434` | `LOCAL_LLM_URL` | HTTP |
 | Gemini proxy | `8091` | `LOCAL_GEMINI_URL` | HTTP |

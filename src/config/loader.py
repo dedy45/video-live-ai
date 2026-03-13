@@ -148,7 +148,7 @@ class CompositionConfig(BaseModel):
 
 class DashboardConfig(BaseModel):
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8001
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
 
 
@@ -220,7 +220,7 @@ class EnvSettings(BaseSettings):
 
     # Dashboard
     dashboard_host: str = "0.0.0.0"
-    dashboard_port: int = 8000
+    dashboard_port: int = 8001
     dashboard_username: str = "admin"
     dashboard_password: str = "changeme"
 

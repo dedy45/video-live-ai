@@ -48,7 +48,7 @@ Expected result on the current snapshot:
 |------|---------|
 | `uv run python -m src.main` | Main FastAPI app |
 | `external/livetalking/app.py` | Vendor engine entrypoint |
-| `http://localhost:8000/dashboard` | Main operator dashboard |
+| `http://localhost:8001/dashboard` | Main operator dashboard |
 | `http://localhost:8010/*.html` | Vendor debug pages only |
 
 ## Model Guidance

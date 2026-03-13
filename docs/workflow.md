@@ -49,7 +49,7 @@ See `docs/specs/local_audio_vertical_slice_fish_speech.md`.
 
 - `cd src/dashboard/frontend && npm run build` -> PASS
 - `cd src/dashboard/frontend && npm run test` -> PASS (`67 passed`, 19 test files)
-- `cd src/dashboard/frontend && npm run test:e2e` -> BLOCKED on the current Windows host because the Playwright webServer startup hits a local port `8181` bind conflict before the browser phase starts
+- `cd src/dashboard/frontend && npm run test:e2e` -> BLOCKED on the current Windows host because the Playwright webServer startup hits a local port `8001` bind conflict before the browser phase starts
 - `uv run pytest tests -q -p no:cacheprovider` -> `255 passed, 1 skipped`
 - `uv run python scripts/verify_pipeline.py` -> `11/11 layers passed`
 - `uv run python scripts/check_real_mode_readiness.py --json` -> `READY FOR REAL MODE`
@@ -104,10 +104,10 @@ uv run python scripts/manage.py serve --mock
 
 | URL | Purpose |
 |-----|---------|
-| `http://localhost:8000/dashboard` | Local operator dashboard / truth lab |
+| `http://localhost:8001/dashboard` | Local operator dashboard / truth lab |
 | `http://SERVER_IP_OR_DOMAIN/dashboard` | Server-hosted ops controller |
-| `http://localhost:8000/docs` | FastAPI schema |
-| `http://localhost:8000/diagnostic/` | Diagnostics |
+| `http://localhost:8001/docs` | FastAPI schema |
+| `http://localhost:8001/diagnostic/` | Diagnostics |
 | `http://localhost:8010/*.html` | LiveTalking vendor debug pages |
 
 > Production deployment requires a reverse proxy in front of FastAPI for auth and TLS.

@@ -3,8 +3,12 @@
  let price = $state(0);
  let features = $state('');
  let duration = $state(30);
+ let provider = $state('');
  let generating = $state(false);
  let generatedScript = $state('');
+ let generatedProvider = $state('');
+ let generatedModel = $state('');
+ let generatedLatencyMs = $state<number | null>(null);
  let error = $state('');
 
  async function generateScript() {
@@ -25,18 +29,22 @@
          product_name: productName,
          price,
          features: features.split('\n').filter(f => f.trim()),
-         target_duration_sec: duration
+         target_duration_sec: duration,
+         provider: provider || null,
        })
      });
 
-     if (response.ok) {
-       const data = await response.json();
-       generatedScript = data.script || 'Script generated successfully';
-     } else {
-       error = 'Failed to generate script';
+     const data = await response.json();
+     if (!response.ok) {
+       throw new Error(data.detail || 'Failed to generate script');
      }
+
+     generatedScript = data.script || 'Script generated successfully';
+     generatedProvider = data.provider || '';
+     generatedModel = data.model || '';
+     generatedLatencyMs = typeof data.latency_ms === 'number' ? data.latency_ms : null;
    } catch (e: any) {
-     error = e.message;
+     error = e.message || 'Failed to generate script';
    } finally {
      generating = false;
    }
@@ -47,9 +55,13 @@
    price = 0;
    features = '';
    duration = 30;
-   generatedScript = '';
-   error = '';
- }
+    provider = '';
+    generatedScript = '';
+    generatedProvider = '';
+    generatedModel = '';
+    generatedLatencyMs = null;
+    error = '';
+  }
 </script>
 
 <div class="script-generator">
@@ -107,6 +119,17 @@
          class="input"
        />
      </div>
+
+     <div class="form-group">
+       <label for="provider">LLM Provider</label>
+       <select id="provider" bind:value={provider} class="input">
+         <option value="">Auto</option>
+         <option value="groq">Groq</option>
+         <option value="gemini">Gemini</option>
+         <option value="claude">Claude</option>
+         <option value="gpt4o">GPT-4o</option>
+       </select>
+     </div>
    </div>
 
    <div class="form-actions">
@@ -120,6 +143,15 @@
  {#if generatedScript}
    <div class="result-section">
      <h3>📄 Generated Script</h3>
+     <div class="result-meta">
+       <span><strong>Provider:</strong> {generatedProvider || 'auto'}</span>
+       {#if generatedModel}
+         <span><strong>Model:</strong> {generatedModel}</span>
+       {/if}
+       {#if generatedLatencyMs !== null}
+         <span><strong>Latency:</strong> {generatedLatencyMs} ms</span>
+       {/if}
+     </div>
      <div class="script-output">
        <pre>{generatedScript}</pre>
      </div>
@@ -247,6 +279,14 @@
    background: rgba(255, 255, 255, 0.02);
    border-radius: 8px;
    border: 1px solid var(--border);
+ }
+
+ .result-meta {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 12px;
+   color: var(--text-secondary);
+   font-size: 14px;
  }
 
  .script-output {

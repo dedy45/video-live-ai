@@ -2,7 +2,7 @@ import requests
 import json
 
 # Test endpoint
-base_url = "http://localhost:8000"
+base_url = "http://localhost:8001"
 
 print("Testing Prompt Registry API endpoints...")
 print("=" * 60)
@@ -20,7 +20,7 @@ try:
     else:
         print(f"   Error: {response.text}")
 except requests.exceptions.ConnectionError:
-    print("   ✗ Server not running at localhost:8000")
+    print("   ✗ Server not running at localhost:8001")
 except Exception as e:
     print(f"   ✗ Error: {e}")
 

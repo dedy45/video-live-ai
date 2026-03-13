@@ -13,6 +13,8 @@
  let formSlug = $state('');
  let formTemplates: Record<string, string> = $state({});
  let formPersona: Record<string, any> = $state({});
+ let catchphrasesText = $state('');
+ let forbiddenTopicsText = $state('');
 
  // Generate form state
  let generateProductContext = $state('Produk fashion dan lifestyle');
@@ -57,11 +59,28 @@
    }
  }
 
+ function splitLines(value: string): string[] {
+   return value
+     .split('\n')
+     .map(item => item.trim())
+     .filter(Boolean);
+ }
+
+ function syncPersonaTextareas() {
+   catchphrasesText = Array.isArray(formPersona.catchphrases)
+     ? formPersona.catchphrases.join('\n')
+     : '';
+   forbiddenTopicsText = Array.isArray(formPersona.forbidden_topics)
+     ? formPersona.forbidden_topics.join('\n')
+     : '';
+ }
+
  function startEdit() {
    if (!selectedRevision) return;
    formSlug = selectedRevision.slug;
    formTemplates = { ...selectedRevision.templates };
    formPersona = { ...selectedRevision.persona };
+   syncPersonaTextareas();
    mode = 'edit';
  }
 
@@ -84,6 +103,7 @@
      catchphrases: [],
      forbidden_topics: [],
    };
+   syncPersonaTextareas();
    mode = 'create';
  }
 
@@ -120,6 +140,7 @@
        formSlug = 'generated-' + Date.now();
        formTemplates = result.templates;
        formPersona = result.persona;
+       syncPersonaTextareas();
        mode = 'create';
        error = '';
      } else {
@@ -136,6 +157,12 @@
    loading = true;
    error = '';
    try {
+     const personaPayload = {
+       ...formPersona,
+       catchphrases: splitLines(catchphrasesText),
+       forbidden_topics: splitLines(forbiddenTopicsText),
+     };
+
      if (mode === 'create') {
        const response = await fetch('/api/brain/prompts', {
          method: 'POST',
@@ -143,20 +170,26 @@
          body: JSON.stringify({
            slug: formSlug,
            templates: formTemplates,
-           persona: formPersona
+           persona: personaPayload
          })
        });
-       if (!response.ok) throw new Error('Failed to create revision');
+       if (!response.ok) {
+         const errorData = await response.json().catch(() => ({}));
+         throw new Error(errorData.detail || 'Failed to create revision');
+       }
      } else if (mode === 'edit' && selectedRevision) {
        const response = await fetch(`/api/brain/prompts/${selectedRevision.id}`, {
          method: 'PUT',
          headers: { 'Content-Type': 'application/json' },
          body: JSON.stringify({
            templates: formTemplates,
-           persona: formPersona
+           persona: personaPayload
          })
        });
-       if (!response.ok) throw new Error('Failed to update revision');
+       if (!response.ok) {
+         const errorData = await response.json().catch(() => ({}));
+         throw new Error(errorData.detail || 'Failed to update revision');
+       }
      }
      await loadRevisions();
      mode = 'list';
@@ -174,7 +207,10 @@
      const response = await fetch(`/api/brain/prompts/${id}/publish`, {
        method: 'POST'
      });
-     if (!response.ok) throw new Error('Failed to publish revision');
+     if (!response.ok) {
+       const errorData = await response.json().catch(() => ({}));
+       throw new Error(errorData.detail || 'Failed to publish revision');
+     }
      await loadRevisions();
      mode = 'list';
    } catch (e: any) {
@@ -197,7 +233,10 @@
      const response = await fetch(`/api/brain/prompts/${deleteTarget}`, {
        method: 'DELETE'
      });
-     if (!response.ok) throw new Error('Failed to delete revision');
+     if (!response.ok) {
+       const errorData = await response.json().catch(() => ({}));
+       throw new Error(errorData.detail || 'Failed to delete revision');
+     }
      await loadRevisions();
      showDeleteConfirm = false;
      deleteTarget = null;
@@ -399,31 +438,49 @@
      <h4>{mode === 'create' ? 'Create New Revision' : 'Edit Draft Revision'}</h4>
 
      <div class="form-group">
-       <label>Slug</label>
-       <input type="text" bind:value={formSlug} disabled={mode === 'edit'} />
+       <label for="prompt-slug">Slug</label>
+       <input id="prompt-slug" type="text" bind:value={formSlug} disabled={mode === 'edit'} />
      </div>
 
      <div class="form-section">
        <h5>Persona</h5>
        <div class="form-group">
-         <label>Name</label>
-         <input type="text" bind:value={formPersona.name} />
+         <label for="persona-name">Name</label>
+         <input id="persona-name" type="text" bind:value={formPersona.name} />
        </div>
        <div class="form-group">
-         <label>Personality</label>
-         <input type="text" bind:value={formPersona.personality} />
+         <label for="persona-personality">Personality</label>
+         <input id="persona-personality" type="text" bind:value={formPersona.personality} />
        </div>
        <div class="form-group">
-         <label>Language</label>
-         <input type="text" bind:value={formPersona.language} />
+         <label for="persona-language">Language</label>
+         <input id="persona-language" type="text" bind:value={formPersona.language} />
        </div>
        <div class="form-group">
-         <label>Tone</label>
-         <input type="text" bind:value={formPersona.tone} />
+         <label for="persona-tone">Tone</label>
+         <input id="persona-tone" type="text" bind:value={formPersona.tone} />
        </div>
        <div class="form-group">
-         <label>Expertise</label>
-         <input type="text" bind:value={formPersona.expertise} />
+         <label for="persona-expertise">Expertise</label>
+         <input id="persona-expertise" type="text" bind:value={formPersona.expertise} />
+       </div>
+       <div class="form-group">
+         <label for="persona-catchphrases">Catchphrases</label>
+         <textarea
+           id="persona-catchphrases"
+           bind:value={catchphrasesText}
+           rows="4"
+           placeholder="Satu catchphrase per baris"
+         ></textarea>
+       </div>
+       <div class="form-group">
+         <label for="persona-forbidden-topics">Forbidden Topics</label>
+         <textarea
+           id="persona-forbidden-topics"
+           bind:value={forbiddenTopicsText}
+           rows="4"
+           placeholder="Satu topik terlarang per baris"
+         ></textarea>
        </div>
      </div>
 
@@ -431,8 +488,8 @@
        <h5>Templates</h5>
        {#each Object.keys(formTemplates) as key}
          <div class="form-group">
-           <label>{key}</label>
-           <textarea bind:value={formTemplates[key]} rows="6"></textarea>
+           <label for={"template-" + key}>{key}</label>
+           <textarea id={"template-" + key} bind:value={formTemplates[key]} rows="6"></textarea>
          </div>
        {/each}
      </div>
@@ -448,9 +505,9 @@
 
  <!-- Delete Confirmation Modal -->
  {#if showDeleteConfirm}
-   <div class="modal-overlay" onclick={cancelDelete}>
-     <div class="modal" onclick={(e) => e.stopPropagation()}>
-       <h4>Confirm Delete</h4>
+   <div class="modal-overlay">
+     <div class="modal" role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title">
+       <h4 id="delete-dialog-title">Confirm Delete</h4>
        <p>Are you sure you want to delete this draft revision? This action cannot be undone.</p>
        <div class="modal-actions">
          <button class="btn-danger" onclick={handleDelete} disabled={loading}>

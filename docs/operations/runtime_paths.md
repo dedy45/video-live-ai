@@ -19,7 +19,7 @@
 
 | Service | Port | Variable |
 |---------|------|----------|
-| **FastAPI (main app)** | `8000` | `DASHBOARD_PORT` |
+| **FastAPI (main app)** | `8001` | `DASHBOARD_PORT` |
 | **LiveTalking engine** | `8010` | `LIVETALKING_PORT` |
 | **Local LLM (Ollama)** | `11434` | `LOCAL_LLM_URL` |
 | **Local Gemini Proxy** | `8091` | `LOCAL_GEMINI_URL` |
@@ -28,9 +28,9 @@
 
 | URL | Purpose | Who uses it |
 |-----|---------|-------------|
-| `http://localhost:8000/dashboard` | Operator dashboard | Operators |
-| `http://localhost:8000/docs` | API documentation | Developers |
-| `http://localhost:8000/diagnostic/` | System diagnostic | Operators/Devs |
+| `http://localhost:8001/dashboard` | Operator dashboard | Operators |
+| `http://localhost:8001/docs` | API documentation | Developers |
+| `http://localhost:8001/diagnostic/` | System diagnostic | Operators/Devs |
 | `http://localhost:8010/webrtcapi.html` | LiveTalking debug (WebRTC) | Developers only |
 | `http://localhost:8010/rtcpushapi.html` | LiveTalking debug (RTC push) | Developers only |
 

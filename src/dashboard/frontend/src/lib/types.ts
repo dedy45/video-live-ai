@@ -285,6 +285,15 @@ export interface Product {
   price_formatted: string;
   category: string;
   is_active: boolean;
+  stock?: number;
+  margin_percent?: number;
+  description?: string;
+  image_path?: string;
+  affiliate_links?: Record<string, string>;
+  selling_points?: string[];
+  commission_rate?: number;
+  objection_handling?: Record<string, string>;
+  compliance_notes?: string;
 }
 
 export interface ChatEvent {
@@ -312,4 +321,66 @@ export interface StatusBadgeProps {
   label: string;
   size?: 'sm' | 'md' | 'lg';
   showDot?: boolean;
+}
+
+export interface StreamTarget {
+  id: number;
+  platform: string;
+  label: string;
+  rtmp_url: string;
+  stream_key_masked: string;
+  is_active: boolean;
+  enabled?: boolean;
+  validation_status: string;
+  validation_checks?: Array<{ check: string; passed: boolean; message: string }>;
+  last_validated_at?: string | null;
+}
+
+export interface LiveSessionState {
+  current_mode: string;
+  current_phase?: string;
+  rotation_paused: boolean;
+  pause_reason: string;
+  current_focus_product_id: number | null;
+  current_focus_session_product_id?: number | null;
+  pending_question?: {
+    text?: string;
+    reason?: string;
+    answer_draft?: string;
+    task_type?: string;
+    answer_provider?: string;
+    answer_model?: string;
+    safety?: { safe?: boolean; reason_code?: string; rewrite?: string };
+  } | null;
+  awaiting_operator?: boolean;
+  stream_status?: string;
+}
+
+export interface SessionProduct {
+  id: number;
+  session_id?: number;
+  product_id: number;
+  queue_order?: number;
+  enabled_for_rotation?: boolean;
+  operator_priority?: number;
+  ai_score?: number;
+  state?: string;
+  product: Product;
+}
+
+export interface LiveSessionSummary {
+  session: {
+    id: number;
+    platform: string;
+    status: string;
+    stream_target_id?: number;
+    rotation_mode?: string;
+    qna_mode?: string;
+    pause_reason?: string;
+    started_at?: string;
+    ended_at?: string | null;
+  } | null;
+  stream_target: StreamTarget | null;
+  state: LiveSessionState | null;
+  products: SessionProduct[];
 }

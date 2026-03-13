@@ -98,7 +98,7 @@ Ini pemisahan paling penting agar tidak bingung:
 
 | UI | URL | Fungsi |
 |----|-----|--------|
-| Operator Dashboard | `http://localhost:8000/dashboard` atau `http://SERVER_IP_OR_DOMAIN/dashboard` | Dashboard utama untuk validasi, kontrol, incident review, dan ops summary |
+| Operator Dashboard | `http://localhost:8001/dashboard` atau `http://SERVER_IP_OR_DOMAIN/dashboard` | Dashboard utama untuk validasi, kontrol, incident review, dan ops summary |
 | Vendor Debug Pages | `http://localhost:8010/*.html` | Halaman debug LiveTalking, bukan dashboard operator |
 
 ### Aturan penggunaan
@@ -185,7 +185,7 @@ Dashboard operator
 
 | Komponen | Port | Catatan |
 |----------|------|---------|
-| FastAPI main app | `8000` | dashboard operator, API, diagnostic |
+| FastAPI main app | `8001` | dashboard operator, API, diagnostic |
 | LiveTalking vendor engine | `8010` | preview dan debug vendor |
 
 ### Entry points

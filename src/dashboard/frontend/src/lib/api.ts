@@ -4,10 +4,13 @@ import type {
   DirectorRuntimeContract,
   EngineConfig,
   EngineStatus,
+  LiveSessionSummary,
   LiveTalkingDebugTargets,
   OperatorActionResult,
+  Product,
   ReadinessResult,
   RuntimeTruth,
+  StreamTarget,
   SystemStatus,
   ValidationResult,
   VoiceTestSpeakResult,
@@ -61,7 +64,19 @@ export const validateSoakSanity = () => request<Record<string, any>>('/validate/
 export const getValidationHistory = () => request<any[]>('/validation/history');
 
 // Products
-export const getProducts = () => request<any[]>('/products');
+export const getProducts = () => request<Product[]>('/products');
+export const createProduct = (payload: Partial<Product> & { name: string; price: number }) =>
+  request<Product>('/products', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const updateProduct = (productId: number, payload: Partial<Product> & { name: string; price: number }) =>
+  request<Product>(`/products/${productId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+export const deleteProduct = (productId: number) =>
+  request<Record<string, any>>(`/products/${productId}`, { method: 'DELETE' });
 
 // Revenue
 export const getRevenue = (hours = 1) => request<Record<string, any>>(`/analytics/revenue?hours=${hours}`);
@@ -88,6 +103,44 @@ export const startStream = () => request<Record<string, any>>('/stream/start', {
 export const stopStream = () => request<Record<string, any>>('/stream/stop', { method: 'POST' });
 export const emergencyStop = () => request<Record<string, any>>('/emergency-stop', { method: 'POST' });
 export const emergencyReset = () => request<Record<string, any>>('/emergency-reset', { method: 'POST' });
+export const getStreamTargets = () => request<StreamTarget[]>('/stream-targets');
+export const createStreamTarget = (payload: { platform: string; label: string; rtmp_url: string; stream_key: string; enabled?: boolean }) =>
+  request<StreamTarget>('/stream-targets', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const updateStreamTarget = (targetId: number, payload: { platform: string; label: string; rtmp_url: string; stream_key: string; enabled?: boolean }) =>
+  request<StreamTarget>(`/stream-targets/${targetId}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  });
+export const validateStreamTarget = (targetId: number) =>
+  request<Record<string, any>>(`/stream-targets/${targetId}/validate`, { method: 'POST' });
+export const activateStreamTarget = (targetId: number) =>
+  request<Record<string, any>>(`/stream-targets/${targetId}/activate`, { method: 'POST' });
+export const getLiveSession = () => request<LiveSessionSummary>('/live-session');
+export const startLiveSession = (payload: { platform: string }) =>
+  request<Record<string, any>>('/live-session/start', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const stopLiveSession = () => request<Record<string, any>>('/live-session/stop', { method: 'POST' });
+export const addLiveSessionProducts = (payload: { product_ids: number[] }) =>
+  request<Record<string, any>>('/live-session/products', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const setLiveSessionFocus = (payload: { session_product_id: number }) =>
+  request<Record<string, any>>('/live-session/focus', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const pauseLiveSession = (payload: { reason: string; question?: string }) =>
+  request<Record<string, any>>('/live-session/pause', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+export const resumeLiveSession = () => request<Record<string, any>>('/live-session/resume', { method: 'POST' });
 
 // Pipeline
 export const getPipelineState = () => request<Record<string, any>>('/pipeline/state');

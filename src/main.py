@@ -22,6 +22,7 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI, Request
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 
 # Add src to path for clean imports
@@ -59,6 +60,11 @@ NO_STORE_PATH_PREFIXES = (
     "/api/ws/dashboard",
     "/dashboard",
 )
+FAVICON_SVG = """<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+<rect width="64" height="64" rx="14" fill="#04111f"/>
+<path d="M16 20h32v8H36v16h-8V28H16z" fill="#22d3ee"/>
+<circle cx="46" cy="46" r="6" fill="#ffd600"/>
+</svg>"""
 
 
 def create_app() -> FastAPI:
@@ -246,6 +252,10 @@ def create_app() -> FastAPI:
 
     if _frontend_dir:
         app.mount("/dashboard", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def favicon() -> Response:
+        return Response(content=FAVICON_SVG, media_type="image/svg+xml")
 
     @app.get("/")
     async def root() -> dict[str, str]:
