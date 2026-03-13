@@ -205,7 +205,7 @@ describe('VoicePanel', () => {
     });
 
     await fireEvent.click(screen.getByRole('tab', { name: /library/i }));
-    expect(screen.getByText(/sari quick clone/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/sari quick clone/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/conversational/i)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /unduh sari-quick-clone-en\.wav/i })).toHaveAttribute(
       'href',
@@ -270,7 +270,7 @@ describe('VoicePanel', () => {
     });
 
     await fireEvent.click(screen.getByRole('tab', { name: /training jobs/i }));
-    expect(screen.getByText(/training diblok saat live aktif/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/training diblok saat live aktif/i).length).toBeGreaterThanOrEqual(1);
     await fireEvent.change(screen.getByLabelText(/studio voice target/i), { target: { value: '2' } });
     await fireEvent.input(screen.getByLabelText(/lokasi dataset/i), {
       target: { value: 'data/runtime/voice/datasets/studio-sari' },
@@ -282,6 +282,6 @@ describe('VoicePanel', () => {
       job_type: 'studio_voice_training',
       dataset_path: 'data/runtime/voice/datasets/studio-sari',
     });
-    expect(screen.getByText(/queued/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/queued/i).length).toBeGreaterThanOrEqual(1);
   });
 });

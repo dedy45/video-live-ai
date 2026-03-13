@@ -1,6 +1,6 @@
 [
   {
-    "id": 1773439078446,
+    "id": 1773439751540,
     "check_name": "runtime-truth",
     "status": "pass",
     "checks": [
@@ -32,15 +32,15 @@
       {
         "check": "timestamp_present",
         "passed": true,
-        "message": "2026-03-13T21:57:57.315538+00:00"
+        "message": "2026-03-13T22:09:10.253772+00:00"
       }
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-13T21:57:58.446812+00:00"
+    "timestamp": "2026-03-13T22:09:11.540124+00:00"
   },
   {
-    "id": 1773439078455,
+    "id": 1773439751548,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -87,10 +87,10 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off', 'products_loaded']",
-    "timestamp": "2026-03-13T21:57:58.455453+00:00"
+    "timestamp": "2026-03-13T22:09:11.548640+00:00"
   },
   {
-    "id": 1773439078958,
+    "id": 1773439752202,
     "check_name": "real-mode-readiness",
     "status": "blocked",
     "checks": [
@@ -137,10 +137,10 @@
     ],
     "provenance": "real_local",
     "context": "blockers: ['mock_mode_off']",
-    "timestamp": "2026-03-13T21:57:58.958724+00:00"
+    "timestamp": "2026-03-13T22:09:12.202465+00:00"
   },
   {
-    "id": 1773439087214,
+    "id": 1773439760500,
     "check_name": "voice-local-clone",
     "status": "fail",
     "checks": [
@@ -167,6 +167,6 @@
     ],
     "provenance": "mock",
     "context": "",
-    "timestamp": "2026-03-13T21:58:07.214281+00:00"
+    "timestamp": "2026-03-13T22:09:20.500972+00:00"
   }
 ]
