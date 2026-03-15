@@ -134,6 +134,16 @@ vi.mock('../lib/api', () => ({
 }));
 
 describe('App shell', () => {
+  it('uses a wide content frame for the performer route', () => {
+    window.location.hash = '#/performer';
+
+    render(App);
+
+    const frame = document.querySelector('.page-frame');
+    expect(frame).toBeInTheDocument();
+    expect(frame).toHaveClass('page-frame-wide');
+  });
+
   it('renders the workflow-based operator navigation links', () => {
     render(App);
 

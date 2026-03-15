@@ -53,6 +53,13 @@ class VoiceConfig(BaseModel):
     clone_reference_wav: str = "assets/voice/reference.wav"
     clone_reference_text: str = "assets/voice/reference.txt"
     indonesian_smoke_text: str = "Halo kak, selamat datang di live streaming kami hari ini."
+    # Training configuration
+    trained_model_path: str | None = None
+    training_dataset_path: str = "assets/voice/training_dataset/"
+    training_enabled: bool = False
+    training_epochs: int = 100
+    training_batch_size: int = 8
+    training_learning_rate: float = 1e-4
 
 
 class TemporalSmootherConfig(BaseModel):
@@ -328,6 +335,34 @@ def load_config(
         # Switch engine to livetalking when enabled
         if lt.get("enabled"):
             config_data["avatar"]["engine"] = "livetalking"
+
+    # Voice training env overrides
+    if "voice" not in config_data:
+        config_data["voice"] = {}
+    
+    voice_trained_model = os.getenv("VOICE_TRAINED_MODEL_PATH")
+    if voice_trained_model:
+        config_data["voice"]["trained_model_path"] = voice_trained_model
+    
+    voice_training_dataset = os.getenv("VOICE_TRAINING_DATASET_PATH")
+    if voice_training_dataset:
+        config_data["voice"]["training_dataset_path"] = voice_training_dataset
+    
+    voice_training_enabled = os.getenv("VOICE_TRAINING_ENABLED")
+    if voice_training_enabled is not None:
+        config_data["voice"]["training_enabled"] = voice_training_enabled.lower() in ("true", "1", "yes")
+    
+    voice_training_epochs = os.getenv("VOICE_TRAINING_EPOCHS")
+    if voice_training_epochs:
+        config_data["voice"]["training_epochs"] = int(voice_training_epochs)
+    
+    voice_training_batch_size = os.getenv("VOICE_TRAINING_BATCH_SIZE")
+    if voice_training_batch_size:
+        config_data["voice"]["training_batch_size"] = int(voice_training_batch_size)
+    
+    voice_training_lr = os.getenv("VOICE_TRAINING_LEARNING_RATE")
+    if voice_training_lr:
+        config_data["voice"]["training_learning_rate"] = float(voice_training_lr)
 
     _config = Config(**config_data)
     return _config

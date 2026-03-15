@@ -302,7 +302,7 @@ def test_control_plane_store_training_job_round_trip(tmp_path: Path) -> None:
         reference_text="Halo semuanya, aku Sari.",
         language="id",
         profile_type="studio_voice",
-        supported_languages=["id", "en"],
+        supported_languages=["id"],
         quality_tier="studio",
     )
 
@@ -314,7 +314,7 @@ def test_control_plane_store_training_job_round_trip(tmp_path: Path) -> None:
         progress_pct=0.0,
         dataset_path="data/runtime/voice/datasets/studio-sari",
         log_path="data/runtime/voice/training/studio-sari.log",
-        meta={"languages": ["id", "en"]},
+        meta={"languages": ["id"]},
     )
 
     jobs = store.list_voice_training_jobs()

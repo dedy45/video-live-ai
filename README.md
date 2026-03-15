@@ -303,10 +303,20 @@ Verified local preview pages:
 
 `rtcpushapi.html` now falls back to direct WebRTC preview when no local relay exists on `:1985`, which makes it usable for Windows + TikTok LIVE Studio capture without SRS.
 
-For the operator-facing browser path, `http://127.0.0.1:8001/dashboard/performer.html` now verifies two Voice Lab modes:
+For the operator-facing browser path, `http://127.0.0.1:8001/dashboard/performer.html` now exposes a richer Voice Lab control plane:
 
-- `Standalone Fish TTS`: synthesize audio directly from the `Suara` tab without the avatar sidecar.
-- `Attach ke Avatar`: start `webrtcapi.html` from the `Preview` tab, let the dashboard sync the vendor `sessionid`, then generate and attach audio from the `Suara` tab.
+- `Generate Audio`: choose `Indonesia` or `English`, select a quick clone or studio voice, tune `style / stability / similarity`, then choose the `Tujuan output`:
+  - `Simpan Audio Lokal` keeps the synth result in the local artifact store.
+  - `Kirim ke Avatar Live` sends the same synth result to the active avatar session while still storing the local `.wav`.
+- `Manajer File Lokal`: the same `Suara` workspace now shows storage summary, artifact folder path, newest result, local playback, direct download, and delete actions without switching to another internal tab.
+- `Quick Clone`: manage many fast reference clones with clear operator guidance about clean audio, transcript quality, and bilingual readiness.
+- `Studio Voice`: create a single bilingual production voice profile per host character.
+- `Training Jobs`: queue studio-voice training jobs directly from the dashboard; the backend blocks them automatically while a live session is active.
+- The seeded default clone is now normalized as bilingual `id/en`, so the dashboard language selector and backend profile metadata stay aligned on fresh and legacy local databases.
+
+The browser-verified attach flow still follows the same rule:
+
+- `Kirim ke Avatar Live`: start `webrtcapi.html` from the `Preview` tab, let the dashboard sync the vendor `sessionid`, then generate and attach audio from the unified `Suara` workspace.
 
 Current local attach verification is on the `wav2lip` preview path. Treat `MuseTalk` as a separate heavier validation track, not as implied proof that the day-1 attach lab is already covered.
 

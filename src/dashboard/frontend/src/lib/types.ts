@@ -189,6 +189,17 @@ export interface VoiceProfile {
   updated_at?: string;
 }
 
+export interface VoiceReferenceAsset {
+  path: string;
+  absolute_path: string;
+  label: string;
+  source: 'assets' | 'runtime' | string;
+  file_size_bytes: number;
+  transcript_path?: string;
+  transcript_preview?: string;
+  is_default?: boolean;
+}
+
 export interface VoiceLabState {
   mode: 'standalone' | 'attach_avatar' | string;
   active_profile_id: number | null;
@@ -246,6 +257,8 @@ export interface VoiceGeneration {
   duration_ms: number;
   attached_to_avatar: boolean;
   avatar_session_id: string;
+  artifact_exists?: boolean;
+  missing_reason?: string;
   created_at?: string;
 }
 
@@ -263,6 +276,16 @@ export interface VoiceTrainingJob {
   error_text?: string;
   created_at?: string;
   updated_at?: string;
+}
+
+export interface VoiceLibrarySummary {
+  artifact_dir: string;
+  artifact_dir_abs: string;
+  total_generations: number;
+  existing_files: number;
+  missing_files: number;
+  total_size_bytes: number;
+  latest_generation?: VoiceGeneration | null;
 }
 
 export interface ValidationResult {
@@ -404,7 +427,7 @@ export const STATUS_COLORS = {
   warning: '#f59e0b', // Amber
   error: '#ef4444', // Red
   idle: '#6b7280', // Gray
-  info: '#3b82f6', // Blue
+  info: '#ff7a59', // Warm coral
 } as const;
 
 export type StatusType = 'ready' | 'warning' | 'error' | 'idle' | 'info';

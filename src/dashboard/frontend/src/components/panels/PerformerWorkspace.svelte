@@ -8,8 +8,10 @@
   import PerformerTechnicalPanel from './PerformerTechnicalPanel.svelte';
   import {
     activateVoiceProfile,
+    clearVoiceGenerations,
     createVoiceProfile,
     createVoiceTrainingJob,
+    deleteVoiceGeneration,
     generateVoice,
     getLiveTalkingConfig,
     getLiveTalkingDebugTargets,
@@ -19,7 +21,9 @@
     getRuntimeTruth,
     getVoiceGenerations,
     getVoiceLabState,
+    getVoiceLibrarySummary,
     getVoiceProfiles,
+    getVoiceReferenceAssets,
     getVoiceTrainingJobs,
     startLiveTalking,
     stopLiveTalking,
@@ -48,8 +52,10 @@
     RuntimeTruth,
     ValidationResult,
     VoiceGeneration,
+    VoiceLibrarySummary,
     VoiceLabState,
     VoiceProfile,
+    VoiceReferenceAsset,
     VoiceTrainingJob,
     VoiceTestSpeakResult,
   } from '../../lib/types';
@@ -74,8 +80,10 @@
   let debugTargets = $state<LiveTalkingDebugTargets | null>(null);
   let voiceTestResult = $state<VoiceTestSpeakResult | null>(null);
   let voiceProfiles = $state<VoiceProfile[]>([]);
+  let voiceReferenceAssets = $state<VoiceReferenceAsset[]>([]);
   let voiceLabState = $state<VoiceLabState | null>(null);
   let voiceGenerations = $state<VoiceGeneration[]>([]);
+  let voiceLibrarySummary = $state<VoiceLibrarySummary | null>(null);
   let voiceTrainingJobs = $state<VoiceTrainingJob[]>([]);
   let validationResults = $state<Partial<Record<PerformerValidationCheckId, PerformerValidationEntry>>>({});
   let receipt = $state<ReceiptType | null>(null);
@@ -150,15 +158,19 @@
   async function refreshVoiceLabData() {
     voiceLoading = true;
     try {
-      const [nextProfiles, nextState, nextGenerations, nextTrainingJobs] = await Promise.all([
+      const [nextProfiles, nextReferenceAssets, nextState, nextGenerations, nextSummary, nextTrainingJobs] = await Promise.all([
         getVoiceProfiles(),
+        getVoiceReferenceAssets(),
         getVoiceLabState(),
-        getVoiceGenerations(20),
+        getVoiceGenerations(100),
+        getVoiceLibrarySummary(),
         getVoiceTrainingJobs(20),
       ]);
       voiceProfiles = nextProfiles;
+      voiceReferenceAssets = nextReferenceAssets;
       voiceLabState = nextState;
       voiceGenerations = nextGenerations;
+      voiceLibrarySummary = nextSummary;
       voiceTrainingJobs = nextTrainingJobs;
       voiceLoaded = true;
     } finally {
@@ -460,6 +472,38 @@
           pendingMessage: 'Dashboard sedang mencatat training job studio voice.',
           fallbackMessage: 'Training job suara berhasil diantrikan.',
           execute: () => createVoiceTrainingJob(payload),
+          onReceipt: setReceipt,
+        });
+      } finally {
+        await refreshVoiceLabData();
+      }
+    });
+  }
+
+  async function handleDeleteVoiceGeneration(generationId: number) {
+    await runBusy('voice.generation.delete', async () => {
+      try {
+        await runOperatorAction({
+          action: 'voice.generation.delete',
+          title: 'Artifact suara dihapus',
+          fallbackMessage: 'Artifact suara berhasil dihapus.',
+          execute: () => deleteVoiceGeneration(generationId),
+          onReceipt: setReceipt,
+        });
+      } finally {
+        await refreshVoiceLabData();
+      }
+    });
+  }
+
+  async function handleClearVoiceLibrary() {
+    await runBusy('voice.generation.clear', async () => {
+      try {
+        await runOperatorAction({
+          action: 'voice.generation.clear',
+          title: 'Library suara dibersihkan',
+          fallbackMessage: 'Semua artifact suara berhasil dibersihkan.',
+          execute: clearVoiceGenerations,
           onReceipt: setReceipt,
         });
       } finally {
@@ -808,8 +852,10 @@
         {busyAction}
         {voiceTestResult}
         {voiceProfiles}
+        {voiceReferenceAssets}
         {voiceLabState}
         {voiceGenerations}
+        {voiceLibrarySummary}
         {voiceTrainingJobs}
         onWarmup={handleWarmup}
         onRestart={handleRestart}
@@ -820,6 +866,8 @@
         onChangeMode={handleChangeVoiceMode}
         onGenerateVoice={handleGenerateVoice}
         onCreateTrainingJob={handleCreateTrainingJob}
+        onDeleteGeneration={handleDeleteVoiceGeneration}
+        onClearLibrary={handleClearVoiceLibrary}
       />
     {:else if activeTab === 'avatar'}
       <EnginePanel
@@ -861,21 +909,31 @@
 <style>
   .workspace {
     display: grid;
-    gap: 18px;
+    gap: 22px;
+    width: 100%;
+    min-width: 0;
   }
 
   .workspace-topbar {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     gap: 16px;
     align-items: center;
-    flex-wrap: wrap;
+    min-width: 0;
+    padding: 14px 18px;
+    border-radius: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015)),
+      rgba(18, 18, 35, 0.92);
+    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.24);
   }
 
   .tabs {
     display: flex;
     gap: 10px;
     flex-wrap: wrap;
+    min-width: 0;
   }
 
   .tab-button,
@@ -883,23 +941,33 @@
   .btn {
     border-radius: 999px;
     border: 1px solid var(--border);
-    padding: 10px 14px;
+    padding: 11px 16px;
     font: inherit;
     font-weight: 700;
     cursor: pointer;
+    transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
   }
 
   .tab-button,
   .refresh-button,
   .btn-secondary {
-    background: rgba(255, 255, 255, 0.05);
+    background: rgba(255, 255, 255, 0.045);
     color: var(--text);
   }
 
+  .tab-button:hover,
+  .refresh-button:hover,
+  .btn-secondary:hover,
+  .btn-primary:hover,
+  .btn-warning:hover {
+    transform: translateY(-1px);
+  }
+
   .tab-button.is-active {
-    background: var(--accent);
-    color: #111827;
-    border-color: transparent;
+    background: linear-gradient(135deg, rgba(233, 69, 96, 0.96), rgba(255, 123, 108, 0.92));
+    color: #130813;
+    border-color: rgba(255, 191, 202, 0.22);
+    box-shadow: 0 10px 24px rgba(233, 69, 96, 0.28);
   }
 
   .refresh-button:disabled,
@@ -908,26 +976,36 @@
     cursor: not-allowed;
   }
 
+  .refresh-button {
+    background: rgba(255, 255, 255, 0.04);
+    border-color: rgba(255, 255, 255, 0.09);
+  }
+
   .summary-grid,
   .action-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 14px;
+    min-width: 0;
   }
 
   .summary-card,
   .card,
   .state-card {
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    background: var(--card);
-    padding: 18px;
+    border-radius: 22px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.03), rgba(255, 255, 255, 0.015)),
+      rgba(20, 20, 40, 0.92);
+    padding: 20px;
+    box-shadow: 0 20px 44px rgba(0, 0, 0, 0.22);
   }
 
   .summary-card strong {
     display: block;
     font-size: 24px;
     color: var(--text);
+    line-height: 1.2;
   }
 
   .summary-card p,
@@ -947,11 +1025,11 @@
   }
 
   .warning-banner {
-    border-radius: 16px;
+    border-radius: 20px;
     border: 1px solid rgba(245, 158, 11, 0.35);
-    background: rgba(245, 158, 11, 0.12);
+    background: linear-gradient(180deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.08));
     color: #fcd34d;
-    padding: 14px 16px;
+    padding: 15px 18px;
     line-height: 1.5;
   }
 
@@ -976,8 +1054,8 @@
     display: flex;
     justify-content: space-between;
     gap: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   }
 
   .metric-list span {
@@ -995,18 +1073,40 @@
   }
 
   .btn-primary {
-    background: var(--accent);
-    color: #111827;
+    background: linear-gradient(135deg, rgba(233, 69, 96, 0.98), rgba(255, 123, 108, 0.94));
+    color: #160913;
+    border-color: rgba(255, 191, 202, 0.22);
+    box-shadow: 0 14px 28px rgba(233, 69, 96, 0.22);
   }
 
   .btn-warning {
-    background: #f59e0b;
-    color: #111827;
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.94), rgba(255, 189, 89, 0.9));
+    color: #171008;
+    border-color: rgba(255, 226, 179, 0.18);
+  }
+
+  .btn-secondary {
+    border-color: rgba(255, 255, 255, 0.09);
+  }
+
+  @media (max-width: 920px) {
+    .workspace-topbar {
+      padding: 12px 14px;
+      border-radius: 20px;
+    }
   }
 
   @media (max-width: 720px) {
     .workspace-topbar {
+      grid-template-columns: 1fr;
       align-items: stretch;
+    }
+
+    .tab-button,
+    .refresh-button,
+    .btn {
+      width: 100%;
+      justify-content: center;
     }
   }
 </style>

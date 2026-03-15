@@ -27,17 +27,36 @@ class FishSpeechClient:
 
     Communicates with a Fish-Speech server at the configured base URL.
     Uses httpx for async HTTP with explicit timeouts.
+    Supports trained model checkpoints for improved voice cloning quality.
     """
 
-    def __init__(self, base_url: str = "http://127.0.0.1:8080", timeout_ms: int = 10000) -> None:
+    def __init__(
+        self,
+        base_url: str = "http://127.0.0.1:8080",
+        timeout_ms: int = 10000,
+        trained_model_path: str | None = None,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
         self.timeout_s = timeout_ms / 1000.0
+        self.trained_model_path = trained_model_path
+        self._trained_model_available: bool | None = None
 
-    async def health_check(self) -> bool:
+    async def health_check(self) -> dict[str, Any]:
         """Check if the Fish-Speech sidecar is reachable and healthy.
 
-        Returns True if the server responds to a health/version probe.
+        Returns a dictionary with health status including:
+        - reachable: bool - whether server responds
+        - trained_model_available: bool - whether trained model checkpoint is valid
+        - training_status: str - training status (not_started, in_progress, completed, failed)
+        - endpoint: str | None - which endpoint responded successfully
         """
+        result: dict[str, Any] = {
+            "reachable": False,
+            "trained_model_available": False,
+            "training_status": "not_started",
+            "endpoint": None,
+        }
+        
         try:
             async with httpx.AsyncClient(timeout=min(self.timeout_s, 5.0)) as client:
                 # Fish-Speech variants expose different probe surfaces:
@@ -48,13 +67,34 @@ class FishSpeechClient:
                         resp = await client.get(f"{self.base_url}{path}")
                         if resp.is_success:
                             logger.info("fish_speech_health_ok", endpoint=path, status=resp.status_code)
-                            return True
+                            result["reachable"] = True
+                            result["endpoint"] = path
+                            break
                     except httpx.RequestError:
                         continue
-                return False
+                
+                # Check trained model availability
+                if self.trained_model_path:
+                    trained_model_valid = self._validate_trained_model_checkpoint()
+                    result["trained_model_available"] = trained_model_valid
+                    result["training_status"] = "completed" if trained_model_valid else "failed"
+                    
+                    if trained_model_valid:
+                        logger.info(
+                            "fish_speech_trained_model_available",
+                            path=self.trained_model_path,
+                        )
+                    else:
+                        logger.warning(
+                            "fish_speech_trained_model_invalid",
+                            path=self.trained_model_path,
+                        )
+                
+                return result
+                
         except Exception as e:
             logger.warning("fish_speech_health_failed", error=str(e))
-            return False
+            return result
 
     async def synthesize(
         self,
@@ -75,9 +115,35 @@ class FishSpeechClient:
         Raises:
             FishSpeechClientError: If the API returns non-200 or is unreachable.
         """
+        # Check for trained model checkpoint before synthesis
+        use_trained_model = False
+        if self.trained_model_path:
+            if self._trained_model_available is None:
+                # Lazy validation on first synthesis call
+                self._trained_model_available = self._validate_trained_model_checkpoint()
+            
+            if self._trained_model_available:
+                use_trained_model = True
+                logger.info(
+                    "fish_speech_using_trained_model",
+                    path=self.trained_model_path,
+                )
+            else:
+                logger.warning(
+                    "fish_speech_trained_model_not_found_fallback_to_zero_shot",
+                    path=self.trained_model_path,
+                )
+        
+        # Build API payload
         payload: dict[str, Any] = {
             "text": text,
         }
+        
+        # Add trained model path to payload if available
+        if use_trained_model:
+            payload["trained_model_path"] = self.trained_model_path
+        
+        # Add reference audio/text for zero-shot cloning (always included for fallback)
         if reference_audio_b64 or reference_text:
             reference: dict[str, Any] = {}
             if reference_audio_b64:
@@ -125,3 +191,54 @@ class FishSpeechClient:
         if not text:
             raise ValueError(f"Voice clone reference text is empty: {path}")
         return text
+
+    def _validate_trained_model_checkpoint(self) -> bool:
+        """Validate that trained model checkpoint files exist and are valid.
+        
+        Returns:
+            True if all required checkpoint files exist and are non-empty, False otherwise.
+        """
+        if not self.trained_model_path:
+            return False
+        
+        checkpoint_dir = Path(self.trained_model_path)
+        if not checkpoint_dir.exists():
+            logger.warning(
+                "fish_speech_trained_model_dir_not_found",
+                path=str(checkpoint_dir),
+            )
+            return False
+        
+        # Check for required model files
+        required_files = {
+            "model.pth": checkpoint_dir / "model.pth",
+            "config.json": checkpoint_dir / "config.json",
+            "tokenizer.tiktoken": checkpoint_dir / "tokenizer.tiktoken",
+        }
+        
+        missing_files = []
+        invalid_files = []
+        
+        for name, file_path in required_files.items():
+            if not file_path.exists():
+                missing_files.append(name)
+            elif file_path.stat().st_size == 0:
+                invalid_files.append(name)
+        
+        if missing_files:
+            logger.warning(
+                "fish_speech_trained_model_missing_files",
+                path=str(checkpoint_dir),
+                missing=missing_files,
+            )
+            return False
+        
+        if invalid_files:
+            logger.warning(
+                "fish_speech_trained_model_invalid_files",
+                path=str(checkpoint_dir),
+                invalid=invalid_files,
+            )
+            return False
+        
+        return True

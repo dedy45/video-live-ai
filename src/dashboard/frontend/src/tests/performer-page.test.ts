@@ -237,6 +237,7 @@ describe('PerformerPage', () => {
     render(PerformerPage);
 
     expect(await screen.findByRole('heading', { name: /avatar & suara/i })).toBeInTheDocument();
+    expect(screen.getByTestId('performer-page')).toHaveClass('page-full-width');
     expect(await screen.findByRole('button', { name: /ringkasan/i })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /^suara$/i })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: /^avatar$/i })).toBeInTheDocument();

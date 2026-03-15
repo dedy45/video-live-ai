@@ -3,10 +3,16 @@
   --surface: #12122a;
   --card: #161636;
   --card-hover: #1c1c44;
+  --panel: #141428;
+  --panel-elevated: #1b1b34;
+  --panel-soft: rgba(255, 255, 255, 0.035);
+  --panel-strong: rgba(255, 255, 255, 0.06);
   --accent: #e94560;
   --accent-glow: rgba(233,69,96,.3);
-  --blue: #4361ee;
-  --blue-glow: rgba(67,97,238,.3);
+  --blue: #ff7a59;
+  --blue-glow: rgba(255,122,89,.24);
+  --info: #ff7a59;
+  --info-glow: rgba(255,122,89,.24);
   --cyan: #00d4ff;
   --cyan-glow: rgba(0,212,255,.2);
   --green: #00e676;
@@ -17,7 +23,12 @@
   --purple: #b388ff;
   --text: #eaeaf0;
   --muted: #7a7a9e;
+  --text-soft: #c5c7d7;
+  --text-secondary: #9ea1bb;
+  --danger: #ff6b6b;
+  --danger-glow: rgba(255,107,107,.18);
   --border: rgba(255,255,255,.06);
+  --border-strong: rgba(255,255,255,.1);
   --radius: 14px;
   --rsm: 8px;
   --sidebar-width: 220px;
@@ -37,7 +48,7 @@ html {
 }
 
 body {
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: "Segoe UI Variable", "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
   min-height: 100vh;

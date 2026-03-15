@@ -23,7 +23,7 @@
     warning: '#f59e0b', // Amber
     error: '#ef4444', // Red
     idle: '#6b7280', // Gray
-    info: '#3b82f6', // Blue
+    info: '#ff7a59', // Warm coral for dark theme readability
     blocked: '#f59e0b',
     // Legacy support
     running: '#10b981',
@@ -156,7 +156,7 @@
  }
 
  .status-info {
-   border-color: rgba(59, 130, 246, 0.3);
+   border-color: rgba(255, 122, 89, 0.32);
  }
 
  /* Legacy support for old class names */

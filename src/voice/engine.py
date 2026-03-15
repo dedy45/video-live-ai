@@ -68,7 +68,34 @@ class FishSpeechEngine(BaseTTSEngine):
         self._client = None  # Lazy-init to avoid import at module level
         self._reference_audio_b64: str | None = None
         self._reference_text: str | None = None
-        logger.info("fish_speech_init", voice_sample=voice_sample_path)
+        self._trained_model_path: str | None = None
+        self._trained_model_available: bool = False
+        
+        # Check for trained model checkpoint from config
+        config = get_config()
+        if config.voice.trained_model_path:
+            self._trained_model_path = config.voice.trained_model_path
+            self._trained_model_available = self._validate_trained_model()
+            
+            if self._trained_model_available:
+                logger.info(
+                    "fish_speech_init_with_trained_model",
+                    voice_sample=voice_sample_path,
+                    trained_model=self._trained_model_path,
+                )
+            else:
+                logger.warning(
+                    "fish_speech_init_trained_model_invalid",
+                    voice_sample=voice_sample_path,
+                    trained_model=self._trained_model_path,
+                )
+        else:
+            logger.info("fish_speech_init", voice_sample=voice_sample_path)
+        
+        # Update runtime state with trained model availability
+        from src.voice.runtime_state import get_voice_runtime_state
+        state = get_voice_runtime_state()
+        state.trained_model_available = self._trained_model_available
 
     def _get_client(self):
         """Lazy-init the Fish-Speech client from config."""
@@ -78,11 +105,160 @@ class FishSpeechEngine(BaseTTSEngine):
             self._client = FishSpeechClient(
                 base_url=config.voice.fish_speech_base_url,
                 timeout_ms=config.voice.fish_speech_timeout_ms,
+                trained_model_path=self._trained_model_path,
             )
         return self._client
 
+    def _validate_trained_model(self) -> bool:
+        """Validate that trained model checkpoint files exist and are valid.
+        
+        Returns:
+            True if all required checkpoint files exist and are non-empty, False otherwise.
+        """
+        if not self._trained_model_path:
+            return False
+        
+        from pathlib import Path
+        checkpoint_dir = Path(self._trained_model_path)
+        if not checkpoint_dir.exists():
+            logger.warning(
+                "fish_speech_trained_model_dir_not_found",
+                path=str(checkpoint_dir),
+            )
+            return False
+        
+        # Check for required model files
+        required_files = {
+            "model.pth": checkpoint_dir / "model.pth",
+            "config.json": checkpoint_dir / "config.json",
+            "tokenizer.tiktoken": checkpoint_dir / "tokenizer.tiktoken",
+        }
+        
+        missing_files = []
+        invalid_files = []
+        
+        for name, file_path in required_files.items():
+            if not file_path.exists():
+                missing_files.append(name)
+            elif file_path.stat().st_size == 0:
+                invalid_files.append(name)
+        
+        if missing_files:
+            logger.warning(
+                "fish_speech_trained_model_missing_files",
+                path=str(checkpoint_dir),
+                missing=missing_files,
+            )
+            return False
+        
+        if invalid_files:
+            logger.warning(
+                "fish_speech_trained_model_invalid_files",
+                path=str(checkpoint_dir),
+                invalid=invalid_files,
+            )
+            return False
+        
+        return True
+
+    def _validate_dataset_quality(self) -> dict[str, Any]:
+        """Validate reference audio dataset quality (duration, file count, quality metrics).
+        
+        Returns:
+            Dictionary with validation results:
+            - valid: bool - overall validation status
+            - total_duration_min: float - total duration in minutes
+            - file_count: int - number of valid audio files
+            - issues: list[str] - list of validation issues found
+            - guidance: str - operator guidance message
+        """
+        try:
+            import wave
+        except ImportError:
+            return {
+                "valid": False,
+                "total_duration_min": 0.0,
+                "file_count": 0,
+                "issues": ["wave module not available"],
+                "guidance": "Install wave module to validate audio files",
+            }
+        
+        config = get_config()
+        voice_dir = Path("assets/voice")
+        training_dir = Path(config.voice.training_dataset_path)
+        
+        # Collect all WAV files from both directories
+        wav_files = []
+        if voice_dir.exists():
+            wav_files.extend(voice_dir.glob("*.wav"))
+        if training_dir.exists():
+            wav_files.extend(training_dir.glob("*.wav"))
+        
+        if not wav_files:
+            return {
+                "valid": False,
+                "total_duration_min": 0.0,
+                "file_count": 0,
+                "issues": ["No WAV files found in assets/voice/ or training dataset"],
+                "guidance": "Record 30-60 minutes of clean Indonesian speech",
+            }
+        
+        issues = []
+        total_duration_sec = 0.0
+        file_count = 0
+        
+        for wav_path in wav_files:
+            try:
+                with wave.open(str(wav_path), "rb") as wav_file:
+                    frames = wav_file.getnframes()
+                    rate = wav_file.getframerate()
+                    channels = wav_file.getnchannels()
+                    sampwidth = wav_file.getsampwidth()
+                    duration_sec = frames / float(rate)
+                    
+                    total_duration_sec += duration_sec
+                    file_count += 1
+                    
+                    # Quality checks
+                    if rate < 16000:
+                        issues.append(f"{wav_path.name}: sample rate {rate}Hz too low (minimum 16kHz)")
+                    if channels > 2:
+                        issues.append(f"{wav_path.name}: {channels} channels (prefer mono or stereo)")
+                    if sampwidth not in (2, 3):
+                        issues.append(f"{wav_path.name}: {sampwidth * 8}-bit depth (prefer 16-bit or 24-bit)")
+                    if duration_sec < 1.0:
+                        issues.append(f"{wav_path.name}: duration {duration_sec:.1f}s too short")
+                    
+            except Exception as exc:
+                issues.append(f"{wav_path.name}: failed to read ({exc})")
+        
+        total_duration_min = total_duration_sec / 60.0
+        
+        # Duration requirement check
+        if total_duration_min < 30.0:
+            issues.append(f"Total duration {total_duration_min:.1f} min insufficient (minimum 30 min)")
+        
+        # Generate guidance message
+        if total_duration_min >= 30.0 and not issues:
+            guidance = "Dataset meets quality requirements for fine-tuning"
+            valid = True
+        elif total_duration_min >= 3.0:
+            guidance = f"Dataset sufficient for Quick Clone ({total_duration_min:.1f} min), insufficient for fine-tuning"
+            valid = False
+        else:
+            guidance = f"Dataset insufficient ({total_duration_min:.1f} min). Record 30-60 min Indonesian speech"
+            valid = False
+        
+        return {
+            "valid": valid,
+            "total_duration_min": round(total_duration_min, 2),
+            "file_count": file_count,
+            "issues": issues,
+            "guidance": guidance,
+        }
+
     def _load_references(self) -> None:
-        """Load clone reference assets from config paths."""
+        """Load clone reference assets from config paths and validate dataset quality."""
         if self._reference_audio_b64 is not None and self._reference_text is not None:
             return
         from src.voice.fish_speech_client import FishSpeechClient
@@ -96,6 +272,42 @@ class FishSpeechEngine(BaseTTSEngine):
                 config.voice.clone_reference_text
             )
             get_voice_runtime_state().reference_ready = True
+            
+            # Validate dataset quality (duration, file count, quality metrics)
+            dataset_validation = self._validate_dataset_quality()
+            
+            # Update runtime state with dataset duration
+            state = get_voice_runtime_state()
+            state.training_dataset_duration_min = dataset_validation.get("total_duration_min")
+            
+            # Log warnings if dataset quality is insufficient
+            if not dataset_validation.get("valid", False):
+                total_duration = dataset_validation.get("total_duration_min", 0.0)
+                file_count = dataset_validation.get("file_count", 0)
+                
+                if total_duration < 30.0:
+                    logger.warning(
+                        "fish_speech_dataset_insufficient_duration",
+                        total_duration_min=total_duration,
+                        file_count=file_count,
+                        minimum_required_min=30.0,
+                        guidance=dataset_validation.get("guidance", ""),
+                    )
+                
+                issues = dataset_validation.get("issues", [])
+                if issues:
+                    logger.warning(
+                        "fish_speech_dataset_quality_issues",
+                        issues=issues[:5],  # Log first 5 issues to avoid log spam
+                        total_issues=len(issues),
+                    )
+            else:
+                logger.info(
+                    "fish_speech_dataset_quality_ok",
+                    total_duration_min=dataset_validation.get("total_duration_min"),
+                    file_count=dataset_validation.get("file_count"),
+                )
+                
         except (FileNotFoundError, ValueError) as e:
             logger.warning("fish_speech_reference_load_failed", error=str(e))
             get_voice_runtime_state().reference_ready = False
@@ -160,12 +372,91 @@ class FishSpeechEngine(BaseTTSEngine):
             state.server_reachable = False
             raise
 
+    async def synthesize_with_profile(
+        self,
+        text: str,
+        reference_wav_path: str,
+        reference_text: str,
+        emotion: str = "neutral",
+        speed: float = 1.0,
+        language: str = "id",
+        style_preset: str = "natural",
+        stability: float = 0.75,
+        similarity: float = 0.8,
+        **kwargs
+    ) -> AudioResult:
+        """Synthesize with profile-specific reference audio.
+        
+        Bridges api.py generate_voice() to FishSpeechClient.
+        Loads reference from path and passes to client.
+        
+        Args:
+            text: Text to synthesize
+            reference_wav_path: Path to reference WAV file
+            reference_text: Transcript of reference audio
+            emotion: Emotion for synthesis (neutral, happy, sad, etc.)
+            speed: Speech speed multiplier
+            language: Target language code (id for Indonesian)
+            style_preset: Voice style preset (natural, conversational, sales_live)
+            stability: Voice stability parameter (0.2-1.0)
+            similarity: Voice similarity parameter (0.2-1.0)
+            **kwargs: Additional parameters (ignored for compatibility)
+            
+        Returns:
+            AudioResult with synthesized audio data and metadata
+        """
+        if is_mock_mode():
+            mock = MockVoiceSynthesizer()
+            mock_result = await mock.synthesize(text, emotion, speed)
+            return AudioResult(
+                audio_data=mock_result.audio_data,
+                duration_ms=mock_result.duration_ms,
+                sample_rate=mock_result.sample_rate,
+                format=mock_result.format,
+                emotion=emotion,
+                text=text,
+                trace_id="",
+                latency_ms=15.0,
+            )
+
+        from src.voice.fish_speech_client import FishSpeechClient
+        
+        # Load reference from provided path
+        ref_b64 = FishSpeechClient.load_reference_audio_b64(reference_wav_path)
+        
+        start = time.time()
+        client = self._get_client()
+        
+        try:
+            audio_data = await client.synthesize(
+                text=text,
+                reference_audio_b64=ref_b64,
+                reference_text=reference_text,
+            )
+            latency = (time.time() - start) * 1000
+            duration_ms = len(audio_data) / (24000 * 2) * 1000  # 16-bit mono
+            
+            return AudioResult(
+                audio_data=audio_data,
+                duration_ms=duration_ms,
+                sample_rate=24000,
+                format="wav",
+                emotion=emotion,
+                text=text,
+                trace_id="",
+                latency_ms=latency,
+            )
+        except Exception as e:
+            logger.error("fish_speech_synthesize_with_profile_error", error=str(e))
+            raise
+
     async def health_check(self) -> bool:
         if is_mock_mode():
             return True
         try:
             client = self._get_client()
-            return await client.health_check()
+            health_result = await client.health_check()
+            return health_result.get("reachable", False)
         except Exception:
             return False
 
@@ -303,8 +594,11 @@ class VoiceRouter:
         from src.voice.runtime_state import get_voice_runtime_state
         state = get_voice_runtime_state()
 
-        # Check cache first
-        cached = self.cache.get(text, emotion, speed)
+        # Store original speed for cache key consistency
+        original_speed = speed
+
+        # Check cache first (use original speed for cache key)
+        cached = self.cache.get(text, emotion, original_speed)
         if cached:
             return cached
 
@@ -317,7 +611,7 @@ class VoiceRouter:
         primary_error = ""
         try:
             result = await self.primary.synthesize(text, emotion, speed, trace_id)
-            self.cache.put(result, speed)
+            self.cache.put(result, original_speed)  # Use original speed for cache key
             state.update_success("fish_speech", result.latency_ms)
             return result
         except Exception as e:
@@ -327,7 +621,7 @@ class VoiceRouter:
         # Fallback to backup
         try:
             result = await self.backup.synthesize(text, emotion, speed, trace_id)
-            self.cache.put(result, speed)
+            self.cache.put(result, original_speed)  # Use original speed for cache key
             state.update_fallback_success("edge_tts", result.latency_ms, primary_error)
             return result
         except Exception as e:

@@ -25,6 +25,28 @@ class VoiceRuntimeState:
     latency_p95_ms: float | None = None
     last_latency_ms: float | None = None
     last_error: str | None = None
+    trained_model_available: bool = False
+    training_dataset_duration_min: float | None = None
+    training_status: str = "not_started"
+
+    def __post_init__(self) -> None:
+        """Validate training_status field after initialization."""
+        allowed_statuses = {"not_started", "in_progress", "completed", "failed"}
+        if self.training_status not in allowed_statuses:
+            raise ValueError(
+                f"Invalid training_status: {self.training_status}. "
+                f"Must be one of: {', '.join(sorted(allowed_statuses))}"
+            )
+
+    def set_training_status(self, status: str) -> None:
+        """Set training status with validation."""
+        allowed_statuses = {"not_started", "in_progress", "completed", "failed"}
+        if status not in allowed_statuses:
+            raise ValueError(
+                f"Invalid training_status: {status}. "
+                f"Must be one of: {', '.join(sorted(allowed_statuses))}"
+            )
+        self.training_status = status
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -40,6 +62,9 @@ class VoiceRuntimeState:
             "latency_p95_ms": self.latency_p95_ms,
             "last_latency_ms": self.last_latency_ms,
             "last_error": self.last_error,
+            "trained_model_available": self.trained_model_available,
+            "training_dataset_duration_min": self.training_dataset_duration_min,
+            "training_status": self.training_status,
         }
 
     def update_success(self, engine: str, latency_ms: float) -> None:

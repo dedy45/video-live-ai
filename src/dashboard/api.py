@@ -16,6 +16,8 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -233,6 +235,12 @@ _brain_health_cache: dict[str, Any] | None = None
 _brain_health_cache_time: float = 0.0
 BRAIN_HEALTH_CACHE_TTL = 30.0  # Cache for 30 seconds
 VOICE_RUNTIME_DIR = Path("data/runtime/voice")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+VOICE_REFERENCE_DIRS = [
+    PROJECT_ROOT / "assets" / "voice",
+    PROJECT_ROOT / "data" / "runtime" / "voice" / "references",
+]
+SUPPORTED_VOICE_LANGUAGES = {"id"}
 
 
 def init_dashboard_state(
@@ -383,21 +391,476 @@ def _get_voice_runtime_dir() -> Path:
     return VOICE_RUNTIME_DIR
 
 
+def _to_project_relative(path: Path) -> str:
+    try:
+        return str(path.resolve().relative_to(PROJECT_ROOT.resolve()))
+    except ValueError:
+        return str(path)
+
+
+def _resolve_local_path(raw_path: str) -> Path:
+    candidate = Path(str(raw_path).strip())
+    if not candidate.is_absolute():
+        candidate = PROJECT_ROOT / candidate
+    return candidate.resolve()
+
+
+def _normalize_voice_languages(language: str, supported_languages: list[str] | None) -> tuple[str, list[str]]:
+    primary = (language or "id").strip().lower()
+    if primary not in SUPPORTED_VOICE_LANGUAGES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"language must be one of: {', '.join(sorted(SUPPORTED_VOICE_LANGUAGES))}",
+        )
+
+    normalized_supported: list[str] = []
+    for item in supported_languages or [primary]:
+        normalized = str(item).strip().lower()
+        if not normalized:
+            continue
+        if normalized not in SUPPORTED_VOICE_LANGUAGES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"supported_languages only allows: {', '.join(sorted(SUPPORTED_VOICE_LANGUAGES))}",
+            )
+        if normalized not in normalized_supported:
+            normalized_supported.append(normalized)
+    if primary not in normalized_supported:
+        normalized_supported.insert(0, primary)
+    return primary, normalized_supported
+
+
+def _normalize_voice_profile_for_operator(profile: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(profile)
+    normalized["language"] = "id"
+    normalized["supported_languages"] = ["id"]
+    return normalized
+
+
+def _normalize_voice_lab_state_for_operator(state: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(state)
+    normalized["selected_language"] = "id"
+    return normalized
+
+
+def _resolve_reference_text_for_path(reference_wav_path: str, fallback_text: str) -> str:
+    try:
+        transcript_path = _resolve_local_path(reference_wav_path).with_suffix(".txt")
+    except Exception:
+        return fallback_text.strip()
+    if transcript_path.exists():
+        transcript = transcript_path.read_text(encoding="utf-8").strip()
+        if transcript:
+            return transcript
+    return fallback_text.strip()
+
+
+def _is_operator_approved_voice_reference(reference_wav_path: str) -> bool:
+    if not reference_wav_path:
+        return False
+    try:
+        wav_path = _resolve_local_path(reference_wav_path)
+    except Exception:
+        return False
+    if not wav_path.exists() or not wav_path.is_file():
+        return False
+    try:
+        wav_path.relative_to(PROJECT_ROOT / "assets" / "voice")
+    except ValueError:
+        return True
+    return wav_path.with_suffix(".txt").exists()
+
+
+def _validate_voice_profile_payload(payload: VoiceProfileMutationRequest) -> dict[str, Any]:
+    name = payload.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Profile name is required")
+
+    reference_text = payload.reference_text.strip()
+    if not reference_text:
+        raise HTTPException(status_code=400, detail="Reference transcript is required")
+
+    reference_wav_raw = payload.reference_wav_path.strip()
+    if not reference_wav_raw:
+        raise HTTPException(status_code=400, detail="Reference WAV path is required")
+
+    reference_wav_path = _resolve_local_path(reference_wav_raw)
+    if reference_wav_path.suffix.lower() != ".wav":
+        raise HTTPException(status_code=400, detail="Reference WAV must point to a .wav file")
+    if not reference_wav_path.exists() or not reference_wav_path.is_file():
+        raise HTTPException(status_code=400, detail=f"Reference WAV not found: {reference_wav_raw}")
+    if reference_wav_path.stat().st_size <= 0:
+        raise HTTPException(status_code=400, detail=f"Reference WAV is empty: {reference_wav_raw}")
+
+    language, supported_languages = _normalize_voice_languages(payload.language, payload.supported_languages)
+    profile_type = (payload.profile_type or "quick_clone").strip().lower()
+    if profile_type not in {"quick_clone", "studio_voice"}:
+        raise HTTPException(status_code=400, detail="profile_type must be quick_clone or studio_voice")
+
+    quality_tier = (payload.quality_tier or ("studio" if profile_type == "studio_voice" else "quick")).strip().lower()
+    if quality_tier not in {"quick", "studio"}:
+        raise HTTPException(status_code=400, detail="quality_tier must be quick or studio")
+
+    return {
+        "name": name,
+        "reference_wav_path": _to_project_relative(reference_wav_path),
+        "reference_text": reference_text,
+        "language": language,
+        "supported_languages": supported_languages,
+        "profile_type": profile_type,
+        "quality_tier": quality_tier,
+        "guidance": payload.guidance,
+        "notes": payload.notes.strip(),
+        "engine": (payload.engine or "fish_speech").strip() or "fish_speech",
+    }
+
+
+def _voice_reference_source_label(path: Path) -> str:
+    try:
+        path.relative_to(PROJECT_ROOT / "assets" / "voice")
+        return "assets"
+    except ValueError:
+        return "runtime"
+
+
+def _build_voice_reference_assets() -> list[dict[str, Any]]:
+    assets: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    config = get_config()
+    default_reference = _resolve_local_path(config.voice.clone_reference_wav)
+
+    for directory in VOICE_REFERENCE_DIRS:
+        if not directory.exists():
+            continue
+        for wav_path in sorted(directory.rglob("*.wav")):
+            normalized = str(wav_path.resolve())
+            if normalized in seen or not wav_path.is_file():
+                continue
+            seen.add(normalized)
+            transcript_path = wav_path.with_suffix(".txt")
+            transcript_preview = ""
+            transcript_rel = ""
+            if transcript_path.exists():
+                transcript_preview = transcript_path.read_text(encoding="utf-8").strip()[:240]
+                transcript_rel = _to_project_relative(transcript_path)
+            if wav_path.resolve() != default_reference and not transcript_rel:
+                continue
+            assets.append(
+                {
+                    "path": _to_project_relative(wav_path),
+                    "absolute_path": str(wav_path.resolve()),
+                    "label": wav_path.stem.replace("-", " ").replace("_", " "),
+                    "source": _voice_reference_source_label(wav_path),
+                    "file_size_bytes": wav_path.stat().st_size,
+                    "transcript_path": transcript_rel,
+                    "transcript_preview": transcript_preview,
+                    "is_default": wav_path.resolve() == default_reference,
+                }
+            )
+
+    return assets
+
+
+def _run_fish_speech_helper(flag: str, timeout_s: float = 90.0) -> tuple[bool, str]:
+    """
+    Run Fish-Speech setup script helper with proper UV environment.
+    
+    CRITICAL: Uses 'uv run python' to ensure correct Python environment,
+    not sys.executable which points to main app venv.
+    
+    Args:
+        flag: Command flag (--start, --stop, --status)
+        timeout_s: Timeout in seconds (default 90s for model loading)
+    
+    Returns:
+        Tuple of (success: bool, message: str)
+    """
+    script_path = PROJECT_ROOT / "scripts" / "setup_fish_speech.py"
+    
+    # Use UV to run with correct environment
+    command = ["uv", "run", "python", str(script_path), flag]
+    
+    logger.info(
+        "fish_speech_helper_start",
+        flag=flag,
+        timeout_s=timeout_s,
+        command=" ".join(command),
+        cwd=str(PROJECT_ROOT),
+    )
+    
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=PROJECT_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=timeout_s,
+        )
+        
+        stdout = (completed.stdout or "").strip()
+        stderr = (completed.stderr or "").strip()
+        message = stdout or stderr or ""
+        success = completed.returncode == 0
+        
+        logger.info(
+            "fish_speech_helper_complete",
+            flag=flag,
+            success=success,
+            returncode=completed.returncode,
+            stdout_lines=len(stdout.splitlines()) if stdout else 0,
+            stderr_lines=len(stderr.splitlines()) if stderr else 0,
+        )
+        
+        if not success:
+            logger.error(
+                "fish_speech_helper_failed",
+                flag=flag,
+                returncode=completed.returncode,
+                stdout=stdout[:500] if stdout else None,
+                stderr=stderr[:500] if stderr else None,
+            )
+        
+        return success, message
+        
+    except subprocess.TimeoutExpired as exc:
+        error_msg = f"Fish-Speech {flag} timeout after {timeout_s}s"
+        logger.error(
+            "fish_speech_helper_timeout",
+            flag=flag,
+            timeout_s=timeout_s,
+            stdout=exc.stdout[:500] if exc.stdout else None,
+            stderr=exc.stderr[:500] if exc.stderr else None,
+        )
+        return False, error_msg
+        
+    except Exception as exc:
+        error_msg = f"Fish-Speech {flag} exception: {exc}"
+        logger.error(
+            "fish_speech_helper_exception",
+            flag=flag,
+            error=str(exc),
+            exc_info=True,
+        )
+        return False, error_msg
+
+
+async def _ensure_voice_engine_ready(
+    engine: Any,
+    *,
+    auto_start: bool,
+    wait_timeout_s: float,
+) -> tuple[bool, str]:
+    """
+    Ensure Fish-Speech engine is ready with auto-start capability.
+    
+    Args:
+        engine: Voice engine instance (VoiceLabEngine)
+        auto_start: Whether to auto-start if not reachable
+        wait_timeout_s: Total timeout for waiting (default 75s)
+    
+    Returns:
+        Tuple of (ready: bool, message: str)
+    """
+    logger.info(
+        "ensure_voice_engine_ready_start",
+        auto_start=auto_start,
+        wait_timeout_s=wait_timeout_s,
+    )
+    
+    # Check if already healthy
+    try:
+        if await engine.health_check():
+            logger.info("ensure_voice_engine_ready_already_healthy")
+            return True, "ready"
+    except Exception as exc:
+        logger.warning(
+            "ensure_voice_engine_ready_health_check_failed",
+            error=str(exc),
+        )
+    
+    if not auto_start:
+        logger.info("ensure_voice_engine_ready_no_auto_start")
+        return False, "unreachable"
+
+    # Start Fish-Speech with increased timeout (90s for model loading)
+    logger.info("ensure_voice_engine_ready_starting_fish_speech")
+    started, output = await asyncio.to_thread(_run_fish_speech_helper, "--start", 90.0)
+    
+    if not started:
+        error_msg = output or "Fish-Speech start failed"
+        logger.error(
+            "ensure_voice_engine_ready_start_failed",
+            output=output[:500] if output else None,
+        )
+        return False, error_msg
+
+    logger.info(
+        "ensure_voice_engine_ready_start_success",
+        output_preview=output[:200] if output else None,
+    )
+
+    # Poll for health with detailed logging
+    deadline = time.monotonic() + wait_timeout_s
+    poll_count = 0
+    last_log_time = time.monotonic()
+    
+    while time.monotonic() < deadline:
+        await asyncio.sleep(2.0)
+        poll_count += 1
+        
+        try:
+            if await engine.health_check():
+                logger.info(
+                    "ensure_voice_engine_ready_healthy",
+                    poll_count=poll_count,
+                    elapsed_s=round(time.monotonic() - (deadline - wait_timeout_s), 1),
+                )
+                return True, "started"
+        except Exception as exc:
+            # Log every 10 seconds to avoid spam
+            current_time = time.monotonic()
+            if current_time - last_log_time >= 10.0:
+                logger.warning(
+                    "ensure_voice_engine_ready_health_check_polling",
+                    poll_count=poll_count,
+                    elapsed_s=round(current_time - (deadline - wait_timeout_s), 1),
+                    remaining_s=round(deadline - current_time, 1),
+                    error=str(exc),
+                )
+                last_log_time = current_time
+    
+    error_msg = output or "Fish-Speech sidecar did not become reachable in time"
+    logger.error(
+        "ensure_voice_engine_ready_timeout",
+        poll_count=poll_count,
+        wait_timeout_s=wait_timeout_s,
+        output_preview=output[:500] if output else None,
+    )
+    return False, error_msg
+
+
+async def _restart_voice_engine(wait_timeout_s: float = 90.0) -> tuple[bool, str]:
+    """
+    Restart Fish-Speech engine with proper stop and start sequence.
+    
+    Args:
+        wait_timeout_s: Total timeout for restart (default 90s)
+    
+    Returns:
+        Tuple of (ready: bool, message: str)
+    """
+    logger.info("restart_voice_engine_start", wait_timeout_s=wait_timeout_s)
+    
+    # Stop with 30s timeout
+    stop_success, stop_output = await asyncio.to_thread(_run_fish_speech_helper, "--stop", 30.0)
+    logger.info(
+        "restart_voice_engine_stop_complete",
+        success=stop_success,
+        output_preview=stop_output[:200] if stop_output else None,
+    )
+    
+    # Wait for graceful shutdown
+    await asyncio.sleep(2.0)
+    
+    # Start with increased timeout
+    return await _ensure_voice_engine_ready(
+        get_voice_lab_engine(),
+        auto_start=True,
+        wait_timeout_s=wait_timeout_s,
+    )
+
+
 def _get_voice_audio_path() -> Path:
     timestamp_ms = int(time.time() * 1000)
     return _get_voice_runtime_dir() / f"voice-{timestamp_ms}.wav"
 
 
+def _build_voice_library_summary() -> dict[str, Any]:
+    store = get_control_plane_store()
+    generations = store.list_voice_generations(limit=10_000)
+    existing_files = 0
+    total_size_bytes = 0
+
+    for generation in generations:
+        audio_path = Path(generation["audio_path"])
+        if audio_path.exists():
+            existing_files += 1
+            total_size_bytes += audio_path.stat().st_size
+
+    runtime_dir = _get_voice_runtime_dir()
+    return {
+        "artifact_dir": str(runtime_dir),
+        "artifact_dir_abs": str(runtime_dir.resolve()),
+        "total_generations": len(generations),
+        "existing_files": existing_files,
+        "missing_files": max(0, len(generations) - existing_files),
+        "total_size_bytes": total_size_bytes,
+        "latest_generation": generations[0] if generations else None,
+    }
+
+
 def _ensure_default_voice_profile() -> None:
     store = get_control_plane_store()
-    if store.list_voice_profiles():
-        return
     config = get_config()
     ref_wav = Path(config.voice.clone_reference_wav)
     ref_txt = Path(config.voice.clone_reference_text)
+    ref_text = ref_txt.read_text(encoding="utf-8").strip() if ref_txt.exists() else ""
+    existing_profiles = store.list_voice_profiles()
+    for profile in existing_profiles:
+        supported_languages = profile.get("supported_languages") or [profile.get("language", "id")]
+        resolved_reference_text = _resolve_reference_text_for_path(
+            profile.get("reference_wav_path", ""),
+            profile.get("reference_text", ""),
+        )
+        if supported_languages == ["id"] and profile.get("language", "id") == "id" and (
+            not resolved_reference_text or resolved_reference_text == profile.get("reference_text", "").strip()
+        ):
+            continue
+        store.update_voice_profile(
+            profile["id"],
+            name=profile["name"],
+            reference_wav_path=profile["reference_wav_path"],
+            reference_text=resolved_reference_text or profile.get("reference_text", ""),
+            language="id",
+            supported_languages=["id"],
+            profile_type=profile.get("profile_type", "quick_clone"),
+            quality_tier=profile.get("quality_tier", "quick"),
+            guidance=profile.get("guidance", {}),
+            notes=profile.get("notes", ""),
+            engine=profile.get("engine", "fish_speech"),
+        )
+    existing_profiles = store.list_voice_profiles()
+    if existing_profiles:
+        default_profile = next(
+            (profile for profile in existing_profiles if profile.get("name") == "Default Fish Clone"),
+            None,
+        )
+        if default_profile is not None:
+            supported_languages = default_profile.get("supported_languages") or [
+                default_profile.get("language", "id")
+            ]
+            if (
+                supported_languages != ["id"]
+                or default_profile.get("reference_wav_path") != str(ref_wav)
+                or (ref_text and default_profile.get("reference_text") != ref_text)
+            ):
+                store.update_voice_profile(
+                    default_profile["id"],
+                    name=default_profile["name"],
+                    reference_wav_path=str(ref_wav) if ref_wav.exists() else default_profile["reference_wav_path"],
+                    reference_text=ref_text or default_profile["reference_text"],
+                    language="id",
+                    supported_languages=["id"],
+                    profile_type=default_profile.get("profile_type", "quick_clone"),
+                    quality_tier=default_profile.get("quality_tier", "quick"),
+                    guidance=default_profile.get("guidance", {}),
+                    notes=default_profile.get("notes", ""),
+                    engine=default_profile.get("engine", "fish_speech"),
+                )
+        return
     if not ref_wav.exists() or not ref_txt.exists():
         return
-    ref_text = ref_txt.read_text(encoding="utf-8").strip()
     if not ref_text:
         return
     profile = store.create_voice_profile(
@@ -2587,27 +3050,48 @@ async def validate_real_mode_readiness() -> dict[str, Any]:
 async def voice_warmup() -> dict[str, Any]:
     """Warm the voice subsystem and return an explicit operator receipt."""
     try:
-        state = get_runtime_truth_snapshot()["voice_engine"]
-        if not state.get("server_reachable", False):
+        logger.info("voice_warmup_api_called")
+        
+        engine = get_voice_lab_engine()
+        
+        # Increased timeout to 90s for model loading
+        ready, message = await _ensure_voice_engine_ready(
+            engine,
+            auto_start=True,
+            wait_timeout_s=90.0,
+        )
+        
+        if not ready:
+            logger.warning(
+                "voice_warmup_not_ready",
+                message=message,
+            )
             return {
                 "status": "blocked",
-                "message": "Voice sidecar is not reachable yet",
+                "message": "Voice sidecar belum siap setelah warmup otomatis.",
                 "provenance": "mock" if is_mock_mode() else "real_local",
                 "action": "voice.warmup",
+                "details": [message],
+                "next_step": "Cek log Fish-Speech di external/fish-speech/runtime/fish-speech.log lalu ulangi warmup setelah sidecar stabil.",
             }
+        
+        logger.info("voice_warmup_success", message=message)
         return {
             "status": "success",
-            "message": "Voice sidecar is reachable and ready for warmup",
+            "message": "Voice sidecar aktif dan siap dipakai.",
             "provenance": "mock" if is_mock_mode() else "real_local",
             "action": "voice.warmup",
+            "details": [message],
         }
     except Exception as e:
         logger.error("voice_warmup_error", error=str(e), exc_info=True)
         return {
             "status": "error",
-            "message": str(e),
+            "message": f"Warmup gagal: {str(e)}",
             "provenance": "mock" if is_mock_mode() else "real_local",
             "action": "voice.warmup",
+            "details": [str(e)],
+            "next_step": "Periksa log aplikasi dan Fish-Speech untuk detail error.",
         }
 
 
@@ -2636,47 +3120,71 @@ async def voice_queue_clear() -> dict[str, Any]:
 
 @router.post("/voice/restart")
 async def voice_restart() -> dict[str, Any]:
-    """Increment voice restart counter and return a receipt."""
+    """Restart the Fish-Speech sidecar and return a receipt."""
     try:
         from src.dashboard.resources import increment_restart_counter
         increment_restart_counter("voice")
+        
+        logger.info("voice_restart_api_called")
+        
+        # Increased timeout to 90s for model loading
+        ready, message = await _restart_voice_engine(wait_timeout_s=90.0)
+        
+        if not ready:
+            logger.warning(
+                "voice_restart_not_ready",
+                message=message,
+            )
+            return {
+                "status": "warning",
+                "message": "Restart suara diminta, tetapi sidecar belum kembali siap.",
+                "provenance": "mock" if is_mock_mode() else "real_local",
+                "action": "voice.restart",
+                "details": [message],
+                "next_step": "Muat ulang status suara atau cek log Fish-Speech di external/fish-speech/runtime/fish-speech.log",
+            }
+        
+        logger.info("voice_restart_success", message=message)
         return {
             "status": "success",
-            "message": "Voice worker restart requested",
+            "message": "Mesin suara berhasil dimulai ulang dan kembali siap.",
             "provenance": "mock" if is_mock_mode() else "real_local",
             "action": "voice.restart",
+            "details": [message],
         }
     except Exception as e:
         logger.error("voice_restart_error", error=str(e), exc_info=True)
         return {
             "status": "error",
-            "message": str(e),
+            "message": f"Restart gagal: {str(e)}",
             "provenance": "mock" if is_mock_mode() else "real_local",
             "action": "voice.restart",
+            "details": [str(e)],
+            "next_step": "Periksa log aplikasi dan Fish-Speech untuk detail error.",
         }
 
 
 @router.get("/voice/profiles")
 async def list_voice_profiles() -> list[dict[str, Any]]:
     _ensure_default_voice_profile()
-    return get_control_plane_store().list_voice_profiles()
+    return [
+        _normalize_voice_profile_for_operator(profile)
+        for profile in get_control_plane_store().list_voice_profiles()
+    ]
+
+
+@router.get("/voice/reference-assets")
+async def list_voice_reference_assets() -> list[dict[str, Any]]:
+    return _build_voice_reference_assets()
 
 
 @router.post("/voice/profiles")
 async def create_voice_profile(payload: VoiceProfileMutationRequest) -> dict[str, Any]:
     try:
-        return get_control_plane_store().create_voice_profile(
-            name=payload.name,
-            reference_wav_path=payload.reference_wav_path,
-            reference_text=payload.reference_text,
-            language=payload.language,
-            supported_languages=payload.supported_languages,
-            profile_type=payload.profile_type,
-            quality_tier=payload.quality_tier,
-            guidance=payload.guidance,
-            notes=payload.notes,
-            engine=payload.engine,
-        )
+        normalized = _validate_voice_profile_payload(payload)
+        return get_control_plane_store().create_voice_profile(**normalized)
+    except HTTPException:
+        raise
     except Exception as exc:
         logger.error("voice_profile_create_error", error=str(exc), exc_info=True)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -2685,21 +3193,12 @@ async def create_voice_profile(payload: VoiceProfileMutationRequest) -> dict[str
 @router.put("/voice/profiles/{profile_id}")
 async def update_voice_profile(profile_id: int, payload: VoiceProfileMutationRequest) -> dict[str, Any]:
     try:
-        return get_control_plane_store().update_voice_profile(
-            profile_id,
-            name=payload.name,
-            reference_wav_path=payload.reference_wav_path,
-            reference_text=payload.reference_text,
-            language=payload.language,
-            supported_languages=payload.supported_languages,
-            profile_type=payload.profile_type,
-            quality_tier=payload.quality_tier,
-            guidance=payload.guidance,
-            notes=payload.notes,
-            engine=payload.engine,
-        )
+        normalized = _validate_voice_profile_payload(payload)
+        return get_control_plane_store().update_voice_profile(profile_id, **normalized)
     except RuntimeError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except HTTPException:
+        raise
 
 
 @router.delete("/voice/profiles/{profile_id}")
@@ -2721,17 +3220,17 @@ async def activate_voice_profile(profile_id: int) -> dict[str, Any]:
 @router.get("/voice/lab")
 async def get_voice_lab_state() -> dict[str, Any]:
     _ensure_default_voice_profile()
-    return get_control_plane_store().get_voice_lab_state()
+    return _normalize_voice_lab_state_for_operator(get_control_plane_store().get_voice_lab_state())
 
 
 @router.put("/voice/lab")
 async def update_voice_lab_state(payload: VoiceLabStateRequest) -> dict[str, Any]:
-    return get_control_plane_store().update_voice_lab_state(
+    return _normalize_voice_lab_state_for_operator(get_control_plane_store().update_voice_lab_state(
         mode=payload.mode,
         active_profile_id=payload.active_profile_id,
         preview_session_id=payload.preview_session_id,
         selected_avatar_id=payload.selected_avatar_id,
-        selected_language=payload.selected_language,
+        selected_language="id",
         selected_profile_type=payload.selected_profile_type,
         selected_revision_id=payload.selected_revision_id,
         selected_style_preset=payload.selected_style_preset,
@@ -2739,7 +3238,7 @@ async def update_voice_lab_state(payload: VoiceLabStateRequest) -> dict[str, Any
         selected_similarity=payload.selected_similarity,
         draft_text=payload.draft_text,
         last_generation_id=payload.last_generation_id,
-    )
+    ))
 
 
 @router.post("/voice/lab/preview-session")
@@ -2750,7 +3249,7 @@ async def update_voice_lab_preview_session(payload: VoiceLabStateRequest) -> dic
         active_profile_id=current["active_profile_id"],
         preview_session_id=payload.preview_session_id,
         selected_avatar_id=payload.selected_avatar_id or current["selected_avatar_id"],
-        selected_language=current.get("selected_language", "id"),
+        selected_language="id",
         selected_profile_type=current.get("selected_profile_type", "quick_clone"),
         selected_revision_id=current.get("selected_revision_id"),
         selected_style_preset=current.get("selected_style_preset", "natural"),
@@ -2766,12 +3265,63 @@ async def list_voice_generations(limit: int = 20) -> list[dict[str, Any]]:
     return get_control_plane_store().list_voice_generations(limit=limit)
 
 
+@router.get("/voice/library/summary")
+async def get_voice_library_summary() -> dict[str, Any]:
+    _ensure_default_voice_profile()
+    return _build_voice_library_summary()
+
+
 @router.get("/voice/generations/{generation_id}")
 async def get_voice_generation(generation_id: int) -> dict[str, Any]:
     generation = get_control_plane_store().get_voice_generation(generation_id)
     if generation is None:
         raise HTTPException(status_code=404, detail=f"Voice generation {generation_id} not found")
     return generation
+
+
+@router.delete("/voice/generations/{generation_id}")
+async def delete_voice_generation(generation_id: int) -> dict[str, Any]:
+    store = get_control_plane_store()
+    try:
+        generation = store.delete_voice_generation(generation_id)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    audio_path = Path(generation["audio_path"])
+    file_deleted = False
+    if audio_path.exists():
+        audio_path.unlink()
+        file_deleted = True
+
+    return {
+        "status": "success",
+        "message": f"Voice artifact {generation_id} deleted",
+        "action": "voice.generation.delete",
+        "generation": generation,
+        "file_deleted": file_deleted,
+        "library_summary": _build_voice_library_summary(),
+    }
+
+
+@router.post("/voice/generations/clear")
+async def clear_voice_generations() -> dict[str, Any]:
+    store = get_control_plane_store()
+    generations = store.clear_voice_generations()
+    deleted_files = 0
+    for generation in generations:
+        audio_path = Path(generation["audio_path"])
+        if audio_path.exists():
+            audio_path.unlink()
+            deleted_files += 1
+
+    return {
+        "status": "success",
+        "message": f"Cleared {len(generations)} voice artifacts",
+        "action": "voice.generation.clear",
+        "deleted_count": len(generations),
+        "deleted_files": deleted_files,
+        "library_summary": _build_voice_library_summary(),
+    }
 
 
 @router.get("/voice/audio/{generation_id}")
@@ -2805,6 +3355,7 @@ async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
     _ensure_default_voice_profile()
     store = get_control_plane_store()
     lab_state = store.get_voice_lab_state()
+    payload.language, _ = _normalize_voice_languages(payload.language, [payload.language])
     profile_id = payload.profile_id or lab_state.get("active_profile_id")
     if profile_id is None:
         raise HTTPException(status_code=404, detail="No active voice profile selected")
@@ -2812,6 +3363,11 @@ async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
     profile = store.get_voice_profile(int(profile_id))
     if profile is None:
         raise HTTPException(status_code=404, detail=f"Voice profile {profile_id} not found")
+    if payload.language not in set(profile.get("supported_languages") or [profile.get("language", "id")]):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Voice profile {profile['name']} does not support language {payload.language}",
+        )
 
     attach_to_avatar = bool(payload.attach_to_avatar or payload.mode == "attach_avatar")
     preview_session_id = payload.preview_session_id or lab_state.get("preview_session_id", "")
@@ -2819,12 +3375,13 @@ async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
         raise HTTPException(status_code=409, detail="No preview session available for avatar attach")
 
     engine = get_voice_lab_engine()
-    if not await engine.health_check():
-        raise HTTPException(status_code=409, detail="Fish-Speech sidecar is not reachable")
+    ready, ready_message = await _ensure_voice_engine_ready(engine, auto_start=True, wait_timeout_s=75.0)
+    if not ready:
+        raise HTTPException(status_code=409, detail=f"Fish-Speech sidecar is not reachable: {ready_message}")
 
     synth_kwargs = {
         "text": payload.text,
-        "reference_wav_path": profile["reference_wav_path"],
+        "reference_wav_path": str(_resolve_local_path(profile["reference_wav_path"])),
         "reference_text": profile["reference_text"],
         "emotion": payload.emotion,
         "speed": payload.speed,
@@ -2845,7 +3402,7 @@ async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
         )
         result = await engine.synthesize_with_profile(
             text=payload.text,
-            reference_wav_path=profile["reference_wav_path"],
+            reference_wav_path=str(_resolve_local_path(profile["reference_wav_path"])),
             reference_text=profile["reference_text"],
             emotion=payload.emotion,
             speed=payload.speed,
@@ -2908,8 +3465,9 @@ async def generate_voice(payload: VoiceGenerationRequest) -> dict[str, Any]:
         "style_preset": payload.style_preset,
         "stability": payload.stability,
         "similarity": payload.similarity,
-        "profile": profile,
+        "profile": _normalize_voice_profile_for_operator(profile),
         "lab_state": updated_state,
+        "details": [ready_message],
     }
 
 
@@ -2973,13 +3531,16 @@ async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, 
 
         engine = FishSpeechEngine()
 
-        if not await engine.health_check():
+        ready, ready_message = await _ensure_voice_engine_ready(engine, auto_start=True, wait_timeout_s=75.0)
+        if not ready:
             return {
                 "status": "blocked",
-                "message": "Voice sidecar is not reachable yet",
+                "message": "Voice sidecar belum siap untuk tes suara.",
                 "provenance": "mock" if is_mock_mode() else "real_local",
                 "action": "voice.test.speak",
                 "text": text,
+                "details": [ready_message],
+                "next_step": "Panaskan mesin suara lalu ulangi tes cepat.",
             }
 
         result = await engine.synthesize(text, emotion="neutral")
@@ -2995,6 +3556,7 @@ async def voice_test_speak(text: str = "Halo operator, tes suara") -> dict[str, 
                 "audio_length_bytes": len(audio_data),
                 "latency_ms": result.latency_ms,
                 "duration_ms": result.duration_ms,
+                "details": [ready_message],
             }
         else:
             return {

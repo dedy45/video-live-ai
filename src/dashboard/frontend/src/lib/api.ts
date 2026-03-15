@@ -15,8 +15,10 @@ import type {
   ValidationResult,
   VoiceGeneration,
   VoiceGenerationResult,
+  VoiceLibrarySummary,
   VoiceLabState,
   VoiceProfile,
+  VoiceReferenceAsset,
   VoiceTrainingJob,
   VoiceTestSpeakResult,
 } from './types';
@@ -108,6 +110,7 @@ export const voiceTestSpeak = (text: string) =>
     method: 'POST',
   });
 export const getVoiceProfiles = () => request<VoiceProfile[]>('/voice/profiles');
+export const getVoiceReferenceAssets = () => request<VoiceReferenceAsset[]>('/voice/reference-assets');
 export const createVoiceProfile = (payload: {
   name: string;
   reference_wav_path: string;
@@ -173,6 +176,11 @@ export const generateVoice = (payload: {
     body: JSON.stringify(payload),
   });
 export const getVoiceGenerations = (limit = 20) => request<VoiceGeneration[]>(`/voice/generations?limit=${limit}`);
+export const getVoiceLibrarySummary = () => request<VoiceLibrarySummary>('/voice/library/summary');
+export const deleteVoiceGeneration = (generationId: number) =>
+  request<Record<string, any>>(`/voice/generations/${generationId}`, { method: 'DELETE' });
+export const clearVoiceGenerations = () =>
+  request<Record<string, any>>('/voice/generations/clear', { method: 'POST' });
 export const getVoiceTrainingJobs = (limit = 20) => request<VoiceTrainingJob[]>(`/voice/training-jobs?limit=${limit}`);
 export const createVoiceTrainingJob = (payload: { profile_id: number; job_type?: string; dataset_path?: string }) =>
   request<Record<string, any>>('/voice/training-jobs', {

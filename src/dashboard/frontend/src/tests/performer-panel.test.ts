@@ -163,7 +163,7 @@ const api = vi.hoisted(() => ({
       name: 'Sari Fish',
       engine: 'fish_speech',
       profile_type: 'quick_clone',
-      supported_languages: ['id', 'en'],
+      supported_languages: ['id'],
       quality_tier: 'quick',
       reference_wav_path: 'assets/voice/sari.wav',
       reference_text: 'Halo semuanya, aku Sari.',
@@ -177,14 +177,26 @@ const api = vi.hoisted(() => ({
       name: 'Sari Studio Voice',
       engine: 'fish_speech',
       profile_type: 'studio_voice',
-      supported_languages: ['id', 'en'],
+      supported_languages: ['id'],
       quality_tier: 'studio',
       reference_wav_path: 'data/runtime/voice/studio-sari/reference.wav',
       reference_text: 'Halo semuanya, aku Sari studio voice.',
       language: 'id',
       notes: 'production stable',
       is_active: false,
-      guidance: { training_target_minutes: { id: [30, 60], en: [30, 60] } },
+      guidance: { training_target_minutes: { id: [30, 60] } },
+    },
+  ]),
+  getVoiceReferenceAssets: vi.fn().mockResolvedValue([
+    {
+      path: 'assets/voice/sari.wav',
+      absolute_path: 'C:/repo/videoliveai/assets/voice/sari.wav',
+      label: 'sari',
+      source: 'assets',
+      file_size_bytes: 4096000,
+      transcript_path: 'assets/voice/reference.txt',
+      transcript_preview: 'Halo semuanya, aku Sari.',
+      is_default: true,
     },
   ]),
   createVoiceProfile: vi.fn().mockResolvedValue({
@@ -192,7 +204,7 @@ const api = vi.hoisted(() => ({
     name: 'Clone Baru',
     engine: 'fish_speech',
     profile_type: 'quick_clone',
-    supported_languages: ['id', 'en'],
+    supported_languages: ['id'],
     quality_tier: 'quick',
     reference_wav_path: 'assets/voice/baru.wav',
     reference_text: 'Halo, ini clone baru.',
@@ -206,7 +218,7 @@ const api = vi.hoisted(() => ({
     name: 'Sari Fish',
     engine: 'fish_speech',
     profile_type: 'quick_clone',
-    supported_languages: ['id', 'en'],
+    supported_languages: ['id'],
     quality_tier: 'quick',
     reference_wav_path: 'assets/voice/sari.wav',
     reference_text: 'Halo semuanya, aku Sari.',
@@ -268,7 +280,7 @@ const api = vi.hoisted(() => ({
     audio_length_bytes: 8192,
     attached_to_avatar: false,
     avatar_session_id: '',
-    language: 'en',
+    language: 'id',
     style_preset: 'conversational',
     stability: 0.62,
     similarity: 0.88,
@@ -277,7 +289,7 @@ const api = vi.hoisted(() => ({
       name: 'Sari Fish',
       engine: 'fish_speech',
       profile_type: 'quick_clone',
-      supported_languages: ['id', 'en'],
+      supported_languages: ['id'],
       quality_tier: 'quick',
       reference_wav_path: 'assets/voice/sari.wav',
       reference_text: 'Halo semuanya, aku Sari.',
@@ -291,13 +303,13 @@ const api = vi.hoisted(() => ({
       active_profile_id: 1,
       preview_session_id: '',
       selected_avatar_id: 'musetalk_avatar1',
-      selected_language: 'en',
+      selected_language: 'id',
       selected_profile_type: 'quick_clone',
       selected_revision_id: null,
       selected_style_preset: 'conversational',
       selected_stability: 0.62,
       selected_similarity: 0.88,
-      draft_text: 'Hello operator',
+      draft_text: 'Halo operator Indonesia',
       last_generation_id: 44,
     },
   }),
@@ -309,7 +321,40 @@ const api = vi.hoisted(() => ({
       profile_name: 'Sari Fish',
       source_type: 'manual_text',
       input_text: 'Halo operator',
-      language: 'en',
+      language: 'id',
+      emotion: 'neutral',
+      style_preset: 'conversational',
+      stability: 0.62,
+      similarity: 0.88,
+      speed: 1,
+      status: 'success',
+      audio_path: 'data/runtime/voice/voice-44.wav',
+      audio_filename: 'voice-44.wav',
+      download_name: 'sari-fish-id.wav',
+      audio_url: '/api/voice/audio/44',
+      download_url: '/api/voice/audio/44/download',
+      audio_size_bytes: 8192,
+      latency_ms: 510,
+      duration_ms: 1020,
+      attached_to_avatar: false,
+      avatar_session_id: '',
+    },
+  ]),
+  getVoiceLibrarySummary: vi.fn().mockResolvedValue({
+    artifact_dir: 'data/runtime/voice',
+    artifact_dir_abs: 'C:/repo/videoliveai/data/runtime/voice',
+    total_generations: 1,
+    existing_files: 1,
+    missing_files: 0,
+    total_size_bytes: 8192,
+    latest_generation: {
+      id: 44,
+      mode: 'standalone',
+      profile_id: 1,
+      profile_name: 'Sari Fish',
+      source_type: 'manual_text',
+      input_text: 'Halo operator',
+      language: 'id',
       emotion: 'neutral',
       style_preset: 'conversational',
       stability: 0.62,
@@ -327,7 +372,15 @@ const api = vi.hoisted(() => ({
       attached_to_avatar: false,
       avatar_session_id: '',
     },
-  ]),
+  }),
+  deleteVoiceGeneration: vi.fn().mockResolvedValue({
+    status: 'success',
+    message: 'Voice artifact 44 deleted',
+  }),
+  clearVoiceGenerations: vi.fn().mockResolvedValue({
+    status: 'success',
+    message: 'Cleared 1 voice artifacts',
+  }),
   getVoiceTrainingJobs: vi.fn().mockResolvedValue([
     {
       id: 7,
@@ -379,6 +432,7 @@ vi.mock('../lib/api', () => ({
   validateVoiceLocalClone: api.validateVoiceLocalClone,
   validateAudioChunkingSmoke: api.validateAudioChunkingSmoke,
   getVoiceProfiles: api.getVoiceProfiles,
+  getVoiceReferenceAssets: api.getVoiceReferenceAssets,
   createVoiceProfile: api.createVoiceProfile,
   activateVoiceProfile: api.activateVoiceProfile,
   getVoiceLabState: api.getVoiceLabState,
@@ -386,6 +440,9 @@ vi.mock('../lib/api', () => ({
   updateVoiceLabPreviewSession: api.updateVoiceLabPreviewSession,
   generateVoice: api.generateVoice,
   getVoiceGenerations: api.getVoiceGenerations,
+  getVoiceLibrarySummary: api.getVoiceLibrarySummary,
+  deleteVoiceGeneration: api.deleteVoiceGeneration,
+  clearVoiceGenerations: api.clearVoiceGenerations,
   getVoiceTrainingJobs: api.getVoiceTrainingJobs,
   createVoiceTrainingJob: api.createVoiceTrainingJob,
 }));
@@ -455,32 +512,34 @@ describe('PerformerPanel', () => {
     expect(api.getVoiceProfiles).not.toHaveBeenCalled();
     expect(api.getVoiceLabState).not.toHaveBeenCalled();
     expect(api.getVoiceGenerations).not.toHaveBeenCalled();
+    expect(api.getVoiceLibrarySummary).not.toHaveBeenCalled();
 
     await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
 
     await waitFor(() => {
       expect(api.getVoiceProfiles).toHaveBeenCalledTimes(1);
+      expect(api.getVoiceReferenceAssets).toHaveBeenCalledTimes(1);
       expect(api.getVoiceLabState).toHaveBeenCalledTimes(1);
       expect(api.getVoiceGenerations).toHaveBeenCalledTimes(1);
+      expect(api.getVoiceLibrarySummary).toHaveBeenCalledTimes(1);
     });
 
-    expect(await screen.findByRole('tab', { name: /generate/i })).toBeInTheDocument();
+    expect(await screen.findByText(/mulai dari sini/i)).toBeInTheDocument();
     expect((await screen.findAllByText(/assets\/voice\/sari\.wav/i)).length).toBeGreaterThanOrEqual(1);
 
     const promptInput = screen.getByLabelText(/prompt suara/i);
-    await fireEvent.change(screen.getByLabelText(/bahasa output/i), { target: { value: 'en' } });
     await fireEvent.change(screen.getByLabelText(/gaya suara/i), { target: { value: 'conversational' } });
     await fireEvent.input(screen.getByLabelText(/stability/i), { target: { value: '0.62' } });
     await fireEvent.input(screen.getByLabelText(/similarity/i), { target: { value: '0.88' } });
-    await fireEvent.input(promptInput, { target: { value: 'Hello operator' } });
+    await fireEvent.input(promptInput, { target: { value: 'Halo operator Indonesia' } });
     await fireEvent.click(screen.getByRole('button', { name: /generate audio/i }));
 
     await waitFor(() => {
       expect(api.generateVoice).toHaveBeenCalledWith({
         mode: 'standalone',
         profile_id: 1,
-        text: 'Hello operator',
-        language: 'en',
+        text: 'Halo operator Indonesia',
+        language: 'id',
         emotion: 'neutral',
         style_preset: 'conversational',
         stability: 0.62,
@@ -493,12 +552,10 @@ describe('PerformerPanel', () => {
     expect(await screen.findByTestId('action-receipt')).toHaveTextContent(/audio berhasil dibuat/i);
   });
 
-  it('queues a studio voice training job from the training workspace', async () => {
+  it('queues a studio voice training job from the voice management section', async () => {
     render(PerformerPanel);
 
     await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
-    await screen.findByRole('tab', { name: /training jobs/i });
-    await fireEvent.click(screen.getByRole('tab', { name: /training jobs/i }));
     await fireEvent.change(screen.getByLabelText(/studio voice target/i), { target: { value: '2' } });
     await fireEvent.input(screen.getByLabelText(/lokasi dataset/i), {
       target: { value: 'data/runtime/voice/datasets/studio-sari' },
@@ -518,7 +575,7 @@ describe('PerformerPanel', () => {
     render(PerformerPanel);
 
     await fireEvent.click(await screen.findByRole('button', { name: /^suara$/i }));
-    await screen.findByRole('tab', { name: /generate/i });
+    await screen.findByText(/tujuan hasil audio/i);
 
     window.dispatchEvent(
       new MessageEvent('message', {

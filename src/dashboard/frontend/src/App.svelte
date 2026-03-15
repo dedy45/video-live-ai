@@ -103,6 +103,8 @@
  const ActiveComponent = $derived(
  pageComponents[currentPage] || pageComponents['/']
  );
+
+ const useWideFrame = $derived(currentPage === '/performer');
 </script>
 
 <div class="app" data-testid="app-root">
@@ -145,7 +147,7 @@
  <main class="main-content" data-testid="app-main">
  <TruthBar />
  <div class="page-content" data-testid="app-content">
- <div class="page-frame">
+ <div class:page-frame-wide={useWideFrame} class="page-frame">
  <ActiveComponent />
  </div>
  </div>
@@ -228,8 +230,9 @@
  }
 
  .nav-item.active {
- background: rgba(99, 102, 241, 0.15);
- color: var(--accent);
+ background: rgba(233, 69, 96, 0.14);
+ color: #ffd4dc;
+ border: 1px solid rgba(233, 69, 96, 0.22);
  }
 
  .nav-icon {
@@ -263,6 +266,11 @@
  display: flex;
  flex-direction: column;
  gap: 24px;
+ }
+
+ .page-frame.page-frame-wide {
+ width: 100%;
+ max-width: none;
  }
 
  @media (max-width: 920px) {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import time
 from unittest.mock import AsyncMock
@@ -983,13 +984,16 @@ async def test_voice_lab_profile_crud_and_state_endpoints(tmp_path, monkeypatch:
     from tests.test_control_plane import _prepare_isolated_dashboard_api
 
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
 
     created = await dashboard_api.create_voice_profile(
         dashboard_api.VoiceProfileMutationRequest(
             name="Sari Fish",
-            reference_wav_path="assets/voice/sari.wav",
+            reference_wav_path=str(reference_wav),
             reference_text="Halo semuanya, aku Sari.",
             language="id",
+            supported_languages=["id"],
             notes="utama",
         )
     )
@@ -1013,16 +1017,148 @@ async def test_voice_lab_profile_crud_and_state_endpoints(tmp_path, monkeypatch:
 
 
 @pytest.mark.asyncio
+async def test_voice_profile_create_rejects_missing_reference_asset(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from fastapi import HTTPException
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+
+    with pytest.raises(HTTPException, match="Reference WAV") as exc_info:
+        await dashboard_api.create_voice_profile(
+            dashboard_api.VoiceProfileMutationRequest(
+                name="Broken Clone",
+                reference_wav_path=str(tmp_path / "missing.wav"),
+                reference_text="Halo semuanya, aku clone rusak.",
+                language="id",
+                notes="broken",
+            )
+        )
+
+    assert exc_info.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_voice_generate_attempts_voice_sidecar_warmup_before_failing(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
+
+    created = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path=str(reference_wav),
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            supported_languages=["id"],
+            notes="utama",
+        )
+    )
+
+    class DummyVoiceEngine:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def health_check(self) -> bool:
+            self.calls += 1
+            return self.calls > 1
+
+        async def synthesize_with_profile(
+            self,
+            *,
+            text: str,
+            reference_wav_path: str,
+            reference_text: str,
+            emotion: str = "neutral",
+            speed: float = 1.0,
+            trace_id: str = "",
+            language: str = "id",
+            style_preset: str = "natural",
+            stability: float = 0.75,
+            similarity: float = 0.8,
+        ):
+            from src.voice.engine import AudioResult
+
+            return AudioResult(
+                audio_data=b"WAVDATA",
+                duration_ms=1250.0,
+                text=text,
+                emotion=emotion,
+                latency_ms=42.0,
+            )
+
+    warmup_calls: list[str] = []
+
+    async def fake_ensure_ready(engine, *, auto_start: bool, wait_timeout_s: float) -> tuple[bool, str]:
+        warmup_calls.append(f"{auto_start}:{wait_timeout_s}")
+        return True, "started"
+
+    monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+    monkeypatch.setattr(dashboard_api, "_ensure_voice_engine_ready", fake_ensure_ready)
+
+    result = await dashboard_api.generate_voice(
+        dashboard_api.VoiceGenerationRequest(
+            mode="standalone",
+            profile_id=created["id"],
+            text="Halo operator Indonesia",
+            emotion="neutral",
+            speed=1.0,
+            attach_to_avatar=False,
+            language="id",
+        )
+    )
+
+    assert result["status"] == "success"
+    assert result["language"] == "id"
+    assert warmup_calls == ["True:75.0"]
+
+
+@pytest.mark.asyncio
+async def test_voice_lab_seeds_default_indonesia_only_profile(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from types import SimpleNamespace
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    ref_wav = tmp_path / "reference.wav"
+    ref_txt = tmp_path / "reference.txt"
+    ref_wav.write_bytes(b"RIFF....WAVEfmt ")
+    ref_txt.write_text("Halo operator bilingual", encoding="utf-8")
+
+    monkeypatch.setattr(
+        dashboard_api,
+        "get_config",
+        lambda: SimpleNamespace(
+            voice=SimpleNamespace(
+                clone_reference_wav=str(ref_wav),
+                clone_reference_text=str(ref_txt),
+            )
+        ),
+    )
+
+    state = await dashboard_api.get_voice_lab_state()
+    profiles = await dashboard_api.list_voice_profiles()
+
+    assert state["active_profile_id"] == profiles[0]["id"]
+    assert profiles[0]["name"] == "Default Fish Clone"
+    assert profiles[0]["supported_languages"] == ["id"]
+    assert profiles[0]["profile_type"] == "quick_clone"
+
+
+@pytest.mark.asyncio
 async def test_voice_generate_standalone_persists_audio_result(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     from tests.test_control_plane import _prepare_isolated_dashboard_api
 
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
     created = await dashboard_api.create_voice_profile(
         dashboard_api.VoiceProfileMutationRequest(
             name="Sari Fish",
-            reference_wav_path="assets/voice/sari.wav",
+            reference_wav_path=str(reference_wav),
             reference_text="Halo semuanya, aku Sari.",
             language="id",
+            supported_languages=["id"],
             notes="utama",
         )
     )
@@ -1052,6 +1188,11 @@ async def test_voice_generate_standalone_persists_audio_result(tmp_path, monkeyp
             )
 
     monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+    monkeypatch.setattr(
+        dashboard_api,
+        "_ensure_voice_engine_ready",
+        lambda engine, *, auto_start, wait_timeout_s: asyncio.sleep(0, result=(True, "ready")),
+    )
 
     result = await dashboard_api.generate_voice(
         dashboard_api.VoiceGenerationRequest(
@@ -1076,12 +1217,15 @@ async def test_voice_generate_persists_language_and_download_metadata(tmp_path, 
     from tests.test_control_plane import _prepare_isolated_dashboard_api
 
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
     created = await dashboard_api.create_voice_profile(
         dashboard_api.VoiceProfileMutationRequest(
             name="Sari Fish",
-            reference_wav_path="assets/voice/sari.wav",
+            reference_wav_path=str(reference_wav),
             reference_text="Halo semuanya, aku Sari.",
             language="id",
+            supported_languages=["id"],
             notes="utama",
         )
     )
@@ -1115,30 +1259,82 @@ async def test_voice_generate_persists_language_and_download_metadata(tmp_path, 
             )
 
     monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+    monkeypatch.setattr(
+        dashboard_api,
+        "_ensure_voice_engine_ready",
+        lambda engine, *, auto_start, wait_timeout_s: asyncio.sleep(0, result=(True, "ready")),
+    )
 
-    result = await dashboard_api.generate_voice(
-        dashboard_api.VoiceGenerationRequest(
-            mode="standalone",
-            profile_id=created["id"],
-            text="Hello operator",
-            emotion="neutral",
-            speed=1.0,
-            attach_to_avatar=False,
-            language="en",
-            style_preset="conversational",
-            stability=0.68,
-            similarity=0.88,
+    with pytest.raises(Exception):
+        await dashboard_api.generate_voice(
+            dashboard_api.VoiceGenerationRequest(
+                mode="standalone",
+                profile_id=created["id"],
+                text="Hello operator",
+                emotion="neutral",
+                speed=1.0,
+                attach_to_avatar=False,
+                language="en",
+                style_preset="conversational",
+                stability=0.68,
+                similarity=0.88,
+            )
+        )
+
+
+@pytest.mark.asyncio
+async def test_voice_library_summary_and_delete_generation_manage_local_artifacts(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from tests.test_control_plane import _prepare_isolated_dashboard_api
+
+    dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
+    profile = await dashboard_api.create_voice_profile(
+        dashboard_api.VoiceProfileMutationRequest(
+            name="Sari Fish",
+            reference_wav_path=str(reference_wav),
+            reference_text="Halo semuanya, aku Sari.",
+            language="id",
+            notes="utama",
         )
     )
-    history = await dashboard_api.list_voice_generations()
-    downloaded = await dashboard_api.get_voice_generation_audio_download(result["generation_id"])
 
-    assert result["language"] == "en"
-    assert result["style_preset"] == "conversational"
-    assert result["download_url"].endswith(f"/api/voice/audio/{result['generation_id']}/download")
-    assert history[0]["language"] == "en"
-    assert history[0]["download_url"].endswith(f"/api/voice/audio/{result['generation_id']}/download")
-    assert downloaded.headers["content-disposition"].startswith("attachment;")
+    audio_path = tmp_path / "voice-managed.wav"
+    audio_path.write_bytes(b"WAVDATA")
+    generation = dashboard_api.get_control_plane_store().create_voice_generation(
+        mode="standalone",
+        profile_id=profile["id"],
+        source_type="manual_text",
+        input_text="Halo operator",
+        language="id",
+        emotion="neutral",
+        style_preset="natural",
+        stability=0.75,
+        similarity=0.8,
+        speed=1.0,
+        status="success",
+        audio_path=str(audio_path),
+        audio_filename=audio_path.name,
+        download_name="sari-fish-id.wav",
+        audio_size_bytes=audio_path.stat().st_size,
+        latency_ms=42.0,
+        duration_ms=1250.0,
+        attached_to_avatar=False,
+    )
+    audio_size = audio_path.stat().st_size
+
+    summary = await dashboard_api.get_voice_library_summary()
+    deleted = await dashboard_api.delete_voice_generation(generation["id"])
+    remaining = await dashboard_api.list_voice_generations()
+
+    assert summary["total_generations"] == 1
+    assert summary["total_size_bytes"] == audio_size
+    assert summary["artifact_dir_abs"]
+    assert summary["latest_generation"]["id"] == generation["id"]
+    assert deleted["generation"]["id"] == generation["id"]
+    assert deleted["file_deleted"] is True
+    assert not audio_path.exists()
+    assert remaining == []
 
 
 @pytest.mark.asyncio
@@ -1147,10 +1343,12 @@ async def test_voice_generate_attach_blocks_without_preview_session_or_avatar(tm
     from tests.test_control_plane import _prepare_isolated_dashboard_api
 
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
     created = await dashboard_api.create_voice_profile(
         dashboard_api.VoiceProfileMutationRequest(
             name="Sari Fish",
-            reference_wav_path="assets/voice/sari.wav",
+            reference_wav_path=str(reference_wav),
             reference_text="Halo semuanya, aku Sari.",
             language="id",
             notes="utama",
@@ -1182,6 +1380,11 @@ async def test_voice_generate_attach_blocks_without_preview_session_or_avatar(tm
             )
 
     monkeypatch.setattr("src.dashboard.api.get_voice_lab_engine", lambda: DummyVoiceEngine())
+    monkeypatch.setattr(
+        dashboard_api,
+        "_ensure_voice_engine_ready",
+        lambda engine, *, auto_start, wait_timeout_s: asyncio.sleep(0, result=(True, "ready")),
+    )
 
     with pytest.raises(HTTPException, match="preview session") as exc_info:
         await dashboard_api.generate_voice(
@@ -1204,6 +1407,8 @@ async def test_voice_training_job_is_blocked_while_live_session_active(tmp_path,
     from tests.test_control_plane import _prepare_isolated_dashboard_api
 
     dashboard_api = _prepare_isolated_dashboard_api(tmp_path, monkeypatch)
+    reference_wav = tmp_path / "sari.wav"
+    reference_wav.write_bytes(b"RIFF....WAVEfmt ")
     target = await dashboard_api.create_stream_target(
         dashboard_api.StreamTargetMutationRequest(
             platform="tiktok",
@@ -1220,11 +1425,11 @@ async def test_voice_training_job_is_blocked_while_live_session_active(tmp_path,
     profile = await dashboard_api.create_voice_profile(
         dashboard_api.VoiceProfileMutationRequest(
             name="Studio Sari",
-            reference_wav_path="assets/voice/sari.wav",
+            reference_wav_path=str(reference_wav),
             reference_text="Halo semuanya, aku Sari.",
             language="id",
             profile_type="studio_voice",
-            supported_languages=["id", "en"],
+            supported_languages=["id"],
             quality_tier="studio",
         )
     )

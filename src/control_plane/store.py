@@ -209,8 +209,11 @@ class ControlPlaneStore:
         if row is None:
             return None
         generation_id = int(row["id"])
-        audio_filename = row["audio_filename"] or Path(row["audio_path"] or "").name
+        raw_audio_path = row["audio_path"] or ""
+        audio_path = Path(raw_audio_path) if raw_audio_path else None
+        audio_filename = row["audio_filename"] or (audio_path.name if audio_path else "")
         download_name = row["download_name"] or audio_filename or f"voice-{generation_id}.wav"
+        artifact_exists = bool(audio_path and audio_path.exists())
         return {
             "id": generation_id,
             "mode": row["mode"],
@@ -225,7 +228,7 @@ class ControlPlaneStore:
             "similarity": float(row["similarity"] or 0.8),
             "speed": float(row["speed"] or 1.0),
             "status": row["status"],
-            "audio_path": row["audio_path"] or "",
+            "audio_path": raw_audio_path,
             "audio_filename": audio_filename,
             "download_name": download_name,
             "audio_url": f"/api/voice/audio/{generation_id}",
@@ -235,6 +238,8 @@ class ControlPlaneStore:
             "duration_ms": float(row["duration_ms"] or 0.0),
             "attached_to_avatar": bool(row["attached_to_avatar"]),
             "avatar_session_id": row["avatar_session_id"] or "",
+            "artifact_exists": artifact_exists,
+            "missing_reason": "" if artifact_exists else f"Audio file missing for generation {generation_id}",
             "created_at": row["created_at"],
         }
 
@@ -1305,3 +1310,38 @@ class ControlPlaneStore:
                 (generation_id,),
             ).fetchone()
         return self._voice_generation_from_row(row)
+
+    def delete_voice_generation(self, generation_id: int) -> dict[str, Any]:
+        generation = self.get_voice_generation(generation_id)
+        if generation is None:
+            raise RuntimeError(f"Voice generation {generation_id} not found")
+
+        with self._connection() as conn:
+            conn.execute(
+                """
+                UPDATE voice_lab_state
+                SET last_generation_id = CASE WHEN last_generation_id = ? THEN NULL ELSE last_generation_id END,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE id = 1
+                """,
+                (generation_id,),
+            )
+            conn.execute("DELETE FROM voice_generations WHERE id = ?", (generation_id,))
+        self._record_command(
+            "voice.generation.delete",
+            "completed",
+            {"generation_id": generation_id, "audio_path": generation.get("audio_path", "")},
+        )
+        return generation
+
+    def clear_voice_generations(self) -> list[dict[str, Any]]:
+        generations = self.list_voice_generations(limit=10_000)
+        with self._connection() as conn:
+            conn.execute("UPDATE voice_lab_state SET last_generation_id = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = 1")
+            conn.execute("DELETE FROM voice_generations")
+        self._record_command(
+            "voice.generation.clear",
+            "completed",
+            {"deleted_count": len(generations)},
+        )
+        return generations

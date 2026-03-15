@@ -107,3 +107,60 @@ def test_latency_budget_sums_correctly() -> None:
     assert total == perf.e2e_latency_target_ms, (
         f"Latency budget ({total}ms) must equal target ({perf.e2e_latency_target_ms}ms)"
     )
+
+
+def test_voice_training_config_defaults() -> None:
+    """Voice training config should have proper defaults."""
+    from src.config.loader import VoiceConfig
+
+    voice = VoiceConfig()
+    assert voice.training_enabled is False
+    assert voice.training_dataset_path == "assets/voice/training_dataset/"
+    assert voice.training_epochs == 100
+    assert voice.training_batch_size == 8
+    assert voice.training_learning_rate == 1e-4
+    assert voice.trained_model_path is None
+
+
+def test_voice_training_env_overrides(tmp_path: Path) -> None:
+    """Voice training config should respect environment variable overrides."""
+    import src.config.loader as loader_module
+    
+    # Clear global config
+    loader_module._config = None
+    
+    # Set training env vars
+    old_vars = {}
+    test_vars = {
+        "VOICE_TRAINING_ENABLED": "true",
+        "VOICE_TRAINING_EPOCHS": "200",
+        "VOICE_TRAINING_BATCH_SIZE": "16",
+        "VOICE_TRAINING_LEARNING_RATE": "0.0002",
+        "VOICE_TRAINED_MODEL_PATH": "external/fish-speech/checkpoints/trained/test.ckpt",
+        "VOICE_TRAINING_DATASET_PATH": "assets/voice/custom_dataset/",
+    }
+    
+    for key, value in test_vars.items():
+        old_vars[key] = os.environ.get(key)
+        os.environ[key] = value
+    
+    # Use empty env file to avoid conflicts
+    empty_env = tmp_path / ".env.empty"
+    empty_env.write_text("")
+    
+    try:
+        config = loader_module.load_config(env_path=empty_env)
+        assert config.voice.training_enabled is True
+        assert config.voice.training_epochs == 200
+        assert config.voice.training_batch_size == 16
+        assert config.voice.training_learning_rate == 0.0002
+        assert config.voice.trained_model_path == "external/fish-speech/checkpoints/trained/test.ckpt"
+        assert config.voice.training_dataset_path == "assets/voice/custom_dataset/"
+    finally:
+        # Restore env vars
+        for key, old_value in old_vars.items():
+            if old_value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old_value
+        loader_module._config = None

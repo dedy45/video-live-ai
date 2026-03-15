@@ -20,9 +20,15 @@ This runbook is now grounded in the implementation that is actually verified in 
 - `webrtcapi.html` delivers direct browser preview with live `audio + video` tracks.
 - `rtcpushapi.html` is reachable and now falls back to direct WebRTC preview when local relay `:1985` is not available.
 - The dashboard `Avatar & Suara -> Preview` tab embeds the vendor preview successfully.
-- The dashboard `Avatar & Suara -> Suara` tab now works as a two-mode Voice Lab:
-  - `Standalone Fish TTS` generates audio directly from a web prompt.
-  - `Attach ke Avatar` syncs the preview `sessionid` from `webrtcapi.html` back into the dashboard and sends audio to the active avatar session.
+- The dashboard `Avatar & Suara -> Suara` tab now works as a hybrid Voice Lab:
+  - `Generate Audio` supports `Indonesia` and `English`, plus `style / stability / similarity` controls.
+  - `Tujuan output` now clearly separates `Simpan Audio Lokal` vs `Kirim ke Avatar Live`; the synth engine is the same, only the destination changes.
+  - `Manajer File Lokal` shows artifact storage summary, local file path, newest result, browser playback, download, and delete actions in the same workspace.
+  - `Quick Clone` manages many fast reference clones with operator-facing guidance.
+  - `Studio Voice` manages the bilingual production profile.
+  - `Training Jobs` queues studio-voice training directly from the dashboard.
+  - The default seeded clone is backfilled to bilingual `id/en`, so the browser language selector and profile metadata stay aligned even on older local SQLite state.
+  - `Kirim ke Avatar Live` still syncs the preview `sessionid` from `webrtcapi.html` back into the dashboard and sends audio to the active avatar session while keeping the `.wav` artifact locally.
 
 ## What Is Not Verified
 
@@ -144,13 +150,19 @@ The current day-1 operator workflow is:
 2. In `Preview`, open the embedded `webrtcapi.html` vendor page and click `Start`.
 3. Wait for the operator receipt `Session preview tersinkron ke Voice Lab`.
 4. Switch to `Suara`.
-5. For raw TTS testing, keep mode `Standalone Fish TTS` and click `Generate Audio`.
-6. For avatar attach testing, switch to `Attach ke Avatar`, confirm `Attach session = Terhubung`, then click `Generate & Attach`.
+5. In `Generate Audio`, choose `Bahasa output` (`Indonesia` or `English`), `Voice Profile`, and optional `Gaya suara`.
+6. For raw TTS testing, keep `Tujuan output = Simpan Audio Lokal`, then click `Generate Audio Lokal`.
+7. For avatar attach testing, switch `Tujuan output = Kirim ke Avatar Live`, confirm the route card shows the synced preview session, then click `Generate & Kirim ke Avatar`.
+8. Use `Manajer File Lokal` in the same page to verify the artifact appears with `Putar`, `Unduh`, and `Hapus Artifact`.
+9. If you need a production profile, create it from `Studio Voice`, then queue training from `Training Jobs`.
 
 Expected results:
 
-- `Standalone Fish TTS` stores a generation entry with `attached_to_avatar=false`.
-- `Attach ke Avatar` stores a generation entry with `attached_to_avatar=true` and a non-empty `avatar_session_id`.
+- `Simpan Audio Lokal` stores a generation entry with `attached_to_avatar=false`.
+- `Kirim ke Avatar Live` stores a generation entry with `attached_to_avatar=true` and a non-empty `avatar_session_id`.
+- `Manajer File Lokal` keeps the generated artifact accessible from the browser and now also supports delete/clear actions against the local artifact store.
+- Local browser verification on `2026-03-14` covered both `Indonesia` and `English` local generation, direct `Putar` plus `Unduh` links, and delete from the same `Suara` workspace.
+- `Training Jobs` records queued studio-voice work in SQLite even before the full automatic dataset pipeline lands.
 - The attach flow is driven from the dashboard control plane; the vendor page only supplies the live preview session id.
 
 ## TikTok LIVE Studio Usage
