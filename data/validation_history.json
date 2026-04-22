@@ -168,5 +168,460 @@
     "provenance": "mock",
     "context": "",
     "timestamp": "2026-03-14T02:48:06.311156+00:00"
+  },
+  {
+    "id": 1774700784974,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-28T12:26:24.974867+00:00"
+  },
+  {
+    "id": 1774700788206,
+    "check_name": "audio-chunking-smoke",
+    "status": "blocked",
+    "checks": [
+      {
+        "check": "voice_engine_selected",
+        "passed": true,
+        "message": "fish_speech"
+      },
+      {
+        "check": "chunk_chars_configured",
+        "passed": false,
+        "message": "chunk size not configured"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:26:28.206579+00:00"
+  },
+  {
+    "id": 1774700789045,
+    "check_name": "runtime-truth",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "mock_mode_explicit",
+        "passed": true,
+        "message": "MOCK_MODE=False"
+      },
+      {
+        "check": "face_runtime_mode",
+        "passed": true,
+        "message": "livetalking_error"
+      },
+      {
+        "check": "voice_runtime_mode",
+        "passed": false,
+        "message": "unknown"
+      },
+      {
+        "check": "stream_runtime_mode",
+        "passed": true,
+        "message": "idle"
+      },
+      {
+        "check": "provenance_complete",
+        "passed": true,
+        "message": "5 surfaces"
+      },
+      {
+        "check": "timestamp_present",
+        "passed": true,
+        "message": "2026-03-28T12:26:27.670961+00:00"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:26:29.045068+00:00"
+  },
+  {
+    "id": 1774700796625,
+    "check_name": "voice-local-clone",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "voice_reference_wav",
+        "passed": true,
+        "message": "assets\\voice\\reference.wav"
+      },
+      {
+        "check": "voice_reference_text",
+        "passed": true,
+        "message": "assets\\voice\\reference.txt"
+      },
+      {
+        "check": "fish_speech_server_reachable",
+        "passed": {
+          "reachable": false,
+          "trained_model_available": false,
+          "training_status": "not_started",
+          "endpoint": null
+        },
+        "message": "reachable at http://127.0.0.1:8080"
+      },
+      {
+        "check": "indonesian_synthesis_smoke",
+        "passed": false,
+        "message": "synthesis failed: Fish-Speech API unreachable at http://127.0.0.1:8080: All connection attempts failed"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:26:36.625999+00:00"
+  },
+  {
+    "id": 1774700808012,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-28T12:26:48.012614+00:00"
+  },
+  {
+    "id": 1774700848348,
+    "check_name": "runtime-truth",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "mock_mode_explicit",
+        "passed": true,
+        "message": "MOCK_MODE=False"
+      },
+      {
+        "check": "face_runtime_mode",
+        "passed": true,
+        "message": "livetalking_error"
+      },
+      {
+        "check": "voice_runtime_mode",
+        "passed": false,
+        "message": "unknown"
+      },
+      {
+        "check": "stream_runtime_mode",
+        "passed": true,
+        "message": "idle"
+      },
+      {
+        "check": "provenance_complete",
+        "passed": true,
+        "message": "5 surfaces"
+      },
+      {
+        "check": "timestamp_present",
+        "passed": true,
+        "message": "2026-03-28T12:27:27.203983+00:00"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:28.348682+00:00"
+  },
+  {
+    "id": 1774700848357,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-28T12:27:28.357269+00:00"
+  },
+  {
+    "id": 1774700858626,
+    "check_name": "voice-local-clone",
+    "status": "fail",
+    "checks": [
+      {
+        "check": "voice_reference_wav",
+        "passed": true,
+        "message": "assets\\voice\\reference.wav"
+      },
+      {
+        "check": "voice_reference_text",
+        "passed": true,
+        "message": "assets\\voice\\reference.txt"
+      },
+      {
+        "check": "fish_speech_server_reachable",
+        "passed": {
+          "reachable": false,
+          "trained_model_available": false,
+          "training_status": "not_started",
+          "endpoint": null
+        },
+        "message": "reachable at http://127.0.0.1:8080"
+      },
+      {
+        "check": "indonesian_synthesis_smoke",
+        "passed": false,
+        "message": "synthesis failed: Fish-Speech API unreachable at http://127.0.0.1:8080: All connection attempts failed"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:38.626144+00:00"
+  },
+  {
+    "id": 1774700858631,
+    "check_name": "audio-chunking-smoke",
+    "status": "blocked",
+    "checks": [
+      {
+        "check": "voice_engine_selected",
+        "passed": true,
+        "message": "fish_speech"
+      },
+      {
+        "check": "chunk_chars_configured",
+        "passed": false,
+        "message": "chunk size not configured"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:38.631060+00:00"
+  },
+  {
+    "id": 1774700858676,
+    "check_name": "stream-dry-run",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      },
+      {
+        "check": "stream_idle_or_live_known",
+        "passed": true,
+        "message": "idle"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:38.676945+00:00"
+  },
+  {
+    "id": 1774700858685,
+    "check_name": "resource-budget",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "cpu_metric_present",
+        "passed": true,
+        "message": "0.0"
+      },
+      {
+        "check": "ram_metric_present",
+        "passed": true,
+        "message": "0.0"
+      },
+      {
+        "check": "disk_metric_present",
+        "passed": true,
+        "message": "0.0"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:38.685189+00:00"
+  },
+  {
+    "id": 1774700858693,
+    "check_name": "soak-sanity",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "incident_summary_present",
+        "passed": true,
+        "message": "{'open_count': 0, 'highest_severity': 'none'}"
+      },
+      {
+        "check": "restart_counters_present",
+        "passed": true,
+        "message": "{'voice': 0, 'face': 0, 'stream': 0}"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "",
+    "timestamp": "2026-03-28T12:27:38.693587+00:00"
+  },
+  {
+    "id": 1774700904761,
+    "check_name": "real-mode-readiness",
+    "status": "pass",
+    "checks": [
+      {
+        "check": "mock_mode_off",
+        "passed": true,
+        "message": "MOCK_MODE=false"
+      },
+      {
+        "check": "avatar_reference_video",
+        "passed": true,
+        "message": "assets\\avatar\\reference.mp4"
+      },
+      {
+        "check": "avatar_reference_audio",
+        "passed": true,
+        "message": "assets\\avatar\\reference.wav"
+      },
+      {
+        "check": "rtmp_configured",
+        "passed": true,
+        "message": "configured"
+      },
+      {
+        "check": "livetalking_entrypoint",
+        "passed": true,
+        "message": "external\\livetalking\\app.py"
+      },
+      {
+        "check": "product_data_source",
+        "passed": true,
+        "message": "Found: products.json"
+      },
+      {
+        "check": "products_loaded",
+        "passed": true,
+        "message": "10 products"
+      },
+      {
+        "check": "ffmpeg_available",
+        "passed": true,
+        "message": "C:\\Users\\dedy\\Documents\\!fast-track-income\\videoliveai\\tools\\ffmpeg\\bin\\ffmpeg.exe"
+      }
+    ],
+    "provenance": "real_local",
+    "context": "blockers: []",
+    "timestamp": "2026-03-28T12:28:24.761196+00:00"
   }
 ]
